@@ -1,6 +1,9 @@
 package providers
 
 import (
+	"reflect"
+
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/http"
 )
@@ -39,9 +42,25 @@ func (p *RouteServiceProvider) Register(app contracts.Application) error {
 		p.kernel.Use(p.Middleware...)
 	}
 
-	// Bind to container
-	app.BindValue("http.kernel", p.kernel)
-	app.BindValue("router", p.kernel.Router())
+	// Bind to container with type-safe registration
+	// Access the embedded Container field via reflection to avoid import cycles
+	appValue := reflect.ValueOf(app)
+	if appValue.Kind() == reflect.Ptr {
+		appValue = appValue.Elem()
+	}
+	
+	containerField := appValue.FieldByName("Container")
+	if containerField.IsValid() && !containerField.IsNil() {
+		// Extract the *container.Container from the reflect.Value
+		containerPtr := containerField.Interface().(*container.Container)
+		// Use type-safe ProvideNamedValue
+		container.ProvideNamedValue[*http.Kernel](containerPtr, "http.kernel", p.kernel)
+		container.ProvideNamedValue[*http.Router](containerPtr, "router", p.kernel.Router())
+	} else {
+		// Fallback to BindValue if Container field not accessible
+		app.BindValue("http.kernel", p.kernel)
+		app.BindValue("router", p.kernel.Router())
+	}
 
 	return nil
 }

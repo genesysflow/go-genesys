@@ -35,7 +35,7 @@ func main() {
 	}
 
 	// Get the HTTP kernel
-	kernel, err := container.Invoke[*http.Kernel](app.Container)
+	kernel, err := container.InvokeNamed[*http.Kernel](app.Container, "http.kernel")
 	if err != nil {
 		log.Fatal("Failed to get HTTP kernel:", err)
 	}

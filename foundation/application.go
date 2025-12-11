@@ -409,6 +409,11 @@ func ProvideValue[T any](app *Application, value T) {
 	container.ProvideValue[T](app.Container, value)
 }
 
+// ProvideNamedValue registers a named existing value with the application container.
+func ProvideNamedValue[T any](app *Application, name string, value T) {
+	container.ProvideNamedValue[T](app.Container, name, value)
+}
+
 // ProvideTransient registers a transient service with the application container.
 func ProvideTransient[T any](app *Application, factory func(*do.RootScope) (T, error)) {
 	container.ProvideTransient[T](app.Container, factory)
