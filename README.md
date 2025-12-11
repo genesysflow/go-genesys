@@ -74,6 +74,9 @@ Inspired by Laravel, Go-Genesys follows a well-defined lifecycle:
 Go-Genesys includes a CLI tool for scaffolding and development:
 
 ```bash
+# Install the tool
+go install github.com/genesysflow/go-genesys/cmd/genesys@latest
+
 # Create a new project
 genesys new myapp
 
