@@ -6,10 +6,9 @@ import (
 	"os"
 
 	"github.com/genesysflow/go-genesys/cmd/genesys/commands"
+	"github.com/genesysflow/go-genesys/foundation"
 	"github.com/spf13/cobra"
 )
-
-var version = "1.0.0"
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -19,7 +18,7 @@ func main() {
 Go web applications using the Go-Genesys framework.
 
 Inspired by Laravel's elegant syntax and powerful features.`,
-		Version: version,
+		Version: foundation.Version,
 	}
 
 	// Add commands
