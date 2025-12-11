@@ -1,0 +1,68 @@
+package {{.Package}}
+
+import (
+	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/http"
+)
+
+// {{.Name}}Controller handles {{.LowerName}} related requests.
+type {{.Name}}Controller struct {
+	*http.Controller
+}
+
+// New{{.Name}}Controller creates a new {{.Name}}Controller.
+func New{{.Name}}Controller(app contracts.Application) *{{.Name}}Controller {
+	return &{{.Name}}Controller{
+		Controller: http.NewController(app),
+	}
+}
+
+// Index handles GET /{{.RouteName}}
+func (c *{{.Name}}Controller) Index(ctx *http.Context) error {
+	// List all {{.LowerName}}s
+	return c.Success(ctx, map[string]any{
+		"message": "{{.Name}} index",
+	})
+}
+
+// Show handles GET /{{.RouteName}}/:id
+func (c *{{.Name}}Controller) Show(ctx *http.Context) error {
+	id := ctx.Param("id")
+
+	// Find {{.LowerName}} by ID
+	return c.Success(ctx, map[string]any{
+		"message": "{{.Name}} show",
+		"id":      id,
+	})
+}
+
+// Store handles POST /{{.RouteName}}
+func (c *{{.Name}}Controller) Store(ctx *http.Context) error {
+	// Create new {{.LowerName}}
+	return c.Created(ctx, map[string]any{
+		"message": "{{.Name}} created",
+	})
+}
+
+// Update handles PUT/PATCH /{{.RouteName}}/:id
+func (c *{{.Name}}Controller) Update(ctx *http.Context) error {
+	id := ctx.Param("id")
+
+	// Update {{.LowerName}} by ID
+	return c.Success(ctx, map[string]any{
+		"message": "{{.Name}} updated",
+		"id":      id,
+	})
+}
+
+// Destroy handles DELETE /{{.RouteName}}/:id
+func (c *{{.Name}}Controller) Destroy(ctx *http.Context) error {
+	id := ctx.Param("id")
+
+	// Delete {{.LowerName}} by ID
+	return c.Success(ctx, map[string]any{
+		"message": "{{.Name}} deleted",
+		"id":      id,
+	})
+}
+

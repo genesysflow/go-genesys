@@ -1,0 +1,7 @@
+name: ${APP_NAME:-GenesysExample}
+env: ${APP_ENV:-local}
+debug: ${APP_DEBUG:-true}
+url: ${APP_URL:-http://localhost:3000}
+
+timezone: UTC
+

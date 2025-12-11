@@ -1,0 +1,14 @@
+name: ${APP_NAME:-{{.Name}}}
+env: ${APP_ENV:-local}
+debug: ${APP_DEBUG:-true}
+url: ${APP_URL:-http://localhost:3000}
+
+timezone: UTC
+
+providers:
+  - app
+  - log
+  - route
+  - session
+  - validation
+

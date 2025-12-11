@@ -1,0 +1,15 @@
+default: ${LOG_CHANNEL:-console}
+level: ${LOG_LEVEL:-info}
+
+channels:
+  console:
+    driver: console
+
+  file:
+    driver: file
+    path: storage/logs/app.log
+    level: debug
+
+  json:
+    driver: json
+

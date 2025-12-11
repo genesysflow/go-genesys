@@ -1,0 +1,38 @@
+package {{.Package}}
+
+import (
+	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/providers"
+)
+
+// {{.Name}}ServiceProvider registers {{.LowerName}} services.
+type {{.Name}}ServiceProvider struct {
+	providers.BaseProvider
+}
+
+// Register registers the {{.LowerName}} services.
+func (p *{{.Name}}ServiceProvider) Register(app contracts.Application) error {
+	// Register your services here
+	// Example:
+	// container.Provide[*YourService](app.Container, func(i *do.RootScope) (*YourService, error) {
+	//     return NewYourService(), nil
+	// })
+
+	return nil
+}
+
+// Boot bootstraps the {{.LowerName}} services.
+func (p *{{.Name}}ServiceProvider) Boot(app contracts.Application) error {
+	// Bootstrap your services here
+	// This runs after all providers are registered
+
+	return nil
+}
+
+// Provides returns the services this provider registers.
+func (p *{{.Name}}ServiceProvider) Provides() []string {
+	return []string{
+		// List your service names here
+	}
+}
+

@@ -1,0 +1,58 @@
+package {{.Package}}
+
+import (
+	"github.com/genesysflow/go-genesys/http"
+)
+
+// {{.Name}}Middleware handles {{.LowerName}} logic.
+func {{.Name}}Middleware() http.MiddlewareFunc {
+	return func(ctx *http.Context, next func() error) error {
+		// Before request processing
+		// Add your middleware logic here
+
+		// Continue to next handler
+		if err := next(); err != nil {
+			return err
+		}
+
+		// After request processing
+		// Add post-processing logic here
+
+		return nil
+	}
+}
+
+// {{.Name}}MiddlewareWithConfig creates middleware with configuration.
+func {{.Name}}MiddlewareWithConfig(config {{.Name}}Config) http.MiddlewareFunc {
+	// Set defaults
+	if config.Skip == nil {
+		config.Skip = func(ctx *http.Context) bool { return false }
+	}
+
+	return func(ctx *http.Context, next func() error) error {
+		// Check if should skip
+		if config.Skip(ctx) {
+			return next()
+		}
+
+		// Before request processing
+		// Add your middleware logic here
+
+		// Continue to next handler
+		return next()
+	}
+}
+
+// {{.Name}}Config holds configuration for the {{.Name}} middleware.
+type {{.Name}}Config struct {
+	// Skip defines a function to skip middleware execution.
+	Skip func(ctx *http.Context) bool
+
+	// Add your configuration fields here
+}
+
+// Default{{.Name}}Config is the default middleware configuration.
+var Default{{.Name}}Config = {{.Name}}Config{
+	// Set default values here
+}
+

@@ -1,0 +1,27 @@
+package {{.Package}}
+
+import (
+	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/http"
+)
+
+// {{.Name}}Controller handles {{.LowerName}} related requests.
+type {{.Name}}Controller struct {
+	*http.Controller
+}
+
+// New{{.Name}}Controller creates a new {{.Name}}Controller.
+func New{{.Name}}Controller(app contracts.Application) *{{.Name}}Controller {
+	return &{{.Name}}Controller{
+		Controller: http.NewController(app),
+	}
+}
+
+// Index handles GET requests.
+func (c *{{.Name}}Controller) Index(ctx *http.Context) error {
+	return c.Success(ctx, map[string]any{
+		"message": "{{.Name}} index",
+	})
+}
+
+
