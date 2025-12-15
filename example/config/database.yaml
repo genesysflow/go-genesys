@@ -1,0 +1,22 @@
+# Database Configuration
+
+default: sqlite
+
+connections:
+  sqlite:
+    driver: sqlite
+    database: storage/database.sqlite
+    prefix: ""
+    foreign_key_constraints: true
+
+  pgsql:
+    driver: pgsql
+    host: 127.0.0.1
+    port: 5432
+    database: genesys_example
+    username: postgres
+    password: ""
+    sslmode: disable
+    prefix: ""
+    max_open_conns: 25
+    max_idle_conns: 5

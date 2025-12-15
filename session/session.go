@@ -79,9 +79,12 @@ func NewManager(config ...Config) *Manager {
 		cfg = config[0]
 	}
 
+	if cfg.CookieName != "" {
+		cfg.KeyLookup = "cookie:" + cfg.CookieName
+	}
+
 	store := session.New(session.Config{
 		Expiration:     cfg.Expiration,
-		CookieName:     cfg.CookieName,
 		CookiePath:     cfg.CookiePath,
 		CookieDomain:   cfg.CookieDomain,
 		CookieSecure:   cfg.CookieSecure,

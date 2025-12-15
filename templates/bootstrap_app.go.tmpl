@@ -1,0 +1,40 @@
+package bootstrap
+
+import (
+	"{{.ModulePath}}/routes"
+	m "{{.ModulePath}}/database/migrations"
+
+	"github.com/genesysflow/go-genesys/database/migrations"
+	"github.com/genesysflow/go-genesys/console"
+	"github.com/genesysflow/go-genesys/foundation"
+	"github.com/genesysflow/go-genesys/providers"
+)
+
+// App creates and configures the application instance.
+func App() *foundation.Application {
+	app := foundation.New(".")
+
+	// Register core service providers
+	app.Register(&providers.AppServiceProvider{})
+	app.Register(&providers.LogServiceProvider{})
+	app.Register(&providers.ValidationServiceProvider{})
+	app.Register(&providers.SessionServiceProvider{})
+	app.Register(&providers.DatabaseServiceProvider{})
+	app.Register(&providers.MigrationServiceProvider{
+		BeforeAllMigrations: m.BeforeAllMigrations,
+		Migrations:          []migrations.Migration{
+			// DO NOT DELETE: Add new migrations here
+		},
+	})
+
+	// Register console service provider
+	app.Register(&console.ConsoleServiceProvider{
+		AppName:    "{{.LowerName}}",
+		AppShort:   "{{.Name}} - A Go-Genesys application",
+		AppLong:    "{{.Name}} is a web application built with the Go-Genesys framework.",
+		Routes:     routes.Register,
+		Middleware: routes.GlobalMiddleware(app),
+	})
+
+	return app
+}

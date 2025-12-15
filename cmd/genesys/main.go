@@ -23,10 +23,7 @@ Inspired by Laravel's elegant syntax and powerful features.`,
 
 	// Add commands
 	rootCmd.AddCommand(commands.NewCmd())
-	rootCmd.AddCommand(commands.MakeProviderCmd())
-	rootCmd.AddCommand(commands.MakeControllerCmd())
-	rootCmd.AddCommand(commands.MakeMiddlewareCmd())
-	rootCmd.AddCommand(commands.ServeCmd())
+	rootCmd.AddCommand(commands.UpgradeCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

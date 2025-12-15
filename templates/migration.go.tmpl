@@ -1,0 +1,25 @@
+package migrations
+
+import "github.com/genesysflow/go-genesys/database/schema"
+
+// {{.Name}} migration.
+type {{.Name}} struct{}
+
+// Name returns the migration name.
+func (m *{{.Name}}) Name() string {
+	return "{{.Timestamp}}_{{.LowerName}}"
+}
+
+// Up runs the migration.
+func (m *{{.Name}})  Up(builder *schema.Builder) error {
+	return builder.Create("{{.LowerName}}", func(table *schema.Blueprint) {
+		table.ID()
+		table.Timestamps()
+	})
+}
+
+
+// Down reverses the migration.
+func (m *{{.Name}}) Down(builder *schema.Builder) error {
+	return builder.Drop("{{.LowerName}}")
+}
