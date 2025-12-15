@@ -11,7 +11,7 @@ func (m *{{.Name}}) Name() string {
 }
 
 // Up runs the migration.
-func (m *{{.Name}})  Up(builder *schema.Builder) error {
+func (m *{{.Name}}) Up(builder *schema.Builder) error {
 	return builder.Create("{{.LowerName}}", func(table *schema.Blueprint) {
 		table.ID()
 		table.Timestamps()
