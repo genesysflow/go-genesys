@@ -1,0 +1,15 @@
+package routes
+
+import "github.com/genesysflow/go-genesys/http"
+
+// API registers API routes.
+func API(r *http.Router) {
+	// API v1 routes
+	r.Group("/api/v1", func(api *http.Router) {
+		api.GET("/", func(ctx *http.Context) error {
+			return ctx.JSONResponse(map[string]any{
+				"message": "API v1",
+			})
+		})
+	})
+}

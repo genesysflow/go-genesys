@@ -1,0 +1,22 @@
+# Database Configuration
+
+default: ${DB_CONNECTION:-sqlite}
+
+connections:
+  sqlite:
+    driver: sqlite
+    database: ${DB_DATABASE:-storage/database.sqlite}
+    prefix: ""
+    foreign_key_constraints: true
+
+  pgsql:
+    driver: pgsql
+    host: ${DB_HOST:-127.0.0.1}
+    port: ${DB_PORT:-5432}
+    database: ${DB_DATABASE:-genesysflow}
+    username: ${DB_USERNAME:-postgres}
+    password: ${DB_PASSWORD:-}
+    sslmode: ${DB_SSLMODE:-disable}
+    prefix: ""
+    max_open_conns: 25
+    max_idle_conns: 5

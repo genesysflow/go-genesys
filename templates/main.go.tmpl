@@ -1,83 +1,31 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 
-	"github.com/genesysflow/go-genesys/container"
-	"github.com/genesysflow/go-genesys/foundation"
-	"github.com/genesysflow/go-genesys/http"
-	"github.com/genesysflow/go-genesys/http/middleware"
-	"github.com/genesysflow/go-genesys/providers"
+	"{{.ModulePath}}/bootstrap"
+
+	"github.com/genesysflow/go-genesys/console"
 )
 
 func main() {
-	// Create a new application instance
-	app := foundation.New()
+	app := bootstrap.App()
 
-	// Register service providers
-	app.Register(&providers.AppServiceProvider{})
-	app.Register(&providers.LogServiceProvider{})
-	app.Register(&providers.ValidationServiceProvider{})
-	app.Register(&providers.SessionServiceProvider{})
-	app.Register(&providers.RouteServiceProvider{
-		Routes: registerRoutes,
-		Middleware: []http.MiddlewareFunc{
-			middleware.RequestID(),
-			middleware.Recover(app.Logger()),
-			middleware.Logger(app.Logger()),
-		},
-	})
-
-	// Bootstrap the application
 	if err := app.Boot(); err != nil {
-		log.Fatal("Failed to boot application:", err)
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
-	// Get the HTTP kernel
-	kernel, err := container.InvokeNamed[*http.Kernel](app.Container, "http.kernel")
+	kernel, err := app.Make("console.kernel")
 	if err != nil {
-		log.Fatal("Failed to get HTTP kernel:", err)
+		fmt.Fprintln(os.Stderr, "Failed to resolve console kernel:", err)
+		os.Exit(1)
 	}
 
-	// Get port from environment or default
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "3000"
+	if err := kernel.(*console.Kernel).Run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-
-	// Run the server with graceful shutdown
-	log.Printf("Server starting on :%s", port)
-	if err := kernel.RunWithGracefulShutdown(":"+port, 10); err != nil {
-		log.Fatal("Server error:", err)
-	}
-}
-
-func registerRoutes(r *http.Router) {
-	// Welcome route
-	r.GET("/", func(ctx *http.Context) error {
-		return ctx.JSONResponse(map[string]any{
-			"message": "Welcome to {{.Name}}!",
-			"version": "1.0.0",
-		})
-	})
-
-	// Health check
-	r.GET("/health", func(ctx *http.Context) error {
-		return ctx.JSONResponse(map[string]any{
-			"status": "ok",
-		})
-	})
-
-	// API routes group
-	r.Group("/api", func(api *http.Router) {
-		api.GET("/", func(ctx *http.Context) error {
-			return ctx.JSONResponse(map[string]any{
-				"message": "API v1",
-			})
-		})
-
-		// Add your API routes here
-	})
 }
 

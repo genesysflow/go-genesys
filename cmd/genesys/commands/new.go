@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"text/template"
 
@@ -13,10 +14,12 @@ import (
 
 // TemplateData holds data for template rendering.
 type TemplateData struct {
-	Name      string
-	Package   string
-	LowerName string
-	RouteName string
+	Name       string
+	Package    string
+	ModulePath string
+	LowerName  string
+	RouteName  string
+	TableName  string
 }
 
 // NewCmd creates the 'new' command.
@@ -62,6 +65,8 @@ func createProject(name, moduleName string) error {
 		"app/controllers",
 		"app/middleware",
 		"app/providers",
+		"database/migrations",
+		"bootstrap",
 		"config",
 		"routes",
 		"storage/logs",
@@ -89,21 +94,28 @@ func createProject(name, moduleName string) error {
 	}
 
 	data := TemplateData{
-		Name:      toPascalCase(name),
-		Package:   moduleName,
-		LowerName: strings.ToLower(name),
+		Name:       toPascalCase(name),
+		Package:    moduleName,
+		ModulePath: moduleName,
+		LowerName:  strings.ToLower(name),
 	}
 
 	// Generate files from templates
 	templates := map[string]string{
-		"main.go":             "main.go.tmpl",
-		".env":                "env.tmpl",
-		".env.example":        "env.tmpl",
-		".gitignore":          "gitignore.tmpl",
-		"README.md":           "readme.md.tmpl",
-		"config/app.yaml":     "config_app.yaml.tmpl",
-		"config/logging.yaml": "config_logging.yaml.tmpl",
-		"config/session.yaml": "config_session.yaml.tmpl",
+		"main.go":                           "main.go.tmpl",
+		"bootstrap/app.go":                  "bootstrap_app.go.tmpl",
+		"database/migrations/migrations.go": "migrations.go.tmpl",
+		"routes/routes.go":                  "routes.go.tmpl",
+		"routes/web.go":                     "routes_web.go.tmpl",
+		"routes/api.go":                     "routes_api.go.tmpl",
+		".env":                              "env.tmpl",
+		".env.example":                      "env.tmpl",
+		".gitignore":                        "gitignore.tmpl",
+		"README.md":                         "readme.md.tmpl",
+		"config/app.yaml":                   "config_app.yaml.tmpl",
+		"config/logging.yaml":               "config_logging.yaml.tmpl",
+		"config/session.yaml":               "config_session.yaml.tmpl",
+		"config/database.yaml":              "config_database.yaml.tmpl",
 	}
 
 	for filename, tmplFilename := range templates {
@@ -121,7 +133,10 @@ func createProject(name, moduleName string) error {
 
 go 1.22
 
-require github.com/genesysflow/go-genesys v%s
+require (
+	github.com/genesysflow/go-genesys v%s
+	github.com/spf13/cobra v1.8.1
+)
 `, moduleName, foundation.Version)
 
 	if err := os.WriteFile(filepath.Join(name, "go.mod"), []byte(goModContent), 0644); err != nil {
@@ -152,6 +167,9 @@ func generateFile(path, tmplContent string, data TemplateData) error {
 	return tmpl.Execute(file, data)
 }
 
+// Utility Functions
+// =============================================================================
+
 func toPascalCase(s string) string {
 	words := strings.FieldsFunc(s, func(r rune) bool {
 		return r == '_' || r == '-' || r == ' '
@@ -164,4 +182,44 @@ func toPascalCase(s string) string {
 	}
 
 	return strings.Join(words, "")
+}
+
+// getTemplatesDir returns the path to the templates directory.
+// It tries to find it relative to the current working directory first,
+// then relative to the command file location.
+func getTemplatesDir() (string, error) {
+	// Try current working directory first
+	cwd, err := os.Getwd()
+	if err == nil {
+		templatesPath := filepath.Join(cwd, "templates")
+		if _, err := os.Stat(templatesPath); err == nil {
+			return templatesPath, nil
+		}
+	}
+
+	// Try relative to command file location
+	_, filename, _, _ := runtime.Caller(0)
+	cmdDir := filepath.Dir(filename)
+	templatesPath := filepath.Join(cmdDir, "../../../templates")
+	if _, err := os.Stat(templatesPath); err == nil {
+		return templatesPath, nil
+	}
+
+	return "", fmt.Errorf("templates directory not found")
+}
+
+// loadTemplate loads a template file from the templates directory.
+func loadTemplate(filename string) (string, error) {
+	templatesDir, err := getTemplatesDir()
+	if err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(templatesDir, filename)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read template %s: %w", filename, err)
+	}
+
+	return string(content), nil
 }
