@@ -8,6 +8,9 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **Service Providers**: Register and bootstrap application services
 - **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) for blazing fast HTTP handling
 - **Middleware Pipeline**: Before/after middleware with Laravel-style syntax
+- **Database ORM**: Eloquent-style ORM for easy database interaction
+- **Query Builder**: Fluent SQL query builder
+- **Migrations**: Database schema version control
 - **Configuration**: YAML/JSON config files with dot-notation access
 - **Environment**: `.env` file support with type-safe helpers
 - **Validation**: Struct-based validation with custom rules
@@ -69,6 +72,63 @@ Inspired by Laravel, Go-Genesys follows a well-defined lifecycle:
 4. **Controller**: Business logic is executed
 5. **Response**: Response travels back through middleware and is sent to the client
 
+## Database & Migrations
+
+Go-Genesys provides a powerful database abstraction layer.
+
+### Migrations
+
+Define your database schema using Go code:
+
+```go
+func (m *CreateUsersTable) Up(builder *schema.Builder) error {
+    return builder.Create("users", func(table *schema.Blueprint) {
+        table.ID()
+        table.String("name", 255)
+        table.String("email", 255).Unique()
+        table.Timestamps()
+    })
+}
+```
+
+### Models
+
+Define your models by embedding `database.Model`:
+
+```go
+type User struct {
+    database.Model
+    Name  string `json:"name" db:"name"`
+    Email string `json:"email" db:"email"`
+}
+```
+
+Retrieve records:
+
+```go
+// Get all users
+users, _ := database.All[User]("users")
+
+// Find by ID
+user, _ := database.Find[User]("users", 1)
+```
+
+### Query Builder
+
+Fluent interface for building queries:
+
+```go
+// Get all users as maps
+results, _ := db.Table("users").Get()
+
+// Complex queries
+db.Table("users").
+    Where("age", ">", 18).
+    OrderBy("created_at", "desc").
+    Limit(10).
+    Get()
+```
+
 ## CLI Tool
 
 Go-Genesys includes a CLI tool for scaffolding and development:
@@ -85,6 +145,21 @@ genesys make:provider MyServiceProvider
 
 # Generate a controller
 genesys make:controller UserController
+
+# Generate a model
+genesys make:model User
+
+# Generate a migration
+genesys make:migration create_users_table
+
+# Run migrations
+genesys migrate
+
+# Rollback migrations
+genesys migrate:rollback
+
+# Check migration status
+genesys migrate:status
 
 # Generate middleware
 genesys make:middleware AuthMiddleware
@@ -104,6 +179,7 @@ myapp/
 │   ├── middleware/      # Custom middleware
 │   └── providers/       # Service providers
 ├── config/              # Configuration files
+├── database/            # Migrations and seeds
 ├── routes/              # Route definitions
 ├── storage/             # Logs, cache, sessions
 ├── .env                 # Environment variables
