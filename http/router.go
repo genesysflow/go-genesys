@@ -87,6 +87,11 @@ func (r *Router) executeMiddleware(ctx *Context, middleware []MiddlewareFunc, ha
 	return middleware[0](ctx, next)
 }
 
+// App returns the application instance.
+func (r *Router) App() contracts.Application {
+	return r.app
+}
+
 // GET registers a GET route.
 func (r *Router) GET(path string, handler HandlerFunc, middleware ...MiddlewareFunc) *Route {
 	return r.addRoute("GET", path, handler, middleware...)
@@ -325,4 +330,3 @@ type APIResourceController interface {
 	Update(ctx *Context) error
 	Destroy(ctx *Context) error
 }
-

@@ -9,7 +9,7 @@ import (
 // API registers API routes.
 func API(r *http.Router) {
 	// Create controllers
-	userController := controllers.NewUserController(nil)
+	userController := controllers.NewUserController(r.App())
 
 	// API v1 routes
 	r.Group("/api/v1", func(api *http.Router) {
