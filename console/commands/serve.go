@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
@@ -35,18 +36,14 @@ func runServer(app contracts.Application, host, port string) error {
 
 	// Try to get routes callback from container
 	var routesCallback func(*http.Router)
-	if routesRaw, err := app.Make("console.routes"); err == nil {
-		if routes, ok := routesRaw.(func(*http.Router)); ok {
-			routesCallback = routes
-		}
+	if routes, err := container.Resolve[func(*http.Router)](app); err == nil {
+		routesCallback = routes
 	}
 
 	// Try to get middleware from container
 	var globalMiddleware []http.MiddlewareFunc
-	if mwRaw, err := app.Make("console.middleware"); err == nil {
-		if mw, ok := mwRaw.([]http.MiddlewareFunc); ok {
-			globalMiddleware = mw
-		}
+	if mw, err := container.Resolve[[]http.MiddlewareFunc](app); err == nil {
+		globalMiddleware = mw
 	}
 
 	// If no routes callback, use default

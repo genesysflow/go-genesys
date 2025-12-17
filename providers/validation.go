@@ -32,6 +32,7 @@ func (p *ValidationServiceProvider) Register(app contracts.Application) error {
 		v.SetAttributeNames(p.AttributeNames)
 	}
 
+	app.InstanceType(v)
 	app.BindValue("validator", v)
 
 	return nil

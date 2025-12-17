@@ -106,6 +106,20 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 // createErrorHandler creates the Fiber error handler.
 func createErrorHandler(app contracts.Application) fiber.ErrorHandler {
 	return func(c *fiber.Ctx, err error) error {
+		// Try to resolve the error handler
+		// We use a local interface to avoid import cycle with errors package
+		type ErrorHandler interface {
+			Handle(ctx contracts.Context, err error) error
+		}
+
+		if h, resolveErr := container.Resolve[any](app, "error.handler"); resolveErr == nil {
+			if handler, ok := h.(ErrorHandler); ok {
+				// Create context
+				ctx := NewContext(c, app)
+				return handler.Handle(ctx, err)
+			}
+		}
+
 		code := fiber.StatusInternalServerError
 
 		// Check if it's a Fiber error
@@ -119,15 +133,13 @@ func createErrorHandler(app contracts.Application) fiber.ErrorHandler {
 		}
 
 		// Log the error (use different variable name to avoid shadowing)
-		if logger, makeErr := app.Make("logger"); makeErr == nil {
-			if l, ok := logger.(contracts.Logger); ok {
-				l.Error("HTTP Error",
-					"error", err.Error(),
-					"status", code,
-					"path", c.Path(),
-					"method", c.Method(),
-				)
-			}
+		if logger, resolveErr := container.Resolve[contracts.Logger](app); resolveErr == nil {
+			logger.Error("HTTP Error",
+				"error", err.Error(),
+				"status", code,
+				"path", c.Path(),
+				"method", c.Method(),
+			)
 		}
 
 		// Return JSON error for API requests

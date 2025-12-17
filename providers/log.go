@@ -58,8 +58,12 @@ func (p *LogServiceProvider) Register(app contracts.Application) error {
 		logger.SetLevel(parseLogLevel(level))
 	}
 
+	app.InstanceType(logger)
 	app.BindValue("logger", logger)
-	app.BindValue("log.manager", log.NewManager())
+
+	logManager := log.NewManager()
+	app.InstanceType(logManager)
+	app.BindValue("log.manager", logManager)
 
 	return nil
 }

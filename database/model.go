@@ -2,6 +2,7 @@
 package database
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"time"
@@ -86,8 +87,13 @@ func getTableName[T any]() string {
 
 // All retrieves all records.
 func All[T any]() ([]T, error) {
+	return AllContext[T](context.Background())
+}
+
+// AllContext retrieves all records with context.
+func AllContext[T any](ctx context.Context) ([]T, error) {
 	tableName := getTableName[T]()
-	results, err := db.Table(tableName).Get()
+	results, err := db.Table(tableName).WithContext(ctx).Get()
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +102,13 @@ func All[T any]() ([]T, error) {
 
 // Find retrieves a record by ID.
 func Find[T any](id int64) (*T, error) {
+	return FindContext[T](context.Background(), id)
+}
+
+// FindContext retrieves a record by ID with context.
+func FindContext[T any](ctx context.Context, id int64) (*T, error) {
 	tableName := getTableName[T]()
-	result, err := db.Table(tableName).Find(id)
+	result, err := db.Table(tableName).WithContext(ctx).Find(id)
 	if err != nil {
 		return nil, err
 	}

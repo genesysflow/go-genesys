@@ -2,9 +2,11 @@
 package middleware
 
 import (
+	"fmt"
 	"runtime/debug"
 	"time"
 
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/gofiber/fiber/v2"
@@ -23,6 +25,24 @@ func Recover(logger contracts.Logger) http.MiddlewareFunc {
 					"path", ctx.Path(),
 					"method", ctx.Method(),
 				)
+
+				// Try to use error handler
+				if app := ctx.App(); app != nil {
+					// We use reflection or interface assertion to call Render
+					// Since we can't import errors package due to circular dependency (errors imports http)
+					// We define a local interface
+					type ErrorRenderer interface {
+						Render(ctx contracts.Context, err error) error
+					}
+
+					if h, err := container.Resolve[any](app, "error.handler"); err == nil {
+						if handler, ok := h.(ErrorRenderer); ok {
+							err := fmt.Errorf("panic: %v", r)
+							_ = handler.Render(ctx, err)
+							return
+						}
+					}
+				}
 
 				ctx.Status(fiber.StatusInternalServerError).JSONResponse(fiber.Map{
 					"error": "Internal Server Error",

@@ -7,6 +7,7 @@ import (
 	"{{.ModulePath}}/bootstrap"
 
 	"github.com/genesysflow/go-genesys/console"
+	"github.com/genesysflow/go-genesys/container"
 )
 
 func main() {
@@ -17,13 +18,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	kernel, err := app.Make("console.kernel")
+	kernel, err := container.Resolve[*console.Kernel](app)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to resolve console kernel:", err)
 		os.Exit(1)
 	}
 
-	if err := kernel.(*console.Kernel).Run(); err != nil {
+	if err := kernel.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

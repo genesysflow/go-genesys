@@ -100,20 +100,7 @@ func inferServiceName(factory any) (string, error) {
 	}
 	// Use the first return value's type as the name
 	out := t.Out(0)
-
-	// Handle pointer types to get the full package path
-	if out.Kind() == reflect.Ptr {
-		elem := out.Elem()
-		if elem.PkgPath() != "" {
-			return "*" + elem.PkgPath() + "." + elem.Name(), nil
-		}
-	} else {
-		if out.PkgPath() != "" {
-			return out.PkgPath() + "." + out.Name(), nil
-		}
-	}
-
-	return out.String(), nil
+	return GetTypeName(out), nil
 }
 
 // invokeFactory executes the given factory function, injecting the container if needed.
@@ -141,21 +128,7 @@ func (c *Container) invokeFactory(factory any) (any, error) {
 
 		// 2. Resolve by Type
 		// samber/do uses the type string as the service name when using Provide[T].
-		var serviceName string
-		if argType.Kind() == reflect.Ptr {
-			elem := argType.Elem()
-			if elem.PkgPath() != "" {
-				serviceName = "*" + elem.PkgPath() + "." + elem.Name()
-			} else {
-				serviceName = argType.String()
-			}
-		} else {
-			if argType.PkgPath() != "" {
-				serviceName = argType.PkgPath() + "." + argType.Name()
-			} else {
-				serviceName = argType.String()
-			}
-		}
+		serviceName := GetTypeName(argType)
 
 		// Check if we have it
 		instance, err := c.Make(serviceName)
@@ -219,8 +192,23 @@ func (c *Container) Instance(name string, instance any) error {
 // InstanceType registers an already-created instance, inferring the service name from its type.
 func (c *Container) InstanceType(instance any) error {
 	t := reflect.TypeOf(instance)
-	name := t.String()
+	name := GetTypeName(t)
 	return c.Instance(name, instance)
+}
+
+// GetTypeName returns the fully qualified type name for a type.
+func GetTypeName(t reflect.Type) string {
+	if t.Kind() == reflect.Ptr {
+		elem := t.Elem()
+		if elem.PkgPath() != "" {
+			return "*" + elem.PkgPath() + "." + elem.Name()
+		}
+		return t.String()
+	}
+	if t.PkgPath() != "" {
+		return t.PkgPath() + "." + t.Name()
+	}
+	return t.String()
 }
 
 // Make resolves a service by name from the container.
@@ -373,20 +361,7 @@ func Resolve[T any](c contracts.Container, name ...string) (T, error) {
 	} else {
 		// Infer name from T
 		typeOfT := reflect.TypeOf((*T)(nil)).Elem()
-		if typeOfT.Kind() == reflect.Ptr {
-			elem := typeOfT.Elem()
-			if elem.PkgPath() != "" {
-				serviceName = "*" + elem.PkgPath() + "." + elem.Name()
-			} else {
-				serviceName = typeOfT.String()
-			}
-		} else {
-			if typeOfT.PkgPath() != "" {
-				serviceName = typeOfT.PkgPath() + "." + typeOfT.Name()
-			} else {
-				serviceName = typeOfT.String()
-			}
-		}
+		serviceName = GetTypeName(typeOfT)
 	}
 
 	instance, err := c.Make(serviceName)

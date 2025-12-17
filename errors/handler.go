@@ -7,7 +7,6 @@ import (
 	"runtime/debug"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	genesyshttp "github.com/genesysflow/go-genesys/http"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -20,7 +19,7 @@ type Handler struct {
 }
 
 // Reporter is a function that reports errors.
-type Reporter func(err error, ctx *genesyshttp.Context)
+type Reporter func(err error, ctx contracts.Context)
 
 // Config holds error handler configuration.
 type Config struct {
@@ -66,7 +65,7 @@ func (h *Handler) DontReport(errs ...error) {
 }
 
 // Handle handles an error.
-func (h *Handler) Handle(ctx *genesyshttp.Context, err error) error {
+func (h *Handler) Handle(ctx contracts.Context, err error) error {
 	if h.ShouldReport(err) {
 		h.Report(err, ctx)
 	}
@@ -74,16 +73,16 @@ func (h *Handler) Handle(ctx *genesyshttp.Context, err error) error {
 }
 
 // Report reports an error for logging.
-func (h *Handler) Report(err error, ctx ...*genesyshttp.Context) {
+func (h *Handler) Report(err error, ctx ...contracts.Context) {
 	if h.logger != nil {
 		fields := map[string]any{
 			"error": err.Error(),
 		}
 
 		if len(ctx) > 0 && ctx[0] != nil {
-			fields["path"] = ctx[0].Path()
-			fields["method"] = ctx[0].Method()
-			fields["ip"] = ctx[0].IP()
+			fields["path"] = ctx[0].Request().Path()
+			fields["method"] = ctx[0].Request().Method()
+			fields["ip"] = ctx[0].Request().IP()
 		}
 
 		h.logger.WithFields(fields).Error("Error occurred")
@@ -110,7 +109,7 @@ func (h *Handler) ShouldReport(err error) bool {
 }
 
 // Render renders an error response.
-func (h *Handler) Render(ctx *genesyshttp.Context, err error) error {
+func (h *Handler) Render(ctx contracts.Context, err error) error {
 	code := http.StatusInternalServerError
 	message := "Internal Server Error"
 
@@ -143,8 +142,8 @@ func (h *Handler) Render(ctx *genesyshttp.Context, err error) error {
 }
 
 // RecoverMiddleware creates a panic recovery middleware.
-func (h *Handler) RecoverMiddleware() genesyshttp.MiddlewareFunc {
-	return func(ctx *genesyshttp.Context, next func() error) error {
+func (h *Handler) RecoverMiddleware() contracts.MiddlewareFunc {
+	return func(ctx contracts.Context, next func() error) error {
 		defer func() {
 			if r := recover(); r != nil {
 				var err error
@@ -162,8 +161,8 @@ func (h *Handler) RecoverMiddleware() genesyshttp.MiddlewareFunc {
 					h.logger.Error("Panic recovered",
 						"error", err.Error(),
 						"stack", string(debug.Stack()),
-						"path", ctx.Path(),
-						"method", ctx.Method(),
+						"path", ctx.Request().Path(),
+						"method", ctx.Request().Method(),
 					)
 				}
 
@@ -282,4 +281,3 @@ func (e *ValidationError) Error() string {
 func (e *ValidationError) StatusCode() int {
 	return http.StatusUnprocessableEntity
 }
-

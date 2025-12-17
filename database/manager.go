@@ -96,8 +96,11 @@ func (m *Manager) Connection(name ...string) contracts.Connection {
 	// Create new connection
 	conn, err := m.makeConnection(connName)
 	if err != nil {
-		// Return nil connection - will cause errors on use
-		return nil
+		// Return connection with error state
+		return &Connection{
+			name: connName,
+			err:  err,
+		}
 	}
 
 	m.mu.Lock()
@@ -333,6 +336,7 @@ type Connection struct {
 	db      *sql.DB
 	prefix  string
 	grammar contracts.Grammar
+	err     error
 }
 
 // Name returns the connection name.
@@ -352,26 +356,59 @@ func (c *Connection) DB() *sql.DB {
 
 // Table starts a query builder for the given table.
 func (c *Connection) Table(table string) contracts.QueryBuilder {
+	if c.err != nil {
+		b := query.NewBuilder(nil, nil, table)
+		b.SetError(c.err)
+		return b
+	}
 	return query.NewBuilder(c.db, c.grammar, c.prefix+table)
 }
 
 // Query executes a raw query.
 func (c *Connection) Query(sqlQuery string, bindings ...any) (*sql.Rows, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
 	return c.db.Query(sqlQuery, bindings...)
+}
+
+// QueryContext executes a raw query with context.
+func (c *Connection) QueryContext(ctx context.Context, sqlQuery string, bindings ...any) (*sql.Rows, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return c.db.QueryContext(ctx, sqlQuery, bindings...)
 }
 
 // Exec executes a raw statement.
 func (c *Connection) Exec(sqlQuery string, bindings ...any) (sql.Result, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
 	return c.db.Exec(sqlQuery, bindings...)
+}
+
+// ExecContext executes a raw statement with context.
+func (c *Connection) ExecContext(ctx context.Context, sqlQuery string, bindings ...any) (sql.Result, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return c.db.ExecContext(ctx, sqlQuery, bindings...)
 }
 
 // Prepare prepares a statement.
 func (c *Connection) Prepare(sqlQuery string) (*sql.Stmt, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
 	return c.db.Prepare(sqlQuery)
 }
 
 // BeginTransaction starts a transaction.
 func (c *Connection) BeginTransaction() (contracts.Transaction, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
 	tx, err := c.db.Begin()
 	if err != nil {
 		return nil, err
@@ -403,16 +440,25 @@ func (c *Connection) Transaction(fn func(tx contracts.Transaction) error) error 
 
 // Close closes the connection.
 func (c *Connection) Close() error {
+	if c.err != nil {
+		return c.err
+	}
 	return c.db.Close()
 }
 
 // Ping verifies the connection is alive.
 func (c *Connection) Ping() error {
+	if c.err != nil {
+		return c.err
+	}
 	return c.db.Ping()
 }
 
 // PingContext verifies the connection is alive with context.
 func (c *Connection) PingContext(ctx context.Context) error {
+	if c.err != nil {
+		return c.err
+	}
 	return c.db.PingContext(ctx)
 }
 
@@ -428,9 +474,19 @@ func (t *Transaction) Query(sqlQuery string, bindings ...any) (*sql.Rows, error)
 	return t.tx.Query(sqlQuery, bindings...)
 }
 
+// QueryContext executes a query within the transaction with context.
+func (t *Transaction) QueryContext(ctx context.Context, sqlQuery string, bindings ...any) (*sql.Rows, error) {
+	return t.tx.QueryContext(ctx, sqlQuery, bindings...)
+}
+
 // Exec executes a statement within the transaction.
 func (t *Transaction) Exec(sqlQuery string, bindings ...any) (sql.Result, error) {
 	return t.tx.Exec(sqlQuery, bindings...)
+}
+
+// ExecContext executes a statement within the transaction with context.
+func (t *Transaction) ExecContext(ctx context.Context, sqlQuery string, bindings ...any) (sql.Result, error) {
+	return t.tx.ExecContext(ctx, sqlQuery, bindings...)
 }
 
 // Table starts a query builder within the transaction.

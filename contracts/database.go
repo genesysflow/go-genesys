@@ -89,6 +89,12 @@ type Connection interface {
 
 	// PingContext verifies the connection is alive with context.
 	PingContext(ctx context.Context) error
+
+	// QueryContext executes a raw query with context.
+	QueryContext(ctx context.Context, query string, bindings ...any) (*sql.Rows, error)
+
+	// ExecContext executes a raw statement with context.
+	ExecContext(ctx context.Context, query string, bindings ...any) (sql.Result, error)
 }
 
 // Transaction represents an active database transaction.
@@ -96,8 +102,14 @@ type Transaction interface {
 	// Query executes a query within the transaction.
 	Query(query string, bindings ...any) (*sql.Rows, error)
 
+	// QueryContext executes a query within the transaction with context.
+	QueryContext(ctx context.Context, query string, bindings ...any) (*sql.Rows, error)
+
 	// Exec executes a statement within the transaction.
 	Exec(query string, bindings ...any) (sql.Result, error)
+
+	// ExecContext executes a statement within the transaction with context.
+	ExecContext(ctx context.Context, query string, bindings ...any) (sql.Result, error)
 
 	// Table starts a query builder within the transaction.
 	Table(table string) QueryBuilder
@@ -111,6 +123,9 @@ type Transaction interface {
 
 // QueryBuilder defines the fluent query builder interface.
 type QueryBuilder interface {
+	// WithContext sets the context for the query.
+	WithContext(ctx context.Context) QueryBuilder
+
 	// Select specifies the columns to select.
 	Select(columns ...string) QueryBuilder
 

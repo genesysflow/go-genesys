@@ -48,7 +48,7 @@ func (p *RouteServiceProvider) Register(app contracts.Application) error {
 	if appValue.Kind() == reflect.Ptr {
 		appValue = appValue.Elem()
 	}
-	
+
 	containerField := appValue.FieldByName("Container")
 	if containerField.IsValid() && !containerField.IsNil() {
 		// Extract the *container.Container from the reflect.Value
@@ -61,6 +61,9 @@ func (p *RouteServiceProvider) Register(app contracts.Application) error {
 		app.BindValue("http.kernel", p.kernel)
 		app.BindValue("router", p.kernel.Router())
 	}
+
+	app.InstanceType(p.kernel)
+	app.InstanceType(p.kernel.Router())
 
 	return nil
 }

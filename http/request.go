@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -37,7 +38,7 @@ func (r *Request) Context() context.Context {
 }
 
 // WithContext returns a copy of the request with the given context.
-func (r *Request) WithContext(ctx context.Context) *Request {
+func (r *Request) WithContext(ctx context.Context) contracts.Request {
 	r.ctx.SetUserContext(ctx)
 	return r
 }

@@ -1,10 +1,7 @@
 package console
 
 import (
-	"reflect"
-
 	"github.com/genesysflow/go-genesys/console/commands"
-	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/spf13/cobra"
@@ -70,26 +67,17 @@ func (p *ConsoleServiceProvider) Register(app contracts.Application) error {
 	p.kernel.AddCommand(commands.MakeProviderCommand(app))
 
 	// Bind kernel to container
-	appValue := reflect.ValueOf(app)
-	if appValue.Kind() == reflect.Ptr {
-		appValue = appValue.Elem()
-	}
-
-	containerField := appValue.FieldByName("Container")
-	if containerField.IsValid() && !containerField.IsNil() {
-		containerPtr := containerField.Interface().(*container.Container)
-		container.ProvideNamedValue[*Kernel](containerPtr, "console.kernel", p.kernel)
-		container.ProvideNamedValue[contracts.Kernel](containerPtr, "console.kernel.interface", p.kernel)
-	} else {
-		app.BindValue("console.kernel", p.kernel)
-		app.BindValue("console.kernel.interface", p.kernel)
-	}
+	app.InstanceType(p.kernel)
+	app.BindValue("console.kernel", p.kernel)
+	app.BindValue("console.kernel.interface", p.kernel)
 
 	// Bind routes and middleware if provided
 	if p.Routes != nil {
+		app.InstanceType(p.Routes)
 		app.BindValue("console.routes", p.Routes)
 	}
 	if p.Middleware != nil {
+		app.InstanceType(p.Middleware)
 		app.BindValue("console.middleware", p.Middleware)
 	}
 

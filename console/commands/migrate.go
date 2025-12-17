@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/database/migrations"
 	"github.com/spf13/cobra"
@@ -18,14 +19,9 @@ func MigrateCommand(app contracts.Application) *cobra.Command {
 				return fmt.Errorf("failed to boot application: %w", err)
 			}
 
-			migratorService, err := app.Make("migrator")
+			migrator, err := container.Resolve[*migrations.Migrator](app)
 			if err != nil {
 				return fmt.Errorf("migrator not available: %w", err)
-			}
-
-			migrator, ok := migratorService.(*migrations.Migrator)
-			if !ok {
-				return fmt.Errorf("migrator service is not *migrations.Migrator")
 			}
 
 			ran, err := migrator.Run()
@@ -56,14 +52,9 @@ func MigrateRollbackCommand(app contracts.Application) *cobra.Command {
 				return fmt.Errorf("failed to boot application: %w", err)
 			}
 
-			migratorService, err := app.Make("migrator")
+			migrator, err := container.Resolve[*migrations.Migrator](app)
 			if err != nil {
 				return fmt.Errorf("migrator not available: %w", err)
-			}
-
-			migrator, ok := migratorService.(*migrations.Migrator)
-			if !ok {
-				return fmt.Errorf("migrator service is not *migrations.Migrator")
 			}
 
 			rolledBack, err := migrator.Rollback()
@@ -94,14 +85,9 @@ func MigrateStatusCommand(app contracts.Application) *cobra.Command {
 				return fmt.Errorf("failed to boot application: %w", err)
 			}
 
-			migratorService, err := app.Make("migrator")
+			migrator, err := container.Resolve[*migrations.Migrator](app)
 			if err != nil {
 				return fmt.Errorf("migrator not available: %w", err)
-			}
-
-			migrator, ok := migratorService.(*migrations.Migrator)
-			if !ok {
-				return fmt.Errorf("migrator service is not *migrations.Migrator")
 			}
 
 			status, err := migrator.Status()

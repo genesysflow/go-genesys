@@ -3,6 +3,7 @@ package providers
 import (
 	"fmt"
 
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/database/migrations"
@@ -23,14 +24,9 @@ func (p *MigrationServiceProvider) Register(app contracts.Application) error {
 
 // Boot bootstraps the migration services.
 func (p *MigrationServiceProvider) Boot(app contracts.Application) error {
-	mgrAny, err := app.Make("db")
+	mgr, err := container.Resolve[*database.Manager](app)
 	if err != nil {
 		return fmt.Errorf("failed to resolve db manager: %w", err)
-	}
-
-	mgr, ok := mgrAny.(*database.Manager)
-	if !ok {
-		return fmt.Errorf("db service is not *database.Manager")
 	}
 
 	conn := mgr.Connection()
@@ -38,6 +34,7 @@ func (p *MigrationServiceProvider) Boot(app contracts.Application) error {
 		return fmt.Errorf("no default database connection available")
 	}
 	migrator := migrations.NewMigrator(conn.DB(), conn.Driver(), p.Migrations, p.BeforeAllMigrations)
+	app.InstanceType(migrator)
 	return app.BindValue("migrator", migrator)
 }
 

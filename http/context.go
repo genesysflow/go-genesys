@@ -3,7 +3,9 @@ package http
 import (
 	"sync"
 
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/validation"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -30,12 +32,12 @@ func NewContext(fiberCtx *fiber.Ctx, app contracts.Application) *Context {
 }
 
 // Request returns the HTTP request.
-func (c *Context) Request() *Request {
+func (c *Context) Request() contracts.Request {
 	return c.request
 }
 
 // Response returns the HTTP response.
-func (c *Context) Response() *Response {
+func (c *Context) Response() contracts.Response {
 	return c.response
 }
 
@@ -90,9 +92,16 @@ func (c *Context) Bind(v any) error {
 }
 
 // Validate validates the request data against the given rules.
-// This is a placeholder - actual validation is implemented in the validation package.
 func (c *Context) Validate(v any) error {
-	// Validation would be implemented using the validation package
+	validator, err := container.Resolve[*validation.Validator](c.app)
+	if err != nil {
+		return err
+	}
+
+	result := validator.Validate(v)
+	if result.Fails() {
+		return result.Errors()
+	}
 	return nil
 }
 
@@ -154,13 +163,13 @@ func (c *Context) AbortWithError(code int, err error) error {
 }
 
 // Status sets the response status code.
-func (c *Context) Status(code int) *Context {
+func (c *Context) Status(code int) contracts.Context {
 	c.fiberCtx.Status(code)
 	return c
 }
 
 // Header sets a response header.
-func (c *Context) Header(key, value string) *Context {
+func (c *Context) Header(key, value string) contracts.Context {
 	c.fiberCtx.Set(key, value)
 	return c
 }
@@ -284,7 +293,7 @@ func (c *Context) InternalServerError(message ...string) error {
 }
 
 // Cookie sets a cookie.
-func (c *Context) Cookie(cookie *Cookie) *Context {
+func (c *Context) Cookie(cookie *contracts.Cookie) *Context {
 	c.response.Cookie(cookie)
 	return c
 }
@@ -319,4 +328,3 @@ func (c *Context) IsAjax() bool {
 func (c *Context) IsJSON() bool {
 	return c.request.IsJSON()
 }
-

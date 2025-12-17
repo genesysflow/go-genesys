@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"io"
 
+	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -27,19 +28,19 @@ func (r *Response) FiberCtx() *fiber.Ctx {
 }
 
 // Status sets the HTTP status code.
-func (r *Response) Status(code int) *Response {
+func (r *Response) Status(code int) contracts.Response {
 	r.ctx.Status(code)
 	return r
 }
 
 // Header sets a response header.
-func (r *Response) Header(key, value string) *Response {
+func (r *Response) Header(key, value string) contracts.Response {
 	r.ctx.Set(key, value)
 	return r
 }
 
 // Headers sets multiple response headers.
-func (r *Response) Headers(headers map[string]string) *Response {
+func (r *Response) Headers(headers map[string]string) contracts.Response {
 	for key, value := range headers {
 		r.ctx.Set(key, value)
 	}
@@ -47,7 +48,7 @@ func (r *Response) Headers(headers map[string]string) *Response {
 }
 
 // Cookie sets a cookie.
-func (r *Response) Cookie(cookie *Cookie) *Response {
+func (r *Response) Cookie(cookie *contracts.Cookie) contracts.Response {
 	r.ctx.Cookie(&fiber.Cookie{
 		Name:     cookie.Name,
 		Value:    cookie.Value,
@@ -62,7 +63,7 @@ func (r *Response) Cookie(cookie *Cookie) *Response {
 }
 
 // ClearCookie clears a cookie.
-func (r *Response) ClearCookie(name string) *Response {
+func (r *Response) ClearCookie(name string) contracts.Response {
 	r.ctx.ClearCookie(name)
 	return r
 }
@@ -275,4 +276,3 @@ func (c *Cookie) WithSameSite(sameSite string) *Cookie {
 	c.SameSite = sameSite
 	return c
 }
-

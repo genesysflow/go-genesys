@@ -46,6 +46,7 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 	}
 
 	manager := session.NewManager(sessionConfig)
+	app.InstanceType(manager)
 	app.BindValue("session", manager)
 	app.BindValue("session.manager", manager)
 

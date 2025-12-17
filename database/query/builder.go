@@ -2,6 +2,7 @@
 package query
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -25,6 +26,8 @@ type Builder struct {
 	limit    *int
 	offset   *int
 	bindings []any
+	err      error
+	ctx      context.Context
 }
 
 type joinClause struct {
@@ -81,6 +84,12 @@ func NewBuilderWithTx(tx *sql.Tx, grammar contracts.Grammar, table string) *Buil
 		columns:  []string{"*"},
 		bindings: make([]any, 0),
 	}
+}
+
+// WithContext sets the context for the query.
+func (b *Builder) WithContext(ctx context.Context) contracts.QueryBuilder {
+	b.ctx = ctx
+	return b
 }
 
 // Select specifies the columns to select.
@@ -633,6 +642,8 @@ func (b *Builder) Clone() contracts.QueryBuilder {
 	copy(clone.havings, b.havings)
 	copy(clone.orders, b.orders)
 	copy(clone.bindings, b.bindings)
+	clone.err = b.err
+	clone.ctx = b.ctx
 	if b.limit != nil {
 		limit := *b.limit
 		clone.limit = &limit
@@ -644,20 +655,39 @@ func (b *Builder) Clone() contracts.QueryBuilder {
 	return clone
 }
 
+// SetError sets an error on the builder.
+func (b *Builder) SetError(err error) {
+	b.err = err
+}
+
 // query executes a query.
 func (b *Builder) query(sqlStr string, bindings ...any) (*sql.Rows, error) {
-	if b.tx != nil {
-		return b.tx.Query(sqlStr, bindings...)
+	if b.err != nil {
+		return nil, b.err
 	}
-	return b.db.Query(sqlStr, bindings...)
+	ctx := b.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if b.tx != nil {
+		return b.tx.QueryContext(ctx, sqlStr, bindings...)
+	}
+	return b.db.QueryContext(ctx, sqlStr, bindings...)
 }
 
 // exec executes a statement.
 func (b *Builder) exec(sqlStr string, bindings ...any) (sql.Result, error) {
-	if b.tx != nil {
-		return b.tx.Exec(sqlStr, bindings...)
+	if b.err != nil {
+		return nil, b.err
 	}
-	return b.db.Exec(sqlStr, bindings...)
+	ctx := b.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if b.tx != nil {
+		return b.tx.ExecContext(ctx, sqlStr, bindings...)
+	}
+	return b.db.ExecContext(ctx, sqlStr, bindings...)
 }
 
 // GetTable returns the table name.

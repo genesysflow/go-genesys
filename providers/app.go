@@ -16,7 +16,9 @@ func (p *AppServiceProvider) Register(app contracts.Application) error {
 	p.app = app
 
 	// Register environment helper
-	app.BindValue("env", env.NewHelper())
+	envHelper := env.NewHelper()
+	app.InstanceType(envHelper)
+	app.BindValue("env", envHelper)
 
 	// Register error handler
 	logger := app.GetLogger()
@@ -24,6 +26,7 @@ func (p *AppServiceProvider) Register(app contracts.Application) error {
 		Debug:  app.IsDebug(),
 		Logger: logger,
 	})
+	app.InstanceType(handler)
 	app.BindValue("error.handler", handler)
 
 	return nil
