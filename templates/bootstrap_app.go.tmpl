@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"{{.ModulePath}}/routes"
 	m "{{.ModulePath}}/database/migrations"
+	appProviders "{{.ModulePath}}/app/providers"
 
 	"github.com/genesysflow/go-genesys/database/migrations"
 	"github.com/genesysflow/go-genesys/console"
@@ -16,6 +17,7 @@ func App() *foundation.Application {
 
 	// Register core service providers
 	app.Register(&providers.AppServiceProvider{})
+	app.Register(&appProviders.AppServiceProvider{})
 	app.Register(&providers.LogServiceProvider{})
 	app.Register(&providers.ValidationServiceProvider{})
 	app.Register(&providers.SessionServiceProvider{})

@@ -16,7 +16,8 @@ func (m *CreateUsersTable) Up(builder *schema.Builder) error {
 		table.ID()
 		table.String("name", 255)
 		table.String("email", 255).Unique()
-		table.String("password", 255)
+		table.String("password", 255).Nullable()
+		table.String("birthdate")
 		table.Timestamps()
 	})
 }

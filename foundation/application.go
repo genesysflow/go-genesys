@@ -82,15 +82,20 @@ func New(basePath ...string) *Application {
 // registerBaseBindings registers the core bindings.
 func (app *Application) registerBaseBindings() {
 	// Register the application itself
-	container.ProvideValue[*Application](app.Container, app)
+	app.InstanceType(app)
+	app.Instance("app", app)
+	// Also register as the interface
 	container.ProvideValue[contracts.Application](app.Container, app)
 
 	// Register config
-	container.ProvideValue[*config.Config](app.Container, app.config)
+	app.InstanceType(app.config)
+	app.Instance("config", app.config)
 	container.ProvideValue[contracts.Config](app.Container, app.config)
 
 	// Register default logger
 	app.logger = log.New()
+	app.InstanceType(app.logger) // This might register as *log.Logger
+	app.Instance("logger", app.logger)
 	container.ProvideValue[contracts.Logger](app.Container, app.logger)
 }
 
@@ -194,7 +199,11 @@ func (app *Application) Register(provider contracts.ServiceProvider) error {
 	defer app.mu.Unlock()
 
 	// Get provider name for tracking
-	providerName := reflect.TypeOf(provider).String()
+	t := reflect.TypeOf(provider)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	providerName := t.PkgPath() + "." + t.Name()
 
 	// Check if already registered
 	if app.providers.IsRegistered(providerName) {

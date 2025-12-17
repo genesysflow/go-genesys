@@ -1,0 +1,33 @@
+package providers
+
+import (
+	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/providers"
+)
+
+// AppServiceProvider registers application services.
+type AppServiceProvider struct {
+	providers.BaseProvider
+}
+
+// Register registers the application services.
+func (p *AppServiceProvider) Register(app contracts.Application) error {
+	// Register your services here
+	// Example:
+	// app.SingletonType(services.NewUserService)
+	// app.BindType(controllers.NewUserController)
+
+	return nil
+}
+
+// Boot bootstraps the application services.
+func (p *AppServiceProvider) Boot(app contracts.Application) error {
+	// Bootstrap your services here
+	// This runs after all providers are registered
+
+	return nil
+}
+
+func (p *AppServiceProvider) Provides() []string {
+	return []string{}
+}

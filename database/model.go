@@ -70,8 +70,23 @@ func (m *BaseModel) UsesTimestamps() bool {
 	return m.timestamps
 }
 
+// getTableName returns the table name for the model.
+func getTableName[T any]() string {
+	var t T
+	// Check if T implements ModelInterface
+	if m, ok := any(&t).(ModelInterface); ok {
+		if name := m.TableName(); name != "" {
+			return name
+		}
+	}
+	// Fallback to snake_case of struct name + 's'
+	name := reflect.TypeOf(t).Name()
+	return strings.ToLower(name) + "s"
+}
+
 // All retrieves all records.
-func All[T any](tableName string) ([]T, error) {
+func All[T any]() ([]T, error) {
+	tableName := getTableName[T]()
 	results, err := db.Table(tableName).Get()
 	if err != nil {
 		return nil, err
@@ -80,7 +95,8 @@ func All[T any](tableName string) ([]T, error) {
 }
 
 // Find retrieves a record by ID.
-func Find[T any](tableName string, id int64) (*T, error) {
+func Find[T any](id int64) (*T, error) {
+	tableName := getTableName[T]()
 	result, err := db.Table(tableName).Find(id)
 	if err != nil {
 		return nil, err
@@ -92,7 +108,8 @@ func Find[T any](tableName string, id int64) (*T, error) {
 }
 
 // Create creates a new record from a struct.
-func Create[T any](tableName string, model *T) (int64, error) {
+func Create[T any](model *T) (int64, error) {
+	tableName := getTableName[T]()
 	values := structToMap(model)
 	now := time.Now()
 
@@ -113,7 +130,8 @@ func Create[T any](tableName string, model *T) (int64, error) {
 }
 
 // Update updates an existing record.
-func Update[T any](tableName string, id int64, model *T) (int64, error) {
+func Update[T any](id int64, model *T) (int64, error) {
+	tableName := getTableName[T]()
 	values := structToMap(model)
 	values["updated_at"] = time.Now()
 
@@ -125,7 +143,8 @@ func Update[T any](tableName string, id int64, model *T) (int64, error) {
 }
 
 // Delete deletes a record by ID.
-func Delete(tableName string, id int64) (int64, error) {
+func Delete[T any](id int64) (int64, error) {
+	tableName := getTableName[T]()
 	return db.Table(tableName).Where("id", "=", id).Delete()
 }
 
@@ -152,8 +171,12 @@ func structToMap(s any) map[string]any {
 			continue
 		}
 
-		// Skip embedded Model struct (handle separately)
-		if field.Anonymous && field.Type.Name() == "Model" {
+		// Handle anonymous structs (embedded fields)
+		if field.Anonymous && value.Kind() == reflect.Struct {
+			embedded := structToMap(value.Interface())
+			for k, v := range embedded {
+				result[k] = v
+			}
 			continue
 		}
 

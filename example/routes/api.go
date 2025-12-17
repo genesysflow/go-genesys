@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/example/app/controllers"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/validation"
@@ -9,7 +10,9 @@ import (
 // API registers API routes.
 func API(r *http.Router) {
 	// Create controllers
-	userController := controllers.NewUserController(r.App())
+	// userController := controllers.NewUserController(r.App())
+	// Resolve from container to get dependencies injected
+	userController := container.MustResolve[*controllers.UserController](r.App())
 
 	// API v1 routes
 	r.Group("/api/v1", func(api *http.Router) {
@@ -23,9 +26,9 @@ func API(r *http.Router) {
 		// Example validation route
 		api.POST("/validate", func(ctx *http.Context) error {
 			type CreateUserRequest struct {
-				Name  string `json:"name" validate:"required,min=2,max=100"`
-				Email string `json:"email" validate:"required,email"`
-				Age   int    `json:"age" validate:"required,gte=18,lte=120"`
+				Name      string `json:"name" validate:"required,min=2,max=100"`
+				Email     string `json:"email" validate:"required,email"`
+				Birthdate string `json:"birthdate" validate:"required"`
 			}
 
 			var req CreateUserRequest

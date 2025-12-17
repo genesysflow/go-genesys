@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/gofiber/fiber/v2"
 )
@@ -87,10 +88,7 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 	// passed in the fiber.Config struct when creating the app
 
 	// Get logger from container
-	var logger contracts.Logger
-	if l, err := app.Make("logger"); err == nil {
-		logger = l.(contracts.Logger)
-	}
+	logger := container.MustResolve[contracts.Logger](app)
 
 	kernel := &Kernel{
 		app:        app,

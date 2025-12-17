@@ -91,9 +91,9 @@ func (p *DatabaseServiceProvider) Boot(app contracts.Application) error {
 	manager := database.NewManager(dbConfig)
 
 	// Bind to container
-	app.BindValue("db", manager)
-	app.BindValue("database", manager)
-	app.BindValue("db.manager", manager)
+	app.Instance("db", manager)
+	app.Instance("database", manager)
+	app.InstanceType(manager) // Registers as *database.Manager
 
 	// Initialize the DB facade
 	db.SetInstance(manager)

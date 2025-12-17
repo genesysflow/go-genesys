@@ -102,20 +102,21 @@ func createProject(name, moduleName string) error {
 
 	// Generate files from templates
 	templates := map[string]string{
-		"main.go":                           "main.go.tmpl",
-		"bootstrap/app.go":                  "bootstrap_app.go.tmpl",
-		"database/migrations/migrations.go": "migrations.go.tmpl",
-		"routes/routes.go":                  "routes.go.tmpl",
-		"routes/web.go":                     "routes_web.go.tmpl",
-		"routes/api.go":                     "routes_api.go.tmpl",
-		".env":                              "env.tmpl",
-		".env.example":                      "env.tmpl",
-		".gitignore":                        "gitignore.tmpl",
-		"README.md":                         "readme.md.tmpl",
-		"config/app.yaml":                   "config_app.yaml.tmpl",
-		"config/logging.yaml":               "config_logging.yaml.tmpl",
-		"config/session.yaml":               "config_session.yaml.tmpl",
-		"config/database.yaml":              "config_database.yaml.tmpl",
+		"main.go":                               "main.go.tmpl",
+		"bootstrap/app.go":                      "bootstrap_app.go.tmpl",
+		"app/providers/app_service_provider.go": "app_service_provider.go.tmpl",
+		"database/migrations/migrations.go":     "migrations.go.tmpl",
+		"routes/routes.go":                      "routes.go.tmpl",
+		"routes/web.go":                         "routes_web.go.tmpl",
+		"routes/api.go":                         "routes_api.go.tmpl",
+		".env":                                  "env.tmpl",
+		".env.example":                          "env.tmpl",
+		".gitignore":                            "gitignore.tmpl",
+		"README.md":                             "readme.md.tmpl",
+		"config/app.yaml":                       "config_app.yaml.tmpl",
+		"config/logging.yaml":                   "config_logging.yaml.tmpl",
+		"config/session.yaml":                   "config_session.yaml.tmpl",
+		"config/database.yaml":                  "config_database.yaml.tmpl",
 	}
 
 	for filename, tmplFilename := range templates {

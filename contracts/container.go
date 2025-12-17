@@ -12,8 +12,17 @@ type Container interface {
 	// Singleton registers a factory function that creates a single shared instance.
 	Singleton(name string, factory any) error
 
+	// BindType registers a factory function, inferring the service name from the return type.
+	BindType(factory any) error
+
+	// SingletonType registers a singleton factory, inferring the service name from the return type.
+	SingletonType(factory any) error
+
 	// Instance registers an already-created instance.
 	Instance(name string, instance any) error
+
+	// InstanceType registers an already-created instance, inferring the service name from its type.
+	InstanceType(instance any) error
 
 	// Make resolves a service by name from the container.
 	Make(name string) (any, error)
