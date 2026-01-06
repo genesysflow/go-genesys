@@ -22,6 +22,7 @@ func App() *foundation.Application {
 	app.Register(&providers.ValidationServiceProvider{})
 	app.Register(&providers.SessionServiceProvider{})
 	app.Register(&providers.DatabaseServiceProvider{})
+	app.Register(&providers.FilesystemServiceProvider{})
 	app.Register(&providers.MigrationServiceProvider{
 		BeforeAllMigrations: m.BeforeAllMigrations,
 		Migrations:          []migrations.Migration{
