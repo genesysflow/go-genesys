@@ -3,7 +3,7 @@ package validation
 
 import (
 	"encoding/json"
-	"reflect"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -240,11 +240,7 @@ func (v *Validator) replaceMessagePlaceholders(msg string, fe validator.FieldErr
 	// Safely convert value to string, handling all types
 	var valueStr string
 	if val := fe.Value(); val != nil {
-		if str, ok := val.(string); ok {
-			valueStr = str
-		} else {
-			valueStr = reflect.ValueOf(val).String()
-		}
+		valueStr = fmt.Sprintf("%v", val)
 	}
 	msg = strings.ReplaceAll(msg, ":value", valueStr)
 	msg = strings.ReplaceAll(msg, ":param", fe.Param())
