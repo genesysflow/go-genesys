@@ -26,14 +26,24 @@ func NewManager(config contracts.Config) *Manager {
 
 // Disk gets a filesystem instance by name.
 func (m *Manager) Disk(name ...string) contracts.Filesystem {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	diskName := m.getDefaultDriver()
 	if len(name) > 0 {
 		diskName = name[0]
 	}
 
+	// First check with read lock (fast path)
+	m.mu.RLock()
+	if disk, ok := m.disks[diskName]; ok {
+		m.mu.RUnlock()
+		return disk
+	}
+	m.mu.RUnlock()
+
+	// Disk doesn't exist, acquire write lock for initialization
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check: another goroutine might have initialized it
 	if disk, ok := m.disks[diskName]; ok {
 		return disk
 	}

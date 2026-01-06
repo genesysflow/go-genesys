@@ -48,8 +48,9 @@ func (l *Local) path(path string) (string, error) {
 		return "", fmt.Errorf("filesystem: failed to resolve path: %w", err)
 	}
 
-	// Ensure the resolved path is within the root directory
-	if !strings.HasPrefix(absPath, l.root+string(filepath.Separator)) && absPath != l.root {
+	// Ensure the resolved path is within the root directory (not the root itself)
+	// This prevents operations on the root directory which could be dangerous
+	if !strings.HasPrefix(absPath, l.root+string(filepath.Separator)) {
 		return "", fmt.Errorf("filesystem: path traversal detected: %s", path)
 	}
 
