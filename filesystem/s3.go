@@ -15,9 +15,20 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
+// S3ClientInterface defines the interface for S3 operations
+type S3ClientInterface interface {
+	HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
+	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
+	PutObject(ctx context.Context, params *s3.PutObjectInput, optFns ...func(*s3.Options)) (*s3.PutObjectOutput, error)
+	DeleteObject(ctx context.Context, params *s3.DeleteObjectInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectOutput, error)
+	CopyObject(ctx context.Context, params *s3.CopyObjectInput, optFns ...func(*s3.Options)) (*s3.CopyObjectOutput, error)
+	DeleteObjects(ctx context.Context, params *s3.DeleteObjectsInput, optFns ...func(*s3.Options)) (*s3.DeleteObjectsOutput, error)
+	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+}
+
 // S3 is the S3 filesystem driver.
 type S3 struct {
-	client *s3.Client
+	client S3ClientInterface
 	bucket string
 	url    string
 	region string
@@ -164,6 +175,9 @@ func (s *S3) Size(ctx context.Context, path string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	if out.ContentLength == nil {
+		return 0, fmt.Errorf("content length not available for %s", path)
+	}
 	return *out.ContentLength, nil
 }
 
@@ -174,6 +188,9 @@ func (s *S3) LastModified(ctx context.Context, path string) (time.Time, error) {
 	})
 	if err != nil {
 		return time.Time{}, err
+	}
+	if out.LastModified == nil {
+		return time.Time{}, fmt.Errorf("last modified time not available for %s", path)
 	}
 	return *out.LastModified, nil
 }
