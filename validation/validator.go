@@ -65,7 +65,7 @@ func (v *Validator) ValidateMap(data map[string]any, rules map[string]string) *V
 	for field, err := range errs {
 		if validationErr, ok := err.(validator.ValidationErrors); ok {
 			for _, fe := range validationErr {
-				errors.Add(field, v.formatError(fe))
+				errors.Add(field, v.formatMapError(fe, field))
 			}
 		} else if e, ok := err.(error); ok {
 			errors.Add(field, e.Error())
@@ -113,22 +113,43 @@ func (v *Validator) newResult(err error, data map[string]any) *ValidationResult 
 
 // formatError formats a validation error message.
 func (v *Validator) formatError(fe validator.FieldError) string {
+	return v.formatErrorWithField(fe, "")
+}
+
+// formatMapError formats a validation error message for a map field.
+func (v *Validator) formatMapError(fe validator.FieldError, fieldName string) string {
+	return v.formatErrorWithField(fe, fieldName)
+}
+
+// formatErrorWithField formats a validation error message with an optional field name override.
+func (v *Validator) formatErrorWithField(fe validator.FieldError, fieldNameOverride string) string {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
+	// Determine field name to use for key lookup and display
+	lookupField := fe.Field()
+	if lookupField == "" && fieldNameOverride != "" {
+		lookupField = fieldNameOverride
+	}
+
 	// Check for custom message
-	key := fe.Field() + "." + fe.Tag()
+	key := lookupField + "." + fe.Tag()
 	if msg, ok := v.customMessages[key]; ok {
-		return v.replaceMessagePlaceholders(msg, fe)
+		return v.replaceMessagePlaceholders(msg, fe, fieldNameOverride)
 	}
 
 	// Default messages
-	return v.defaultMessage(fe)
+	return v.defaultMessage(fe, fieldNameOverride)
 }
 
 // defaultMessage returns the default error message for a validation tag.
-func (v *Validator) defaultMessage(fe validator.FieldError) string {
-	field := v.getAttributeName(fe.Field())
+func (v *Validator) defaultMessage(fe validator.FieldError, fieldNameOverride string) string {
+	var field string
+	if fieldNameOverride != "" {
+		field = v.getAttributeName(fieldNameOverride)
+	} else {
+		field = v.getAttributeName(fe.Field())
+	}
 
 	switch fe.Tag() {
 	case "required":
@@ -206,8 +227,15 @@ func (v *Validator) getAttributeName(field string) string {
 }
 
 // replaceMessagePlaceholders replaces placeholders in custom messages.
-func (v *Validator) replaceMessagePlaceholders(msg string, fe validator.FieldError) string {
-	msg = strings.ReplaceAll(msg, ":attribute", v.getAttributeName(fe.Field()))
+func (v *Validator) replaceMessagePlaceholders(msg string, fe validator.FieldError, fieldNameOverride string) string {
+	var field string
+	if fieldNameOverride != "" {
+		field = v.getAttributeName(fieldNameOverride)
+	} else {
+		field = v.getAttributeName(fe.Field())
+	}
+
+	msg = strings.ReplaceAll(msg, ":attribute", field)
 	msg = strings.ReplaceAll(msg, ":value", fe.Value().(string))
 	msg = strings.ReplaceAll(msg, ":param", fe.Param())
 	return msg

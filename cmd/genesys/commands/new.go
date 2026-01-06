@@ -117,6 +117,7 @@ func createProject(name, moduleName string) error {
 		"config/logging.yaml":                   "config_logging.yaml.tmpl",
 		"config/session.yaml":                   "config_session.yaml.tmpl",
 		"config/database.yaml":                  "config_database.yaml.tmpl",
+		"config/filesystem.yaml":                "config_filesystem.yaml.tmpl",
 	}
 
 	for filename, tmplFilename := range templates {

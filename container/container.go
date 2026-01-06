@@ -346,15 +346,6 @@ func OverrideNamedValue[T any](c *Container, name string, value T) {
 // It accepts any contracts.Container, allowing usage with Application directly.
 // If name is empty, it infers the service name from T.
 func Resolve[T any](c contracts.Container, name ...string) (T, error) {
-	if len(name) == 0 || name[0] == "" {
-		// Try to use do.Invoke[T] directly if possible
-		if containerImpl, ok := c.(*Container); ok {
-			containerImpl.mu.RLock()
-			defer containerImpl.mu.RUnlock()
-			return do.Invoke[T](containerImpl.injector)
-		}
-	}
-
 	var serviceName string
 	if len(name) > 0 && name[0] != "" {
 		serviceName = name[0]
