@@ -124,11 +124,36 @@ func (s *S3) Copy(ctx context.Context, from, to string) error {
 	return err
 }
 
+// MovePartialError represents a partial failure during a Move operation:
+// the copy from source to destination succeeded, but deleting the source failed.
+type MovePartialError struct {
+	From string
+	To   string
+	Err  error
+}
+
+func (e *MovePartialError) Error() string {
+	return fmt.Sprintf("move %s -> %s: copy succeeded but delete failed: %v", e.From, e.To, e.Err)
+}
+
+func (e *MovePartialError) Unwrap() error {
+	return e.Err
+}
+
 func (s *S3) Move(ctx context.Context, from, to string) error {
 	if err := s.Copy(ctx, from, to); err != nil {
-		return err
+		return fmt.Errorf("move %s -> %s: copy failed: %w", from, to, err)
 	}
-	return s.Delete(ctx, from)
+
+	if err := s.Delete(ctx, from); err != nil {
+		return &MovePartialError{
+			From: from,
+			To:   to,
+			Err:  err,
+		}
+	}
+
+	return nil
 }
 
 func (s *S3) Size(ctx context.Context, path string) (int64, error) {
