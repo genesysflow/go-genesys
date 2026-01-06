@@ -236,7 +236,7 @@ func (v *Validator) replaceMessagePlaceholders(msg string, fe validator.FieldErr
 	}
 
 	msg = strings.ReplaceAll(msg, ":attribute", field)
-	
+
 	// Safely convert value to string, handling all types
 	var valueStr string
 	if val := fe.Value(); val != nil {

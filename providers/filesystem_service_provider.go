@@ -18,16 +18,6 @@ func (p *FilesystemServiceProvider) Register(app contracts.Application) error {
 		return filesystem.NewManager(app.GetConfig()), nil
 	})
 
-	// Bind the filesystem manager interface
-	app.SingletonType(func(app contracts.Application) (contracts.FilesystemFactory, error) {
-		service := app.MustMake("filesystem")
-		manager, ok := service.(contracts.FilesystemFactory)
-		if !ok {
-			return nil, fmt.Errorf("filesystem service is not of type contracts.FilesystemFactory")
-		}
-		return manager, nil
-	})
-
 	// Register the default disk driver
 	app.Singleton("filesystem.disk", func(app contracts.Application) (contracts.Filesystem, error) {
 		service := app.MustMake("filesystem")
@@ -36,16 +26,6 @@ func (p *FilesystemServiceProvider) Register(app contracts.Application) error {
 			return nil, fmt.Errorf("filesystem service is not of type contracts.FilesystemFactory")
 		}
 		return manager.Disk(), nil
-	})
-
-	// Bind the filesystem contract to standard default disk
-	app.SingletonType(func(app contracts.Application) (contracts.Filesystem, error) {
-		service := app.MustMake("filesystem.disk")
-		fs, ok := service.(contracts.Filesystem)
-		if !ok {
-			return nil, fmt.Errorf("filesystem.disk service is not of type contracts.Filesystem")
-		}
-		return fs, nil
 	})
 
 	return nil
@@ -67,7 +47,5 @@ func (p *FilesystemServiceProvider) Provides() []string {
 	return []string{
 		"filesystem",
 		"filesystem.disk",
-		"contracts.FilesystemFactory",
-		"contracts.Filesystem",
 	}
 }

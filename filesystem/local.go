@@ -133,7 +133,8 @@ func (l *Local) PutStream(ctx context.Context, path string, contents io.Reader) 
 
 	select {
 	case <-ctx.Done():
-		// Remove partially written file on context cancellation
+		// Close file before removing to avoid resource leaks and file locking issues
+		f.Close()
 		os.Remove(fullPath)
 		return ctx.Err()
 	case err := <-done:
@@ -198,7 +199,9 @@ func (l *Local) Copy(ctx context.Context, from, to string) error {
 
 	select {
 	case <-ctx.Done():
-		// Remove partially written file on context cancellation
+		// Close files before removing to avoid resource leaks and file locking issues
+		source.Close()
+		dest.Close()
 		os.Remove(destPath)
 		return ctx.Err()
 	case err := <-done:
