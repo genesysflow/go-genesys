@@ -47,8 +47,9 @@ func NewS3(config map[string]any) (*S3, error) {
 	endpoint, _ := config["endpoint"].(string)
 	usePathStyle, _ := config["use_path_style_endpoint"].(bool)
 
-	// Load AWS config
-	cfg, err := awsconfig.LoadDefaultConfig(context.TODO(),
+	// Load AWS config using a root context; this is initialization-time configuration,
+	// so we don't currently require a cancellable context here.
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(),
 		awsconfig.WithRegion(region),
 		awsconfig.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(key, secret, "")),
 	)
