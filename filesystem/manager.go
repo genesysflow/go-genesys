@@ -65,13 +65,6 @@ func (m *Manager) resolve(name string) (contracts.Filesystem, error) {
 	case "local":
 		return NewLocal(config)
 	case "s3":
-		// Ensure S3 support is available, this might need dynamic check or separate registration
-		if creator, ok := m.drivers["s3"]; ok {
-			return creator(config)
-		}
-		// If s3 is built-in but not yet registered via Extend, we can try to load it here
-		// But for now, let's assume it should be registered or imported.
-		// We will implement S3 as a separate file providing a constructor.
 		return NewS3(config)
 	default:
 		return nil, fmt.Errorf("filesystem: driver %s not supported", driver)
