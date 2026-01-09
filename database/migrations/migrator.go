@@ -61,7 +61,7 @@ func (m *Migrator) RegisterAll(migrations []Migration) {
 // PostgreSQL uses $1, $2, etc., while MySQL and SQLite use ?.
 func (m *Migrator) placeholder(index int) string {
 	switch m.driver {
-	case "postgres", "postgresql":
+	case "postgres", "postgresql", "pgsql":
 		return fmt.Sprintf("$%d", index)
 	default:
 		return "?"
@@ -73,7 +73,7 @@ func (m *Migrator) createMigrationsTable() error {
 	var query string
 
 	switch m.driver {
-	case "postgres", "postgresql":
+	case "postgres", "postgresql", "pgsql":
 		query = fmt.Sprintf(`
 			CREATE TABLE IF NOT EXISTS %s (
 				id SERIAL PRIMARY KEY,
