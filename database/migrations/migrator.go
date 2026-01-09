@@ -57,16 +57,50 @@ func (m *Migrator) RegisterAll(migrations []Migration) {
 	m.migrations = append(m.migrations, migrations...)
 }
 
+// placeholder returns the correct placeholder for the driver.
+// PostgreSQL uses $1, $2, etc., while MySQL and SQLite use ?.
+func (m *Migrator) placeholder(index int) string {
+	switch m.driver {
+	case "postgres", "postgresql":
+		return fmt.Sprintf("$%d", index)
+	default:
+		return "?"
+	}
+}
+
 // createMigrationsTable creates the migrations table if it doesn't exist.
 func (m *Migrator) createMigrationsTable() error {
-	query := fmt.Sprintf(`
-		CREATE TABLE IF NOT EXISTS %s (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			migration VARCHAR(255) NOT NULL,
-			batch INTEGER NOT NULL,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`, m.table)
+	var query string
+
+	switch m.driver {
+	case "postgres", "postgresql":
+		query = fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS %s (
+				id SERIAL PRIMARY KEY,
+				migration VARCHAR(255) NOT NULL,
+				batch INTEGER NOT NULL,
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			)
+		`, m.table)
+	case "mysql":
+		query = fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS %s (
+				id INTEGER PRIMARY KEY AUTO_INCREMENT,
+				migration VARCHAR(255) NOT NULL,
+				batch INTEGER NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			)
+		`, m.table)
+	default: // sqlite
+		query = fmt.Sprintf(`
+			CREATE TABLE IF NOT EXISTS %s (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				migration VARCHAR(255) NOT NULL,
+				batch INTEGER NOT NULL,
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			)
+		`, m.table)
+	}
 
 	_, err := m.db.Exec(query)
 	return err
@@ -108,7 +142,7 @@ func (m *Migrator) getLastBatch() (int, error) {
 
 // getMigrationsForBatch returns migrations for a specific batch.
 func (m *Migrator) getMigrationsForBatch(batch int) ([]string, error) {
-	query := fmt.Sprintf("SELECT migration FROM %s WHERE batch = ? ORDER BY id DESC", m.table)
+	query := fmt.Sprintf("SELECT migration FROM %s WHERE batch = %s ORDER BY id DESC", m.table, m.placeholder(1))
 	rows, err := m.db.Query(query, batch)
 	if err != nil {
 		return nil, err
@@ -163,7 +197,7 @@ func (m *Migrator) Run() ([]string, error) {
 		}
 
 		// Record migration
-		query := fmt.Sprintf("INSERT INTO %s (migration, batch) VALUES (?, ?)", m.table)
+		query := fmt.Sprintf("INSERT INTO %s (migration, batch) VALUES (%s, %s)", m.table, m.placeholder(1), m.placeholder(2))
 		if _, err := m.db.Exec(query, name, batch); err != nil {
 			return runNames, fmt.Errorf("failed to record migration %s: %w", name, err)
 		}
@@ -209,7 +243,7 @@ func (m *Migrator) Rollback() ([]string, error) {
 		}
 
 		// Remove migration record
-		query := fmt.Sprintf("DELETE FROM %s WHERE migration = ?", m.table)
+		query := fmt.Sprintf("DELETE FROM %s WHERE migration = %s", m.table, m.placeholder(1))
 		if _, err := m.db.Exec(query, name); err != nil {
 			return rolledBack, fmt.Errorf("failed to remove migration record %s: %w", name, err)
 		}
