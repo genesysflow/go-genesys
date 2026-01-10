@@ -34,13 +34,6 @@ func (p *MigrationServiceProvider) Boot(app contracts.Application) error {
 		return fmt.Errorf("no default database connection available")
 	}
 
-	// Check if the connection has an error
-	if errConn, ok := conn.(interface{ Error() error }); ok {
-		if err := errConn.Error(); err != nil {
-			return fmt.Errorf("failed to connect to database: %w", err)
-		}
-	}
-
 	// Check if connection was established successfully
 	if conn.DB() == nil {
 		// Provide more context if possible, maybe check if we can access the error
