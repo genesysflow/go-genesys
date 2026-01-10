@@ -19,11 +19,8 @@ It does not require 'sqlc' to be installed in your PATH.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Println("Generating SQLC code (embedded)...")
 
-			// Prepare args for sqlc
-			// cli.Run expects the full argument list including the command name if it parses os.Args style,
-			// but typically library calls might expect just the args.
-			// However, looking at widespread usage of such wrappers, they often mimic os.Args.
-			// Let's try passing "generate" as the argument.
+			// Prepare args for sqlc: cli.Run expects arguments equivalent to os.Args[1:],
+			// where the first element is the subcommand ("generate") followed by any additional arguments.
 			sqlcArgs := []string{"generate"}
 			sqlcArgs = append(sqlcArgs, args...)
 
