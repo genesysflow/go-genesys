@@ -21,7 +21,7 @@ import (
 	"github.com/samber/do/v2"
 )
 
-const Version = "1.0.9"
+const Version = "1.1.0"
 
 // Application is the main application container.
 // It orchestrates the entire framework lifecycle.
