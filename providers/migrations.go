@@ -36,10 +36,7 @@ func (p *MigrationServiceProvider) Boot(app contracts.Application) error {
 
 	// Check if connection was established successfully
 	if conn.DB() == nil {
-		// Provide more context if possible, maybe check if we can access the error
-		// connection might be implementing an interface that hides the error field
-		// but checking for nil DB is safe.
-		// If contracts.Connection has Check/Ping, we could use that, but DB() check is direct.
+		// Guard against an uninitialized DB handle before running migrations.
 		return fmt.Errorf("failed to establish database connection: default connection has nil DB")
 	}
 
