@@ -46,6 +46,12 @@ func runServer(app contracts.Application, host, port string) error {
 		globalMiddleware = mw
 	}
 
+	// Try to get kernel config from container
+	var kernelConfig *http.KernelConfig
+	if cfg, err := container.Resolve[*http.KernelConfig](app); err == nil {
+		kernelConfig = cfg
+	}
+
 	// If no routes callback, use default
 	if routesCallback == nil {
 		routesCallback = func(r *http.Router) {
@@ -76,8 +82,9 @@ func runServer(app contracts.Application, host, port string) error {
 
 	// Create route service provider
 	routeProvider := &providers.RouteServiceProvider{
-		Routes:     routesCallback,
-		Middleware: globalMiddleware,
+		Routes:       routesCallback,
+		Middleware:   globalMiddleware,
+		KernelConfig: kernelConfig,
 	}
 	app.Register(routeProvider)
 
