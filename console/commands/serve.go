@@ -46,7 +46,10 @@ func runServer(app contracts.Application, host, port string) error {
 		globalMiddleware = mw
 	}
 
-	// Try to get kernel config from container
+	// Try to get kernel config from container (optional).
+	// If not found, the RouteServiceProvider will use http.DefaultKernelConfig()
+	// with sensible defaults (4MB body limit, 30s timeouts, etc.).
+	// Register a custom config via app.InstanceType(&http.KernelConfig{...}) to override.
 	var kernelConfig *http.KernelConfig
 	if cfg, err := container.Resolve[*http.KernelConfig](app); err == nil {
 		kernelConfig = cfg

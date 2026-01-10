@@ -220,8 +220,9 @@ func TestServeCommand_Creation(t *testing.T) {
 	assert.Equal(t, "localhost", hostFlag.DefValue)
 }
 
-func TestServeCommand_MultipleConfigs(t *testing.T) {
-	// Test that last config wins if multiple are registered
+func TestServeCommand_KernelConfigOverride(t *testing.T) {
+	// Verify container override behavior: when InstanceType is called multiple times
+	// with the same type, the container uses OverrideNamedValue (see container.go:183-184)
 	app := foundation.New()
 
 	// Register logger provider
@@ -232,21 +233,26 @@ func TestServeCommand_MultipleConfigs(t *testing.T) {
 		AppName:   "FirstApp",
 		BodyLimit: 10 * 1024 * 1024,
 	}
-	app.InstanceType(firstConfig)
+	err := app.InstanceType(firstConfig)
+	require.NoError(t, err)
 
-	// This should overwrite the first one
+	// Verify first config is registered
+	resolvedFirst, err := container.Resolve[*http.KernelConfig](app)
+	require.NoError(t, err)
+	assert.Equal(t, "FirstApp", resolvedFirst.AppName)
+
+	// Override with second config - container.Instance checks if binding exists
+	// and calls do.OverrideNamedValue when it does (container.go:183)
 	secondConfig := &http.KernelConfig{
 		AppName:   "SecondApp",
 		BodyLimit: 50 * 1024 * 1024,
 	}
-	app.InstanceType(secondConfig)
+	err = app.InstanceType(secondConfig)
+	require.NoError(t, err)
 
-	// Resolve should get the latest one
-	resolvedConfig, err := container.Resolve[*http.KernelConfig](app)
-	assert.NoError(t, err)
-
-	// Note: Depending on container behavior, this might be the last registered
-	// In Go-Genesys, InstanceType should bind as singleton, so last one wins
-	assert.Equal(t, "SecondApp", resolvedConfig.AppName)
-	assert.Equal(t, 50*1024*1024, resolvedConfig.BodyLimit)
+	// Verify second config replaced the first
+	resolvedSecond, err := container.Resolve[*http.KernelConfig](app)
+	require.NoError(t, err)
+	assert.Equal(t, "SecondApp", resolvedSecond.AppName, "second config should override first")
+	assert.Equal(t, 50*1024*1024, resolvedSecond.BodyLimit, "second config values should be used")
 }
