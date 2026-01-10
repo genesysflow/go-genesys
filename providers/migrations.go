@@ -33,6 +33,23 @@ func (p *MigrationServiceProvider) Boot(app contracts.Application) error {
 	if conn == nil {
 		return fmt.Errorf("no default database connection available")
 	}
+
+	// Check if the connection has an error
+	if errConn, ok := conn.(interface{ Error() error }); ok {
+		if err := errConn.Error(); err != nil {
+			return fmt.Errorf("failed to connect to database: %w", err)
+		}
+	}
+
+	// Check if connection was established successfully
+	if conn.DB() == nil {
+		// Provide more context if possible, maybe check if we can access the error
+		// connection might be implementing an interface that hides the error field
+		// but checking for nil DB is safe.
+		// If contracts.Connection has Check/Ping, we could use that, but DB() check is direct.
+		return fmt.Errorf("failed to establish database connection: default connection has nil DB")
+	}
+
 	migrator := migrations.NewMigrator(conn.DB(), conn.Driver(), p.Migrations, p.BeforeAllMigrations)
 	app.InstanceType(migrator)
 	return app.BindValue("migrator", migrator)

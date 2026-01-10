@@ -61,10 +61,12 @@ func (p *ConsoleServiceProvider) Register(app contracts.Application) error {
 	p.kernel.AddCommand(commands.MigrateRollbackCommand(app))
 	p.kernel.AddCommand(commands.MigrateStatusCommand(app))
 	p.kernel.AddCommand(commands.MakeMigrationCommand(app))
+	p.kernel.AddCommand(commands.DbSchemaDumpCommand(app))
 	p.kernel.AddCommand(commands.MakeControllerCommand(app))
 	p.kernel.AddCommand(commands.MakeModelCommand(app))
 	p.kernel.AddCommand(commands.MakeMiddlewareCommand(app))
 	p.kernel.AddCommand(commands.MakeProviderCommand(app))
+	p.kernel.AddCommand(commands.SqlcGenerateCommand(app))
 
 	// Bind kernel to container
 	app.InstanceType(p.kernel)

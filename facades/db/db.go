@@ -1,5 +1,5 @@
 // Package db provides a static facade for database operations.
-// This allows Laravel-style static access: DB.Table("users").Get()
+// For SQLC usage: pass db.Connection().DB() to your generated New() function.
 package db
 
 import (
@@ -30,6 +30,7 @@ func GetInstance() contracts.DB {
 }
 
 // Connection returns a connection by name.
+// Pass Connection().DB() to SQLC-generated New() functions.
 func Connection(name ...string) contracts.Connection {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -39,14 +40,14 @@ func Connection(name ...string) contracts.Connection {
 	return instance.Connection(name...)
 }
 
-// Table starts a new query builder for the given table.
-func Table(table string) contracts.QueryBuilder {
-	mu.RLock()
-	defer mu.RUnlock()
-	if instance == nil {
+// DB returns the underlying *sql.DB for the default connection.
+// Shorthand for Connection().DB() - use with SQLC.
+func DB(name ...string) *sql.DB {
+	conn := Connection(name...)
+	if conn == nil {
 		return nil
 	}
-	return instance.Table(table)
+	return conn.DB()
 }
 
 // Raw executes a raw SQL query.
@@ -110,6 +111,7 @@ func Statement(query string, bindings ...any) (sql.Result, error) {
 }
 
 // Transaction executes a callback within a database transaction.
+// The transaction implements contracts.DBTX for SQLC compatibility.
 func Transaction(fn func(tx contracts.Transaction) error) error {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -120,6 +122,7 @@ func Transaction(fn func(tx contracts.Transaction) error) error {
 }
 
 // BeginTransaction starts a new database transaction.
+// The returned transaction implements contracts.DBTX for SQLC compatibility.
 func BeginTransaction() (contracts.Transaction, error) {
 	mu.RLock()
 	defer mu.RUnlock()
@@ -167,6 +170,16 @@ func Reconnect(name ...string) (contracts.Connection, error) {
 		return nil, ErrNoInstance
 	}
 	return instance.Reconnect(name...)
+}
+
+// Close closes all database connections.
+func Close() error {
+	mu.RLock()
+	defer mu.RUnlock()
+	if instance == nil {
+		return ErrNoInstance
+	}
+	return instance.Close()
 }
 
 // ErrNoInstance is returned when the database facade is not initialized.

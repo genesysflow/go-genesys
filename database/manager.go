@@ -1,4 +1,4 @@
-// Package database provides a Laravel-inspired database layer.
+// Package database provides SQLC-compatible database connection management.
 package database
 
 import (
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/genesysflow/go-genesys/database/query"
 )
 
 // Config represents database configuration.
@@ -64,6 +63,7 @@ type ConnectionConfig struct {
 }
 
 // Manager is the database manager that handles multiple connections.
+// It provides SQLC-compatible *sql.DB instances for type-safe database access.
 type Manager struct {
 	config      Config
 	connections map[string]*Connection
@@ -151,21 +151,11 @@ func (m *Manager) makeConnection(name string) (*Connection, error) {
 	}
 
 	return &Connection{
-		name:    name,
-		driver:  config.Driver,
-		db:      db,
-		prefix:  config.Prefix,
-		grammar: query.NewGrammar(config.Driver),
+		name:   name,
+		driver: config.Driver,
+		db:     db,
+		prefix: config.Prefix,
 	}, nil
-}
-
-// Table starts a query builder for the given table.
-func (m *Manager) Table(table string) contracts.QueryBuilder {
-	conn := m.Connection()
-	if conn == nil {
-		return nil
-	}
-	return conn.Table(table)
 }
 
 // Raw executes a raw SQL query.
@@ -232,6 +222,17 @@ func (m *Manager) GetDefaultConnection() string {
 // SetDefaultConnection sets the default connection name.
 func (m *Manager) SetDefaultConnection(name string) {
 	m.config.Default = name
+}
+
+// GetConfig returns the configuration for a connection.
+func (m *Manager) GetConfig(name ...string) (ConnectionConfig, bool) {
+	connName := m.config.Default
+	if len(name) > 0 && name[0] != "" {
+		connName = name[0]
+	}
+
+	config, ok := m.config.Connections[connName]
+	return config, ok
 }
 
 // Disconnect disconnects from the given connection.
@@ -323,20 +324,20 @@ func mapDriver(driver string) string {
 	case "pgsql", "postgres", "postgresql":
 		return "postgres"
 	case "sqlite", "sqlite3":
-		return "sqlite3"
+		return "sqlite"
 	default:
 		return driver
 	}
 }
 
 // Connection represents a database connection.
+// It wraps *sql.DB and implements the DBTX interface expected by SQLC.
 type Connection struct {
-	name    string
-	driver  string
-	db      *sql.DB
-	prefix  string
-	grammar contracts.Grammar
-	err     error
+	name   string
+	driver string
+	db     *sql.DB
+	prefix string
+	err    error
 }
 
 // Name returns the connection name.
@@ -350,18 +351,14 @@ func (c *Connection) Driver() string {
 }
 
 // DB returns the underlying *sql.DB.
+// Use this to pass to SQLC-generated New() functions.
 func (c *Connection) DB() *sql.DB {
 	return c.db
 }
 
-// Table starts a query builder for the given table.
-func (c *Connection) Table(table string) contracts.QueryBuilder {
-	if c.err != nil {
-		b := query.NewBuilder(nil, nil, table)
-		b.SetError(c.err)
-		return b
-	}
-	return query.NewBuilder(c.db, c.grammar, c.prefix+table)
+// Prefix returns the table prefix.
+func (c *Connection) Prefix() string {
+	return c.prefix
 }
 
 // Query executes a raw query.
@@ -378,6 +375,16 @@ func (c *Connection) QueryContext(ctx context.Context, sqlQuery string, bindings
 		return nil, c.err
 	}
 	return c.db.QueryContext(ctx, sqlQuery, bindings...)
+}
+
+// QueryRow executes a query that returns at most one row.
+func (c *Connection) QueryRow(sqlQuery string, bindings ...any) *sql.Row {
+	return c.db.QueryRow(sqlQuery, bindings...)
+}
+
+// QueryRowContext executes a query that returns at most one row with context.
+func (c *Connection) QueryRowContext(ctx context.Context, sqlQuery string, bindings ...any) *sql.Row {
+	return c.db.QueryRowContext(ctx, sqlQuery, bindings...)
 }
 
 // Exec executes a raw statement.
@@ -404,6 +411,14 @@ func (c *Connection) Prepare(sqlQuery string) (*sql.Stmt, error) {
 	return c.db.Prepare(sqlQuery)
 }
 
+// PrepareContext prepares a statement with context.
+func (c *Connection) PrepareContext(ctx context.Context, sqlQuery string) (*sql.Stmt, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	return c.db.PrepareContext(ctx, sqlQuery)
+}
+
 // BeginTransaction starts a transaction.
 func (c *Connection) BeginTransaction() (contracts.Transaction, error) {
 	if c.err != nil {
@@ -413,7 +428,19 @@ func (c *Connection) BeginTransaction() (contracts.Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Transaction{tx: tx, grammar: c.grammar, prefix: c.prefix}, nil
+	return &Transaction{tx: tx}, nil
+}
+
+// BeginTx starts a transaction with options.
+func (c *Connection) BeginTx(ctx context.Context, opts *sql.TxOptions) (contracts.Transaction, error) {
+	if c.err != nil {
+		return nil, c.err
+	}
+	tx, err := c.db.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return &Transaction{tx: tx}, nil
 }
 
 // Transaction runs a callback in a transaction.
@@ -462,11 +489,15 @@ func (c *Connection) PingContext(ctx context.Context) error {
 	return c.db.PingContext(ctx)
 }
 
+// Error returns any error from connection creation.
+func (c *Connection) Error() error {
+	return c.err
+}
+
 // Transaction represents an active database transaction.
+// It implements the DBTX interface expected by SQLC.
 type Transaction struct {
-	tx      *sql.Tx
-	grammar contracts.Grammar
-	prefix  string
+	tx *sql.Tx
 }
 
 // Query executes a query within the transaction.
@@ -479,6 +510,16 @@ func (t *Transaction) QueryContext(ctx context.Context, sqlQuery string, binding
 	return t.tx.QueryContext(ctx, sqlQuery, bindings...)
 }
 
+// QueryRow executes a query that returns at most one row.
+func (t *Transaction) QueryRow(sqlQuery string, bindings ...any) *sql.Row {
+	return t.tx.QueryRow(sqlQuery, bindings...)
+}
+
+// QueryRowContext executes a query that returns at most one row with context.
+func (t *Transaction) QueryRowContext(ctx context.Context, sqlQuery string, bindings ...any) *sql.Row {
+	return t.tx.QueryRowContext(ctx, sqlQuery, bindings...)
+}
+
 // Exec executes a statement within the transaction.
 func (t *Transaction) Exec(sqlQuery string, bindings ...any) (sql.Result, error) {
 	return t.tx.Exec(sqlQuery, bindings...)
@@ -489,9 +530,20 @@ func (t *Transaction) ExecContext(ctx context.Context, sqlQuery string, bindings
 	return t.tx.ExecContext(ctx, sqlQuery, bindings...)
 }
 
-// Table starts a query builder within the transaction.
-func (t *Transaction) Table(table string) contracts.QueryBuilder {
-	return query.NewBuilderWithTx(t.tx, t.grammar, t.prefix+table)
+// Prepare prepares a statement within the transaction.
+func (t *Transaction) Prepare(sqlQuery string) (*sql.Stmt, error) {
+	return t.tx.Prepare(sqlQuery)
+}
+
+// PrepareContext prepares a statement within the transaction with context.
+func (t *Transaction) PrepareContext(ctx context.Context, sqlQuery string) (*sql.Stmt, error) {
+	return t.tx.PrepareContext(ctx, sqlQuery)
+}
+
+// Tx returns the underlying *sql.Tx.
+// Use this to pass to SQLC-generated New() functions.
+func (t *Transaction) Tx() *sql.Tx {
+	return t.tx
 }
 
 // Commit commits the transaction.

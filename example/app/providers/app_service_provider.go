@@ -2,19 +2,15 @@ package providers
 
 import (
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/genesysflow/go-genesys/example/app/controllers"
-	"github.com/genesysflow/go-genesys/example/app/services"
 )
 
+// AppServiceProvider registers application services.
 type AppServiceProvider struct{}
 
 func (p *AppServiceProvider) Register(app contracts.Application) error {
-	// Register UserService
-	app.SingletonType(services.NewUserService)
-
-	// Register UserController
-	// The container will automatically inject UserService because NewUserController will ask for it
-	app.BindType(controllers.NewUserController)
+	// Register application services here
+	// With SQLC, use your generated queries like:
+	//   db.New(connection.DB()) to get type-safe queries
 	return nil
 }
 

@@ -4,6 +4,8 @@ import (
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/facades/db"
+
+	_ "modernc.org/sqlite"
 )
 
 // DatabaseServiceProvider registers database services.
