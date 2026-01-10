@@ -33,6 +33,13 @@ func (p *MigrationServiceProvider) Boot(app contracts.Application) error {
 	if conn == nil {
 		return fmt.Errorf("no default database connection available")
 	}
+
+	// Check if connection was established successfully
+	if conn.DB() == nil {
+		// Guard against an uninitialized DB handle before running migrations.
+		return fmt.Errorf("failed to establish database connection: default connection has nil DB")
+	}
+
 	migrator := migrations.NewMigrator(conn.DB(), conn.Driver(), p.Migrations, p.BeforeAllMigrations)
 	app.InstanceType(migrator)
 	return app.BindValue("migrator", migrator)

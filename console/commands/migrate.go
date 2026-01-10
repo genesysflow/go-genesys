@@ -5,13 +5,15 @@ import (
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/database/migrations"
+	"github.com/genesysflow/go-genesys/database/schema"
 	"github.com/spf13/cobra"
 )
 
 // MigrateCommand creates the migrate command.
 func MigrateCommand(app contracts.Application) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "migrate",
 		Short: "Run database migrations",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -35,16 +37,44 @@ func MigrateCommand(app contracts.Application) *cobra.Command {
 				for _, name := range ran {
 					fmt.Printf("Migrated: %s\n", name)
 				}
+
+				// Auto-dump schema if requested
+				if dump, _ := cmd.Flags().GetBool("dump-schema"); dump {
+					// Resolve Database Manager
+					mgr, err := container.Resolve[*database.Manager](app)
+					if err != nil {
+						fmt.Printf("Warning: could not resolve database manager for schema dump: %v\n", err)
+					} else {
+						conn := mgr.Connection()
+						if conn == nil || conn.DB() == nil {
+							fmt.Println("Warning: no database connection available for schema dump")
+						} else {
+							// Default driver from connection
+							dumper := schema.NewDumper(conn.DB(), conn.Driver())
+							// Default path
+							path := "database/schema/schema.sql"
+							if err := dumper.Dump(path); err != nil {
+								fmt.Printf("Warning: failed to dump schema: %v\n", err)
+							} else {
+								fmt.Println("Schema dumped successfully.")
+							}
+						}
+					}
+				}
 			}
 
 			return nil
 		},
 	}
+
+	cmd.Flags().Bool("dump-schema", true, "Dump schema after successful migration")
+
+	return cmd
 }
 
 // MigrateRollbackCommand creates the migrate:rollback command.
 func MigrateRollbackCommand(app contracts.Application) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "migrate:rollback",
 		Short: "Rollback the last database migration batch",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -68,11 +98,38 @@ func MigrateRollbackCommand(app contracts.Application) *cobra.Command {
 				for _, name := range rolledBack {
 					fmt.Printf("Rolled back: %s\n", name)
 				}
+
+				// Auto-dump schema if requested
+				if dump, _ := cmd.Flags().GetBool("dump-schema"); dump {
+					// Resolve Database Manager
+					mgr, err := container.Resolve[*database.Manager](app)
+					if err != nil {
+						fmt.Printf("Warning: could not resolve database manager for schema dump: %v\n", err)
+					} else {
+						conn := mgr.Connection()
+						if conn == nil || conn.DB() == nil {
+							fmt.Println("Warning: no database connection available for schema dump")
+						} else {
+							// Default driver from connection
+							dumper := schema.NewDumper(conn.DB(), conn.Driver())
+							path := "database/schema/schema.sql"
+							if err := dumper.Dump(path); err != nil {
+								fmt.Printf("Warning: failed to dump schema: %v\n", err)
+							} else {
+								fmt.Println("Schema dumped successfully.")
+							}
+						}
+					}
+				}
 			}
 
 			return nil
 		},
 	}
+
+	cmd.Flags().Bool("dump-schema", true, "Dump schema after successful rollback")
+
+	return cmd
 }
 
 // MigrateStatusCommand creates the migrate:status command.
