@@ -3,6 +3,7 @@ package testutil
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -76,7 +77,7 @@ func SetupPostgresContainer(t *testing.T) (*PostgresContainer, func()) {
 // DSN returns the PostgreSQL connection string for the test container.
 func (pc *PostgresContainer) DSN() string {
 	return "host=" + pc.Host +
-		" port=" + string(rune(pc.Port)) +
+		" port=" + strconv.Itoa(pc.Port) +
 		" user=" + pc.Username +
 		" password=" + pc.Password +
 		" dbname=" + pc.Database +
