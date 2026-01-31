@@ -149,7 +149,7 @@ func TestMigratorRun(t *testing.T) {
 	}
 
 	migrator := NewMigrator(db, "postgres", migrations, nil)
-	
+
 	ran, err := migrator.Run()
 	require.NoError(t, err)
 	assert.Len(t, ran, 2)

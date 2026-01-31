@@ -244,8 +244,7 @@ func TestChainedWithMethods(t *testing.T) {
 
 	logger.
 		WithField("key1", "value1").
-		WithFields(map[string]any{"key2": "value2"}).
-		(*Logger).Info("chained")
+		WithFields(map[string]any{"key2": "value2"}).(*Logger).Info("chained")
 
 	var result map[string]any
 	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")

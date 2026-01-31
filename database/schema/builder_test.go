@@ -193,7 +193,7 @@ func TestBuilderHasTable(t *testing.T) {
 func TestBlueprintID(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.ID()
-	
+
 	assert.Equal(t, "id", col.Name)
 	assert.Equal(t, "integer", col.Type)
 	assert.True(t, col.AutoIncrement)
@@ -203,14 +203,14 @@ func TestBlueprintID(t *testing.T) {
 func TestBlueprintIDWithCustomName(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.ID("custom_id")
-	
+
 	assert.Equal(t, "custom_id", col.Name)
 }
 
 func TestBlueprintBigIncrements(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.BigIncrements("id")
-	
+
 	assert.Equal(t, "bigint", col.Type)
 	assert.True(t, col.AutoIncrement)
 	assert.True(t, col.Primary)
@@ -218,12 +218,12 @@ func TestBlueprintBigIncrements(t *testing.T) {
 
 func TestBlueprintString(t *testing.T) {
 	bp := NewBlueprint("test")
-	
+
 	// Default length
 	col1 := bp.String("name")
 	assert.Equal(t, "varchar", col1.Type)
 	assert.Equal(t, 255, col1.Length)
-	
+
 	// Custom length
 	col2 := bp.String("code", 50)
 	assert.Equal(t, 50, col2.Length)
@@ -232,35 +232,35 @@ func TestBlueprintString(t *testing.T) {
 func TestBlueprintText(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.Text("description")
-	
+
 	assert.Equal(t, "text", col.Type)
 }
 
 func TestBlueprintInteger(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.Integer("count")
-	
+
 	assert.Equal(t, "integer", col.Type)
 }
 
 func TestBlueprintBigInteger(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.BigInteger("big_count")
-	
+
 	assert.Equal(t, "bigint", col.Type)
 }
 
 func TestBlueprintBoolean(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.Boolean("is_active")
-	
+
 	assert.Equal(t, "boolean", col.Type)
 }
 
 func TestBlueprintDecimal(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.Decimal("price", 10, 2)
-	
+
 	assert.Equal(t, "decimal", col.Type)
 	assert.Equal(t, 10, col.Precision)
 	assert.Equal(t, 2, col.Scale)
@@ -269,28 +269,28 @@ func TestBlueprintDecimal(t *testing.T) {
 func TestBlueprintFloat(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.Float("rating")
-	
+
 	assert.Equal(t, "float", col.Type)
 }
 
 func TestBlueprintDateTime(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.DateTime("event_at")
-	
+
 	assert.Equal(t, "datetime", col.Type)
 }
 
 func TestBlueprintTimestamp(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.Timestamp("created_at")
-	
+
 	assert.Equal(t, "timestamp", col.Type)
 }
 
 func TestBlueprintTimestamps(t *testing.T) {
 	bp := NewBlueprint("test")
 	bp.Timestamps()
-	
+
 	assert.Len(t, bp.columns, 2)
 	assert.Equal(t, "created_at", bp.columns[0].Name)
 	assert.Equal(t, "updated_at", bp.columns[1].Name)
@@ -301,7 +301,7 @@ func TestBlueprintTimestamps(t *testing.T) {
 func TestBlueprintSoftDeletes(t *testing.T) {
 	bp := NewBlueprint("test")
 	bp.SoftDeletes()
-	
+
 	assert.Len(t, bp.columns, 1)
 	assert.Equal(t, "deleted_at", bp.columns[0].Name)
 	assert.True(t, bp.columns[0].IsNullable)
@@ -310,7 +310,7 @@ func TestBlueprintSoftDeletes(t *testing.T) {
 func TestBlueprintForeignID(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.ForeignID("user_id")
-	
+
 	assert.Equal(t, "bigint", col.Type)
 	assert.True(t, col.Unsigned)
 }
@@ -318,7 +318,7 @@ func TestBlueprintForeignID(t *testing.T) {
 func TestBlueprintIndex(t *testing.T) {
 	bp := NewBlueprint("test")
 	bp.Index("name", "email")
-	
+
 	assert.Len(t, bp.indexes, 1)
 	assert.Equal(t, []string{"name", "email"}, bp.indexes[0].Columns)
 	assert.Equal(t, "INDEX", bp.indexes[0].Type)
@@ -327,7 +327,7 @@ func TestBlueprintIndex(t *testing.T) {
 func TestBlueprintUnique(t *testing.T) {
 	bp := NewBlueprint("test")
 	bp.Unique("email")
-	
+
 	assert.Len(t, bp.indexes, 1)
 	assert.Equal(t, "UNIQUE", bp.indexes[0].Type)
 }
@@ -335,7 +335,7 @@ func TestBlueprintUnique(t *testing.T) {
 func TestBlueprintPrimary(t *testing.T) {
 	bp := NewBlueprint("test")
 	bp.Primary("id", "tenant_id")
-	
+
 	assert.Len(t, bp.indexes, 1)
 	assert.Equal(t, "PRIMARY", bp.indexes[0].Type)
 	assert.Equal(t, []string{"id", "tenant_id"}, bp.indexes[0].Columns)
@@ -344,42 +344,42 @@ func TestBlueprintPrimary(t *testing.T) {
 func TestColumnNullable(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.String("name").Nullable()
-	
+
 	assert.True(t, col.IsNullable)
 }
 
 func TestColumnDefault(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.String("status").Default("pending")
-	
+
 	assert.Equal(t, "pending", col.DefaultValue)
 }
 
 func TestColumnUnique(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.String("email").Unique()
-	
+
 	assert.True(t, col.IsUnique)
 }
 
 func TestColumnIndex(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.String("slug").Index()
-	
+
 	assert.True(t, col.IsIndex)
 }
 
 func TestColumnComment(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.String("status").Comment("User status")
-	
+
 	assert.Equal(t, "User status", col.ColumnComment)
 }
 
 func TestColumnChaining(t *testing.T) {
 	bp := NewBlueprint("test")
 	col := bp.String("email").Nullable().Unique().Comment("User email")
-	
+
 	assert.True(t, col.IsNullable)
 	assert.True(t, col.IsUnique)
 	assert.Equal(t, "User email", col.ColumnComment)

@@ -25,7 +25,7 @@ func TestNewRequest(t *testing.T) {
 
 func TestRequestMethod(t *testing.T) {
 	methods := []string{"GET", "POST", "PUT", "PATCH", "DELETE"}
-	
+
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
 			app := fiber.New()

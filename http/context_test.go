@@ -86,8 +86,8 @@ func TestContextInput(t *testing.T) {
 	app.Get("/test/:id", func(c *fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		// Input checks params, query, then form
-		assert.Equal(t, "123", ctx.Input("id"))           // from params
-		assert.Equal(t, "queryval", ctx.Input("q"))       // from query
+		assert.Equal(t, "123", ctx.Input("id"))     // from params
+		assert.Equal(t, "queryval", ctx.Input("q")) // from query
 		assert.Equal(t, "default", ctx.Input("missing", "default"))
 		return nil
 	})
@@ -155,10 +155,10 @@ func TestContextGetSet(t *testing.T) {
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
-		
+
 		ctx.Set("user_id", 123)
 		ctx.Set("name", "John")
-		
+
 		assert.Equal(t, 123, ctx.Get("user_id"))
 		assert.Equal(t, "John", ctx.Get("name"))
 		assert.Nil(t, ctx.Get("nonexistent"))
@@ -173,7 +173,7 @@ func TestContextAbort(t *testing.T) {
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
-		
+
 		assert.False(t, ctx.IsAborted())
 		ctx.Abort()
 		assert.True(t, ctx.IsAborted())

@@ -154,8 +154,8 @@ string_val: "42"
 	require.NoError(t, err)
 
 	assert.Equal(t, 100, cfg.GetInt("int_val"))
-	assert.Equal(t, 3, cfg.GetInt("float_val"))      // float64 to int
-	assert.Equal(t, 42, cfg.GetInt("string_val"))    // string to int
+	assert.Equal(t, 3, cfg.GetInt("float_val"))   // float64 to int
+	assert.Equal(t, 42, cfg.GetInt("string_val")) // string to int
 	assert.Equal(t, 0, cfg.GetInt("nonexistent"))
 }
 

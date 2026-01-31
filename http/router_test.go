@@ -16,38 +16,38 @@ import (
 // mockApplication is a minimal mock for contracts.Application
 type mockApplication struct{}
 
-func (m *mockApplication) Version() string                                          { return "test" }
-func (m *mockApplication) BasePath() string                                         { return "/" }
-func (m *mockApplication) SetBasePath(path string) contracts.Application            { return m }
-func (m *mockApplication) ConfigPath() string                                       { return "/config" }
-func (m *mockApplication) StoragePath() string                                      { return "/storage" }
-func (m *mockApplication) Environment() string                                      { return "testing" }
-func (m *mockApplication) IsEnvironment(envs ...string) bool                        { return true }
-func (m *mockApplication) IsProduction() bool                                       { return false }
-func (m *mockApplication) IsLocal() bool                                            { return true }
-func (m *mockApplication) IsDebug() bool                                            { return true }
-func (m *mockApplication) Bind(key string, resolver any) error                      { return nil }
-func (m *mockApplication) Singleton(key string, resolver any) error                 { return nil }
-func (m *mockApplication) BindValue(key string, value any) error                    { return nil }
-func (m *mockApplication) BindType(resolver any) error                              { return nil }
-func (m *mockApplication) SingletonType(resolver any) error                         { return nil }
-func (m *mockApplication) Instance(key string, instance any) error                  { return nil }
-func (m *mockApplication) InstanceType(instance any) error                          { return nil }
-func (m *mockApplication) Make(key string) (any, error)                             { return nil, nil }
-func (m *mockApplication) MustMake(key string) any                                  { return nil }
-func (m *mockApplication) Has(key string) bool                                      { return false }
-func (m *mockApplication) Shutdown() error                                          { return nil }
-func (m *mockApplication) ShutdownWithContext(ctx context.Context) error            { return nil }
-func (m *mockApplication) Register(provider contracts.ServiceProvider) error        { return nil }
-func (m *mockApplication) Boot() error                                              { return nil }
-func (m *mockApplication) IsBooted() bool                                           { return true }
-func (m *mockApplication) Booting(fn func(contracts.Application))                   {}
-func (m *mockApplication) Booted(fn func(contracts.Application))                    {}
-func (m *mockApplication) Terminating(fn func(contracts.Application))               {}
-func (m *mockApplication) Terminate() error                                         { return nil }
-func (m *mockApplication) TerminateWithContext(ctx context.Context) error           { return nil }
-func (m *mockApplication) GetConfig() contracts.Config                              { return nil }
-func (m *mockApplication) GetLogger() contracts.Logger                              { return nil }
+func (m *mockApplication) Version() string                                   { return "test" }
+func (m *mockApplication) BasePath() string                                  { return "/" }
+func (m *mockApplication) SetBasePath(path string) contracts.Application     { return m }
+func (m *mockApplication) ConfigPath() string                                { return "/config" }
+func (m *mockApplication) StoragePath() string                               { return "/storage" }
+func (m *mockApplication) Environment() string                               { return "testing" }
+func (m *mockApplication) IsEnvironment(envs ...string) bool                 { return true }
+func (m *mockApplication) IsProduction() bool                                { return false }
+func (m *mockApplication) IsLocal() bool                                     { return true }
+func (m *mockApplication) IsDebug() bool                                     { return true }
+func (m *mockApplication) Bind(key string, resolver any) error               { return nil }
+func (m *mockApplication) Singleton(key string, resolver any) error          { return nil }
+func (m *mockApplication) BindValue(key string, value any) error             { return nil }
+func (m *mockApplication) BindType(resolver any) error                       { return nil }
+func (m *mockApplication) SingletonType(resolver any) error                  { return nil }
+func (m *mockApplication) Instance(key string, instance any) error           { return nil }
+func (m *mockApplication) InstanceType(instance any) error                   { return nil }
+func (m *mockApplication) Make(key string) (any, error)                      { return nil, nil }
+func (m *mockApplication) MustMake(key string) any                           { return nil }
+func (m *mockApplication) Has(key string) bool                               { return false }
+func (m *mockApplication) Shutdown() error                                   { return nil }
+func (m *mockApplication) ShutdownWithContext(ctx context.Context) error     { return nil }
+func (m *mockApplication) Register(provider contracts.ServiceProvider) error { return nil }
+func (m *mockApplication) Boot() error                                       { return nil }
+func (m *mockApplication) IsBooted() bool                                    { return true }
+func (m *mockApplication) Booting(fn func(contracts.Application))            {}
+func (m *mockApplication) Booted(fn func(contracts.Application))             {}
+func (m *mockApplication) Terminating(fn func(contracts.Application))        {}
+func (m *mockApplication) Terminate() error                                  { return nil }
+func (m *mockApplication) TerminateWithContext(ctx context.Context) error    { return nil }
+func (m *mockApplication) GetConfig() contracts.Config                       { return nil }
+func (m *mockApplication) GetLogger() contracts.Logger                       { return nil }
 
 func newTestApp() *fiber.App {
 	return fiber.New(fiber.Config{
