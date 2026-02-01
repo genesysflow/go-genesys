@@ -465,3 +465,217 @@ func TestSQLiteGrammarWrapColumn(t *testing.T) {
 	g := &SQLiteGrammar{}
 	assert.Equal(t, `"name"`, g.WrapColumn("name"))
 }
+
+func TestBuilderTable(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pc, cleanup := testutil.SetupPostgresContainer(t)
+	defer cleanup()
+
+	manager := newTestDatabaseManager(pc)
+	defer manager.Close()
+
+	conn := manager.Connection()
+	db := conn.DB()
+
+	builder := NewBuilder(db, "postgres")
+
+	// First create a table
+	err := builder.Create("test_alter", func(bp *Blueprint) {
+		bp.ID()
+		bp.String("name", 100)
+		bp.String("old_column", 50)
+	})
+	require.NoError(t, err)
+
+	// Then alter it - add columns
+	err = builder.Table("test_alter", func(table *Blueprint) {
+		table.AddString("email", 255).Nullable().Unique()
+		table.AddBoolean("active").Default(true)
+		table.AddTimestamp("last_login_at").Nullable()
+	})
+	require.NoError(t, err)
+
+	// Verify columns were added by inserting and querying data
+	_, err = db.Exec(`
+		INSERT INTO test_alter (name, old_column, email, active)
+		VALUES ($1, $2, $3, $4)
+	`, "Test User", "old value", "test@example.com", true)
+	require.NoError(t, err)
+
+	var email string
+	var active bool
+	err = db.QueryRow("SELECT email, active FROM test_alter WHERE name = $1", "Test User").Scan(&email, &active)
+	require.NoError(t, err)
+	assert.Equal(t, "test@example.com", email)
+	assert.Equal(t, true, active)
+}
+
+func TestBuilderTableDropColumn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pc, cleanup := testutil.SetupPostgresContainer(t)
+	defer cleanup()
+
+	manager := newTestDatabaseManager(pc)
+	defer manager.Close()
+
+	conn := manager.Connection()
+	db := conn.DB()
+
+	builder := NewBuilder(db, "postgres")
+
+	// Create a table with columns to drop
+	err := builder.Create("test_drop_column", func(bp *Blueprint) {
+		bp.ID()
+		bp.String("keep_this", 100)
+		bp.String("drop_this", 100)
+		bp.String("drop_this_too", 100)
+	})
+	require.NoError(t, err)
+
+	// Drop columns
+	err = builder.Table("test_drop_column", func(table *Blueprint) {
+		table.DropColumn("drop_this", "drop_this_too")
+	})
+	require.NoError(t, err)
+
+	// Verify columns were dropped by querying information_schema
+	var count int
+	err = db.QueryRow(`
+		SELECT COUNT(*) 
+		FROM information_schema.columns 
+		WHERE table_name = $1 AND column_name IN ($2, $3)
+	`, "test_drop_column", "drop_this", "drop_this_too").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count, "Dropped columns should not exist")
+
+	// Verify we can still insert using remaining column
+	_, err = db.Exec(`INSERT INTO test_drop_column (keep_this) VALUES ($1)`, "test")
+	require.NoError(t, err)
+}
+
+func TestBuilderTableRenameColumn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pc, cleanup := testutil.SetupPostgresContainer(t)
+	defer cleanup()
+
+	manager := newTestDatabaseManager(pc)
+	defer manager.Close()
+
+	conn := manager.Connection()
+	db := conn.DB()
+
+	builder := NewBuilder(db, "postgres")
+
+	// Create a table
+	err := builder.Create("test_rename_column", func(bp *Blueprint) {
+		bp.ID()
+		bp.String("old_name", 100)
+	})
+	require.NoError(t, err)
+
+	// Rename column
+	err = builder.Table("test_rename_column", func(table *Blueprint) {
+		table.RenameColumn("old_name", "new_name")
+	})
+	require.NoError(t, err)
+
+	// Verify column was renamed
+	_, err = db.Exec(`INSERT INTO test_rename_column (new_name) VALUES ($1)`, "test")
+	require.NoError(t, err)
+
+	var name string
+	err = db.QueryRow("SELECT new_name FROM test_rename_column").Scan(&name)
+	require.NoError(t, err)
+	assert.Equal(t, "test", name)
+}
+
+func TestBuilderTableModifyColumn(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pc, cleanup := testutil.SetupPostgresContainer(t)
+	defer cleanup()
+
+	manager := newTestDatabaseManager(pc)
+	defer manager.Close()
+
+	conn := manager.Connection()
+	db := conn.DB()
+
+	builder := NewBuilder(db, "postgres")
+
+	// Create a table with a column
+	err := builder.Create("test_modify_column", func(bp *Blueprint) {
+		bp.ID()
+		bp.String("status", 10).Nullable()
+	})
+	require.NoError(t, err)
+
+	// Modify the column - change type and nullable
+	err = builder.Table("test_modify_column", func(table *Blueprint) {
+		table.ModifyColumn("status").String(50).Default("active")
+	})
+	require.NoError(t, err)
+
+	// Verify column was modified by inserting data
+	_, err = db.Exec(`INSERT INTO test_modify_column DEFAULT VALUES`)
+	require.NoError(t, err)
+
+	var status string
+	err = db.QueryRow("SELECT status FROM test_modify_column").Scan(&status)
+	require.NoError(t, err)
+	assert.Equal(t, "active", status)
+}
+
+func TestBuilderTableMultipleOperations(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
+
+	pc, cleanup := testutil.SetupPostgresContainer(t)
+	defer cleanup()
+
+	manager := newTestDatabaseManager(pc)
+	defer manager.Close()
+
+	conn := manager.Connection()
+	db := conn.DB()
+
+	builder := NewBuilder(db, "postgres")
+
+	// Create a table
+	err := builder.Create("test_multi_ops", func(bp *Blueprint) {
+		bp.ID()
+		bp.String("first_name", 50)
+		bp.String("last_name", 50)
+		bp.String("old_email", 100)
+	})
+	require.NoError(t, err)
+
+	// Perform multiple operations in one migration
+	err = builder.Table("test_multi_ops", func(table *Blueprint) {
+		// Add new columns
+		table.AddString("phone", 20).Nullable()
+		table.AddString("full_name", 100)
+		// Rename column
+		table.RenameColumn("old_email", "email")
+	})
+	require.NoError(t, err)
+
+	// Verify all operations succeeded
+	_, err = db.Exec(`
+		INSERT INTO test_multi_ops (first_name, last_name, email, phone, full_name)
+		VALUES ($1, $2, $3, $4, $5)
+	`, "John", "Doe", "john@example.com", "555-1234", "John Doe")
+	require.NoError(t, err)
+}
