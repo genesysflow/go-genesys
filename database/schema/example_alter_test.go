@@ -63,7 +63,7 @@ func Example_modifyColumn() {
 	_ = builder.Table("users", func(table *schema.Blueprint) {
 		// Modify column - requires full redefinition
 		table.ModifyColumn("status").String(50).Default("active")
-		
+
 		// Change column type and nullability
 		table.ModifyColumn("age").Integer().Nullable()
 	})
@@ -79,16 +79,16 @@ func Example_multipleOperations() {
 		// Add new columns
 		table.AddString("first_name", 100)
 		table.AddString("last_name", 100)
-		
+
 		// Drop old column
 		table.DropColumn("name")
-		
+
 		// Rename column
 		table.RenameColumn("old_email", "email")
-		
+
 		// Modify existing column
 		table.ModifyColumn("status").String(50).Default("active")
-		
+
 		// Drop indexes
 		table.DropIndex("old_index_column")
 		table.DropUnique("old_unique_column")

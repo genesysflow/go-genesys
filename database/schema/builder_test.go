@@ -670,4 +670,3 @@ func TestBuilderTableMultipleOperations(t *testing.T) {
 	`, "John", "Doe", "john@example.com", "555-1234", "John Doe")
 	require.NoError(t, err)
 }
-
