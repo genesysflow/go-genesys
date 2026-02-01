@@ -67,7 +67,6 @@ func (b *Builder) Create(table string, callback func(*Blueprint)) error {
 // Table modifies an existing table.
 func (b *Builder) Table(table string, callback func(*Blueprint)) error {
 	bp := NewBlueprint(table)
-	bp.create = false
 	callback(bp)
 
 	// Compile all ALTER commands
@@ -612,7 +611,7 @@ type Grammar interface {
 	WrapColumn(column string) string
 	CompileAlter(bp *Blueprint) []string
 	CompileAddColumn(table string, col ColumnDefinition) string
-	CompileDropColumn(table string, columns []string) string
+	CompileDropColumn(table string, column string) string
 	CompileRenameColumn(table, from, to string) string
 	CompileModifyColumn(table string, col ColumnDefinition) string
 	CompileDropIndex(table string, columns []string) string
@@ -730,7 +729,10 @@ func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) []string {
 		case "add":
 			statements = append(statements, g.CompileAddColumn(bp.table, *cmd.Column))
 		case "drop":
-			statements = append(statements, g.CompileDropColumn(bp.table, cmd.Columns))
+			// SQLite requires separate statements for each dropped column
+			for _, col := range cmd.Columns {
+				statements = append(statements, g.CompileDropColumn(bp.table, col))
+			}
 		case "rename":
 			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
 		case "modify":
@@ -756,14 +758,10 @@ func (g *SQLiteGrammar) CompileAddColumn(table string, col ColumnDefinition) str
 }
 
 // CompileDropColumn compiles DROP COLUMN statement for SQLite.
-func (g *SQLiteGrammar) CompileDropColumn(table string, columns []string) string {
+func (g *SQLiteGrammar) CompileDropColumn(table string, column string) string {
 	// SQLite 3.35+ supports DROP COLUMN
 	// For older versions, this will fail and user needs to recreate table
-	var parts []string
-	for _, col := range columns {
-		parts = append(parts, fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", g.WrapTable(table), g.WrapColumn(col)))
-	}
-	return strings.Join(parts, "; ")
+	return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", g.WrapTable(table), g.WrapColumn(column))
 }
 
 // CompileRenameColumn compiles RENAME COLUMN statement for SQLite.
@@ -788,9 +786,11 @@ func (g *SQLiteGrammar) CompileDropIndex(table string, columns []string) string 
 
 // CompileDropUnique compiles DROP UNIQUE constraint for SQLite.
 func (g *SQLiteGrammar) CompileDropUnique(table string, columns []string) string {
-	// SQLite uses named indexes for unique constraints
-	indexName := table + "_" + strings.Join(columns, "_") + "_unique"
-	return fmt.Sprintf("DROP INDEX IF EXISTS %s", g.WrapColumn(indexName))
+	// SQLite does not support dropping inline UNIQUE constraints created in column definitions.
+	// Such constraints are backed by auto-generated sqlite_autoindex_* names that are not predictable
+	// from the table/column names. Dropping them requires recreating the table without the constraint.
+	return fmt.Sprintf("-- ERROR: SQLite does not support dropping UNIQUE constraints on %s(%s). Consider recreating the table without this constraint.",
+		table, strings.Join(columns, ", "))
 }
 
 // CompileDropPrimary compiles DROP PRIMARY KEY for SQLite.
@@ -898,7 +898,10 @@ func (g *PostgresGrammar) CompileAlter(bp *Blueprint) []string {
 		case "add":
 			statements = append(statements, g.CompileAddColumn(bp.table, *cmd.Column))
 		case "drop":
-			statements = append(statements, g.CompileDropColumn(bp.table, cmd.Columns))
+			// Generate individual DROP COLUMN statements for better error reporting
+			for _, col := range cmd.Columns {
+				statements = append(statements, g.CompileDropColumn(bp.table, col))
+			}
 		case "rename":
 			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
 		case "modify":
@@ -922,12 +925,8 @@ func (g *PostgresGrammar) CompileAddColumn(table string, col ColumnDefinition) s
 }
 
 // CompileDropColumn compiles DROP COLUMN statement for PostgreSQL.
-func (g *PostgresGrammar) CompileDropColumn(table string, columns []string) string {
-	var parts []string
-	for _, col := range columns {
-		parts = append(parts, g.WrapColumn(col))
-	}
-	return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", g.WrapTable(table), strings.Join(parts, ", DROP COLUMN "))
+func (g *PostgresGrammar) CompileDropColumn(table string, column string) string {
+	return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", g.WrapTable(table), g.WrapColumn(column))
 }
 
 // CompileRenameColumn compiles RENAME COLUMN statement for PostgreSQL.
@@ -942,20 +941,22 @@ func (g *PostgresGrammar) CompileModifyColumn(table string, col ColumnDefinition
 	wrappedTable := g.WrapTable(table)
 	wrappedCol := g.WrapColumn(col.Name)
 
-	// Change column type
-	var colType string
-	switch col.Type {
-	case "varchar":
-		colType = fmt.Sprintf("VARCHAR(%d)", col.Length)
-	case "decimal":
-		colType = fmt.Sprintf("DECIMAL(%d,%d)", col.Precision, col.Scale)
-	case "datetime":
-		colType = "TIMESTAMP"
-	default:
-		colType = strings.ToUpper(col.Type)
+	// Change column type (only if a new type is provided)
+	if col.Type != "" {
+		var colType string
+		switch col.Type {
+		case "varchar":
+			colType = fmt.Sprintf("VARCHAR(%d)", col.Length)
+		case "decimal":
+			colType = fmt.Sprintf("DECIMAL(%d,%d)", col.Precision, col.Scale)
+		case "datetime":
+			colType = "TIMESTAMP"
+		default:
+			colType = strings.ToUpper(col.Type)
+		}
+		statements = append(statements, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s",
+			wrappedTable, wrappedCol, colType))
 	}
-	statements = append(statements, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s TYPE %s",
-		wrappedTable, wrappedCol, colType))
 
 	// Set/drop NOT NULL
 	if col.IsNullable {
@@ -993,9 +994,18 @@ func (g *PostgresGrammar) CompileDropIndex(table string, columns []string) strin
 
 // CompileDropUnique compiles DROP UNIQUE constraint for PostgreSQL.
 func (g *PostgresGrammar) CompileDropUnique(table string, columns []string) string {
-	// PostgreSQL uses named constraints for unique indexes
-	constraintName := table + "_" + strings.Join(columns, "_") + "_unique"
-	return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", g.WrapTable(table), g.WrapColumn(constraintName))
+	// PostgreSQL uses named constraints for unique indexes. When a UNIQUE constraint is created
+	// inline without an explicit name, PostgreSQL will by default name it as
+	// "<table>_<columns>_key". Older code in this package assumes an explicit name
+	// "<table>_<columns>_unique". To support both cases, attempt to drop both names.
+	baseName := table + "_" + strings.Join(columns, "_")
+	namedConstraint := baseName + "_unique"
+	defaultConstraint := baseName + "_key"
+	return fmt.Sprintf(
+		"ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s; ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s",
+		g.WrapTable(table), g.WrapColumn(namedConstraint),
+		g.WrapTable(table), g.WrapColumn(defaultConstraint),
+	)
 }
 
 // CompileDropPrimary compiles DROP PRIMARY KEY for PostgreSQL.

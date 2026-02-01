@@ -654,12 +654,11 @@ func TestBuilderTableMultipleOperations(t *testing.T) {
 
 	// Perform multiple operations in one migration
 	err = builder.Table("test_multi_ops", func(table *Blueprint) {
-		// Add new column
+		// Add new columns
 		table.AddString("phone", 20).Nullable()
+		table.AddString("full_name", 100)
 		// Rename column
 		table.RenameColumn("old_email", "email")
-		// Drop column (combining first_name and last_name, so dropping individual ones)
-		table.AddString("full_name", 100)
 	})
 	require.NoError(t, err)
 
