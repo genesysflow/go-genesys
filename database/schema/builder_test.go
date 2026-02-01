@@ -544,7 +544,17 @@ func TestBuilderTableDropColumn(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Verify columns were dropped by checking we can still insert without them
+	// Verify columns were dropped by querying information_schema
+	var count int
+	err = db.QueryRow(`
+		SELECT COUNT(*) 
+		FROM information_schema.columns 
+		WHERE table_name = $1 AND column_name IN ($2, $3)
+	`, "test_drop_column", "drop_this", "drop_this_too").Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count, "Dropped columns should not exist")
+
+	// Verify we can still insert using remaining column
 	_, err = db.Exec(`INSERT INTO test_drop_column (keep_this) VALUES ($1)`, "test")
 	require.NoError(t, err)
 }
