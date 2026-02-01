@@ -734,9 +734,9 @@ func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) []string {
 		case "rename":
 			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
 		case "modify":
-			// SQLite doesn't support ALTER COLUMN for modifying column types
-			// Return error message suggesting workaround
-			statements = append(statements, "-- ERROR: SQLite does not support ALTER COLUMN to modify column type. Consider recreating the table.")
+			// SQLite doesn't support ALTER COLUMN for modifying column types.
+			// Fail fast instead of returning a SQL comment that would be executed as a no-op.
+			panic("schema: SQLite does not support ALTER COLUMN to modify column type; consider recreating the table")
 		case "dropIndex":
 			statements = append(statements, g.CompileDropIndex(bp.table, cmd.Columns))
 		case "dropUnique":
