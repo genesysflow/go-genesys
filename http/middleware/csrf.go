@@ -44,9 +44,16 @@ type CSRFConfig struct {
 	// FieldName is the form field checked for the token, used by HTML forms.
 	FieldName string
 
-	CookiePath     string
-	CookieDomain   string
-	CookieSecure   bool
+	CookiePath   string
+	CookieDomain string
+
+	// CookieInsecure drops the Secure attribute from the cookie. It is phrased
+	// negatively so that the zero value is the safe one: a CSRF cookie sent
+	// over plaintext HTTP can be read and replayed by anyone on the network
+	// path, which defeats the control, so insecure transport is the thing that
+	// must be opted into. Set it only for local development over http://.
+	CookieInsecure bool
+
 	CookieHTTPOnly bool
 	CookieSameSite string
 
@@ -64,9 +71,7 @@ type CSRFConfig struct {
 
 // DefaultCSRFConfig returns the default CSRF configuration.
 //
-// CookieSecure defaults to true: a CSRF cookie sent over plaintext HTTP can be
-// read and replayed by a network attacker, which defeats the control. Local
-// development over http:// must set it to false explicitly.
+// The cookie is marked Secure unless CookieInsecure is set; see that field.
 //
 // CookieHTTPOnly defaults to false because the double-submit pattern requires
 // JavaScript to read the cookie and echo it back in HeaderName. Server-rendered
@@ -77,7 +82,6 @@ func DefaultCSRFConfig() CSRFConfig {
 		HeaderName:     "X-CSRF-Token",
 		FieldName:      "_token",
 		CookiePath:     "/",
-		CookieSecure:   true,
 		CookieHTTPOnly: false,
 		CookieSameSite: "Lax",
 		Expiration:     12 * time.Hour,
@@ -108,6 +112,9 @@ func CSRF(config ...CSRFConfig) http.MiddlewareFunc {
 		user := config[0]
 		// Fill unset fields from the defaults so callers can override only
 		// what they care about without silently disabling the cookie name.
+		// Only fields whose zero value unambiguously means "unset" can be
+		// merged this way; the bool fields are therefore phrased so that their
+		// zero value is already the intended default (see CookieInsecure).
 		if user.CookieName == "" {
 			user.CookieName = cfg.CookieName
 		}
@@ -203,7 +210,7 @@ func csrfEnsureToken(ctx *http.Context, cfg CSRFConfig, secret []byte) string {
 		Path:     cfg.CookiePath,
 		Domain:   cfg.CookieDomain,
 		Expires:  time.Now().Add(cfg.Expiration),
-		Secure:   cfg.CookieSecure,
+		Secure:   !cfg.CookieInsecure,
 		HTTPOnly: cfg.CookieHTTPOnly,
 		SameSite: cfg.CookieSameSite,
 	})

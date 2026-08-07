@@ -24,10 +24,10 @@ const (
 
 // Local is the local filesystem driver.
 type Local struct {
-	root    string
-	url     string
-	filePem os.FileMode
-	dirPerm os.FileMode
+	root     string
+	url      string
+	filePerm os.FileMode
+	dirPerm  os.FileMode
 }
 
 // NewLocal creates a new local filesystem instance.
@@ -56,15 +56,15 @@ func NewLocal(config map[string]any) (*Local, error) {
 	url, _ := config["url"].(string)
 
 	local := &Local{
-		root:    absRoot,
-		url:     url,
-		filePem: defaultFilePermission,
-		dirPerm: defaultDirPermission,
+		root:     absRoot,
+		url:      url,
+		filePerm: defaultFilePermission,
+		dirPerm:  defaultDirPermission,
 	}
 
 	if permissions, ok := config["permissions"].(map[string]any); ok {
 		if mode, ok := toFileMode(permissions["file"]); ok {
-			local.filePem = mode
+			local.filePerm = mode
 		}
 		if mode, ok := toFileMode(permissions["dir"]); ok {
 			local.dirPerm = mode
@@ -205,7 +205,7 @@ func (l *Local) PutBytes(ctx context.Context, path string, contents []byte) erro
 	if err := os.MkdirAll(filepath.Dir(fullPath), l.dirPerm); err != nil {
 		return err
 	}
-	return os.WriteFile(fullPath, contents, l.filePem)
+	return os.WriteFile(fullPath, contents, l.filePerm)
 }
 
 func (l *Local) PutStream(ctx context.Context, path string, contents io.Reader) error {
@@ -220,7 +220,7 @@ func (l *Local) PutStream(ctx context.Context, path string, contents io.Reader) 
 		return err
 	}
 
-	f, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, l.filePem)
+	f, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, l.filePerm)
 	if err != nil {
 		return err
 	}
@@ -286,7 +286,7 @@ func (l *Local) Copy(ctx context.Context, from, to string) error {
 	defer source.Close()
 
 	// Create destination
-	dest, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, l.filePem)
+	dest, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, l.filePerm)
 	if err != nil {
 		return err
 	}

@@ -291,4 +291,7 @@ func TestCORSNeverPairsWildcardWithCredentials(t *testing.T) {
 	assert.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))
 	assert.NotEqual(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
 	assert.Equal(t, "https://app.example.com", resp.Header.Get("Access-Control-Allow-Origin"))
+	// The origin is echoed from the request even though "*" is configured, so
+	// the response is origin-dependent and must not be cached across origins.
+	assert.Contains(t, resp.Header.Get("Vary"), "Origin")
 }

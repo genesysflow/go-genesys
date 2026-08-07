@@ -22,7 +22,7 @@ func csrfKernel(t *testing.T, trusted ...string) *genhttp.Kernel {
 	k := newKernel(t)
 	k.Use(middleware.CSRF(middleware.CSRFConfig{
 		Secret:         csrfSecret,
-		CookieSecure:   false,
+		CookieInsecure: true,
 		TrustedOrigins: trusted,
 	}))
 	k.GET("/form", func(ctx *genhttp.Context) error {
@@ -204,4 +204,37 @@ func TestCSRFRequiresSecret(t *testing.T) {
 	assert.Panics(t, func() {
 		middleware.CSRF(middleware.CSRFConfig{})
 	})
+}
+
+// TestCSRFCookieIsSecureByDefault: Secret is mandatory, so every real caller
+// passes a config. A partial config must not silently drop the Secure
+// attribute — a CSRF cookie readable off the wire defeats the control.
+func TestCSRFCookieIsSecureByDefault(t *testing.T) {
+	k := newKernel(t)
+	k.Use(middleware.CSRF(middleware.CSRFConfig{Secret: csrfSecret}))
+	k.GET("/form", func(ctx *genhttp.Context) error {
+		return ctx.String(middleware.CSRFToken(ctx))
+	})
+
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/form", nil), -1)
+	require.NoError(t, err)
+
+	var csrfCookie *http.Cookie
+	for _, c := range resp.Cookies() {
+		if c.Name == "genesys_csrf" {
+			csrfCookie = c
+		}
+	}
+	require.NotNil(t, csrfCookie, "a partial config must keep the default cookie name")
+	assert.True(t, csrfCookie.Secure, "the CSRF cookie must be Secure unless CookieInsecure is set")
+	assert.Equal(t, "/", csrfCookie.Path)
+}
+
+// TestCSRFCookieInsecureOptsOut confirms local development over http:// can
+// still opt out explicitly.
+func TestCSRFCookieInsecureOptsOut(t *testing.T) {
+	k := csrfKernel(t)
+
+	_, cookie := issueToken(t, k)
+	assert.False(t, cookie.Secure)
 }

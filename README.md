@@ -294,6 +294,10 @@ kernel.Use(middleware.CSRF(middleware.CSRFConfig{
 }))
 ```
 
+Every other field falls back to a secure default, so a partial config is safe:
+the cookie is marked `Secure`, and local development over plain `http://` opts
+out with `CookieInsecure: true`.
+
 Safe methods (GET, HEAD, OPTIONS, TRACE) mint a token; every other method must
 echo it back in the `X-CSRF-Token` header or a `_token` form field. Render the
 token from the context:

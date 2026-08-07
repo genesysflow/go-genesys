@@ -108,13 +108,18 @@ func CORS(config ...CORSConfig) http.MiddlewareFunc {
 	allowedOrigins := splitAndTrim(cfg.AllowOrigins, ",")
 	wildcard := cfg.AllowOrigins == "*"
 
+	// The response varies by Origin whenever the allowed origin is derived from
+	// the request: either because a specific allowlist is configured, or because
+	// credentials force the wildcard to be echoed back as a concrete origin.
+	// Only a literal "*" is origin-independent. Without this a shared cache can
+	// hand one origin's Access-Control-Allow-Origin — and its
+	// Access-Control-Allow-Credentials: true — to a different origin.
+	varyOnOrigin := !wildcard || cfg.AllowCredentials
+
 	return func(ctx *http.Context, next func() error) error {
 		origin := ctx.Request().Header("Origin")
 
-		// The response varies by Origin whenever the allowed origin is derived
-		// from the request. Without this a shared cache can hand one origin's
-		// Access-Control-Allow-Origin to a different origin.
-		if !wildcard {
+		if varyOnOrigin {
 			ctx.FiberCtx().Vary("Origin")
 		}
 
@@ -123,8 +128,7 @@ func CORS(config ...CORSConfig) http.MiddlewareFunc {
 		case wildcard && cfg.AllowCredentials:
 			// "*" is not a legal Allow-Origin when credentials are permitted;
 			// browsers reject the pair outright. Echo the caller's origin so
-			// the intent (any origin, with credentials) actually works, which
-			// also keeps the Vary header above meaningful.
+			// the intent (any origin, with credentials) actually works.
 			allowOrigin = origin
 		case wildcard:
 			allowOrigin = "*"
