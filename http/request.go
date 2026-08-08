@@ -4,6 +4,7 @@ package http
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"io"
 	"mime/multipart"
 	"strconv"
@@ -346,21 +347,38 @@ func (r *Request) Referer() string {
 }
 
 // BearerToken extracts the bearer token from the Authorization header.
+// The scheme is matched case-insensitively, as RFC 7235 requires.
 func (r *Request) BearerToken() string {
-	auth := r.ctx.Get("Authorization")
-	if strings.HasPrefix(auth, "Bearer ") {
-		return strings.TrimPrefix(auth, "Bearer ")
+	scheme, token, found := strings.Cut(r.ctx.Get("Authorization"), " ")
+	if !found || !strings.EqualFold(scheme, "Bearer") {
+		return ""
 	}
-	return ""
+	return strings.TrimSpace(token)
 }
 
-// BasicAuth extracts basic auth credentials.
+// BasicAuth extracts and decodes HTTP Basic credentials from the Authorization
+// header, per RFC 7617.
+//
+// ok reports only that a well-formed Basic header was present and decoded; it
+// makes no claim about the credentials being valid. Callers must verify them,
+// and should use crypto/subtle.ConstantTimeCompare to do so.
 func (r *Request) BasicAuth() (username, password string, ok bool) {
-	auth := r.ctx.Get("Authorization")
-	if !strings.HasPrefix(auth, "Basic ") {
+	scheme, encoded, found := strings.Cut(r.ctx.Get("Authorization"), " ")
+	if !found || !strings.EqualFold(scheme, "Basic") {
 		return "", "", false
 	}
-	// Decode base64 credentials
-	// For simplicity, returning empty values here; implement full base64 decoding if needed
-	return "", "", false
+
+	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(encoded))
+	if err != nil {
+		return "", "", false
+	}
+
+	// The separator is the first colon: a password may itself contain colons,
+	// a username may not.
+	username, password, found = strings.Cut(string(decoded), ":")
+	if !found {
+		return "", "", false
+	}
+
+	return username, password, true
 }

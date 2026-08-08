@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -11,6 +12,7 @@ import (
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/utils"
 )
 
 // Kernel is the HTTP kernel that handles the request lifecycle.
@@ -39,8 +41,21 @@ type KernelConfig struct {
 	EnablePrintRoutes     bool
 	DisableStartupMessage bool
 
-	// Genesys-specific
+	// TrustedProxies lists the IPs or CIDR ranges of reverse proxies permitted
+	// to set forwarding headers. Leave it empty unless the application really
+	// sits behind a proxy: while it is empty, Request.IP() reports the
+	// connecting address and forwarding headers are ignored, which is the safe
+	// default because those headers are attacker-controlled.
+	//
+	// Once populated, Request.IP() honours ProxyHeader for connections coming
+	// from those addresses, so rate limits and IP allowlists see the real
+	// client rather than the load balancer.
 	TrustedProxies []string
+
+	// ProxyHeader names the header carrying the client IP, consulted only for
+	// connections from TrustedProxies. Defaults to X-Forwarded-For when
+	// TrustedProxies is set.
+	ProxyHeader string
 }
 
 // DefaultKernelConfig returns the default kernel configuration.
@@ -65,8 +80,7 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 		cfg = config[0]
 	}
 
-	// Create Fiber app with configuration
-	fiberApp := fiber.New(fiber.Config{
+	fiberConfig := fiber.Config{
 		AppName:               cfg.AppName,
 		Prefork:               cfg.Prefork,
 		ServerHeader:          cfg.ServerHeader,
@@ -81,11 +95,23 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 		EnablePrintRoutes:     cfg.EnablePrintRoutes,
 		DisableStartupMessage: cfg.DisableStartupMessage,
 		ErrorHandler:          createErrorHandler(app),
-	})
+	}
 
-	// Note: Trusted proxies are set via fiber.Config during app creation
-	// For Fiber v2, EnableTrustedProxyCheck and TrustedProxies should be
-	// passed in the fiber.Config struct when creating the app
+	// Trusted proxies must reach Fiber, otherwise the setting is accepted and
+	// silently ignored — the operator believes forwarding headers are handled
+	// while Request.IP() reports the load balancer for every client.
+	if len(cfg.TrustedProxies) > 0 {
+		proxyHeader := cfg.ProxyHeader
+		if proxyHeader == "" {
+			proxyHeader = fiber.HeaderXForwardedFor
+		}
+		fiberConfig.EnableTrustedProxyCheck = true
+		fiberConfig.TrustedProxies = cfg.TrustedProxies
+		fiberConfig.ProxyHeader = proxyHeader
+	}
+
+	// Create Fiber app with configuration
+	fiberApp := fiber.New(fiberConfig)
 
 	// Get logger from container
 	logger := container.MustResolve[contracts.Logger](app)
@@ -121,15 +147,20 @@ func createErrorHandler(app contracts.Application) fiber.ErrorHandler {
 		}
 
 		code := fiber.StatusInternalServerError
+		message := ""
 
-		// Check if it's a Fiber error
-		if e, ok := err.(*fiber.Error); ok {
-			code = e.Code
+		// errors.As, not a bare type assertion, so a wrapped error still
+		// carries its intended status code through to the client.
+		var fiberErr *fiber.Error
+		if errors.As(err, &fiberErr) {
+			code = fiberErr.Code
+			message = fiberErr.Message
 		}
 
-		// Check if it's an HTTP error from contracts
-		if e, ok := err.(contracts.HTTPError); ok {
-			code = e.StatusCode()
+		var httpErr contracts.HTTPError
+		if errors.As(err, &httpErr) {
+			code = httpErr.StatusCode()
+			message = httpErr.Message()
 		}
 
 		// Log the error (use different variable name to avoid shadowing)
@@ -142,17 +173,29 @@ func createErrorHandler(app contracts.Application) fiber.ErrorHandler {
 			)
 		}
 
+		// Only errors that deliberately carry a client-facing message expose
+		// one. A bare error is an internal detail — its text routinely
+		// contains SQL fragments, file paths or upstream hostnames — so it is
+		// logged above and replaced with the generic status text here, unless
+		// the application has explicitly enabled debug mode.
+		if message == "" {
+			message = utils.StatusMessage(code)
+		}
+		if app.IsDebug() {
+			message = err.Error()
+		}
+
 		// Return JSON error for API requests
 		if c.Accepts("application/json") == "application/json" {
 			return c.Status(code).JSON(fiber.Map{
-				"error":   err.Error(),
+				"error":   message,
 				"status":  code,
 				"success": false,
 			})
 		}
 
 		// Return plain text for other requests
-		return c.Status(code).SendString(err.Error())
+		return c.Status(code).SendString(message)
 	}
 }
 
