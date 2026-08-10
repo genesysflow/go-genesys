@@ -15,6 +15,7 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **Configuration**: YAML-based config files with dot-notation access
 - **Environment**: `.env` file support with type-safe helpers
 - **Validation**: Struct-based validation with custom rules and error handling
+- **Security**: CSRF protection, bcrypt password hashing, security headers, and secure-by-default cookies
 - **Sessions**: Multiple session drivers (memory, file, database, redis)
 - **Cache**: Flexible caching layer with multiple drivers (memory, redis, file)
 - **Queue**: Background job processing with sync and async drivers
@@ -278,6 +279,99 @@ if result.Fails() {
     firstError := result.First()
 }
 ```
+
+### Security
+
+#### CSRF protection
+
+Any application that authenticates with a cookie or session needs CSRF
+protection on state-changing routes. Register the middleware with a secret that
+is shared across every instance of the application:
+
+```go
+kernel.Use(middleware.CSRF(middleware.CSRFConfig{
+    Secret: []byte(env.Require("APP_KEY")),
+}))
+```
+
+Every other field falls back to a secure default, so a partial config is safe:
+the cookie is marked `Secure`, and local development over plain `http://` opts
+out with `CookieInsecure: true`.
+
+Safe methods (GET, HEAD, OPTIONS, TRACE) mint a token; every other method must
+echo it back in the `X-CSRF-Token` header or a `_token` form field. Render the
+token from the context:
+
+```go
+kernel.GET("/form", func(ctx *http.Context) error {
+    return ctx.HTML(renderForm(middleware.CSRFToken(ctx)))
+})
+```
+
+Do not apply it to stateless, token-authenticated APIs — there is no ambient
+credential for an attacker to abuse, so it only adds friction.
+
+#### Password hashing
+
+Never store a plain digest of a password: SHA-256 and friends are built to be
+fast, which is exactly what an offline cracker wants. The `hash` package wraps
+bcrypt, which is deliberately slow and salts every hash:
+
+```go
+hashed, err := hash.Make(password)
+
+if err := hash.Check(password, user.PasswordHash); err != nil {
+    if errors.Is(err, hash.ErrMismatch) {
+        return errors.Unauthorized("Invalid credentials")
+    }
+    return err
+}
+
+// On successful login — the one moment the plaintext is available — migrate
+// older accounts to the current work factor.
+if hash.NeedsRehash(user.PasswordHash) {
+    user.PasswordHash, _ = hash.Make(password)
+}
+```
+
+#### Security headers
+
+```go
+kernel.Use(middleware.Secure(middleware.SecureConfig{
+    HSTSMaxAge:            31536000,
+    HSTSIncludeSubdomains: true,
+    ContentSecurityPolicy: "default-src 'self'",
+}))
+```
+
+HSTS is off by default and must be enabled deliberately: turning it on for a
+host that is not yet fully served over TLS locks clients out of it for the
+lifetime of the `max-age`.
+
+#### Running behind a proxy
+
+`Request.IP()` reports the connecting address and ignores forwarding headers
+until you say which proxies to trust. Leave `TrustedProxies` empty when the
+application is directly exposed — `X-Forwarded-For` is attacker-controlled, and
+honouring it unconditionally would let anyone spoof their address past a rate
+limit or an IP allowlist.
+
+```go
+kernel := http.NewKernel(app, http.KernelConfig{
+    TrustedProxies: []string{"10.0.0.0/8"},
+})
+```
+
+#### Secure-by-default settings
+
+These default to the safe value; the insecure setting is the one you opt into.
+
+| Setting | Default | Notes |
+|---|---|---|
+| `APP_DEBUG` | `false` | Debug mode returns the underlying error and a stack trace to the client. |
+| `session.secure` | `true` | Set to `false` only for local development over plain HTTP. |
+| `session.http_only` | `true` | Keeps the session cookie away from JavaScript. |
+| Local disk permissions | `0600` / `0700` | Override per-disk via `permissions` for a genuinely public disk. |
 
 ## CLI Tool
 

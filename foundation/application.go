@@ -72,9 +72,15 @@ func New(basePath ...string) *Application {
 	// Load environment
 	app.loadEnvironment()
 
-	// Set environment from ENV variable
+	// Set environment from ENV variable.
+	//
+	// APP_DEBUG defaults to false. Debug mode puts the underlying error and a
+	// full Go stack trace in the HTTP response body, so defaulting it on would
+	// mean any deployment that merely forgot to set the variable leaks
+	// internals — SQL text, filesystem paths, dependency versions — to every
+	// client that can trigger a 500. Opt in to debug; never opt out of it.
 	app.environment = env.Get("APP_ENV", "local")
-	app.debug = env.GetBool("APP_DEBUG", true)
+	app.debug = env.GetBool("APP_DEBUG", false)
 
 	return app
 }

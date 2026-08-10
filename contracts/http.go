@@ -112,6 +112,14 @@ type Request interface {
 
 	// Set stores a value in the request store.
 	Set(key string, value any)
+
+	// BearerToken extracts the bearer token from the Authorization header.
+	BearerToken() string
+
+	// BasicAuth extracts and decodes HTTP Basic credentials from the
+	// Authorization header. ok reports whether a well-formed Basic header was
+	// present; it says nothing about whether the credentials are valid.
+	BasicAuth() (username, password string, ok bool)
 }
 
 // Response defines the interface for HTTP responses.

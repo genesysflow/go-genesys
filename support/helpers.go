@@ -24,20 +24,41 @@ var Str = &StringHelper{}
 // StringHelper contains string manipulation methods.
 type StringHelper struct{}
 
-// Random generates a random string of the given length.
+// Random generates a cryptographically random hex string of the given length
+// in characters.
+//
+// It draws a full byte of entropy per output character rather than encoding
+// length bytes and truncating the result: hex doubles its input, so the
+// obvious implementation silently yields half the entropy the caller asked
+// for — Random(32) would be 128 bits, not 256.
 func (s *StringHelper) Random(length int) string {
-	bytes := make([]byte, length)
-	rand.Read(bytes)
-	return hex.EncodeToString(bytes)[:length]
+	if length <= 0 {
+		return ""
+	}
+	// One hex character encodes 4 bits, so ceil(length/2) bytes cover it.
+	buf := make([]byte, (length+1)/2)
+	mustReadRandom(buf)
+	return hex.EncodeToString(buf)[:length]
 }
 
 // UUID generates a UUID v4 string.
 func (s *StringHelper) UUID() string {
 	uuid := make([]byte, 16)
-	rand.Read(uuid)
+	mustReadRandom(uuid)
 	uuid[6] = (uuid[6] & 0x0f) | 0x40
 	uuid[8] = (uuid[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:])
+}
+
+// mustReadRandom fills buf from the system CSPRNG, panicking if it cannot.
+//
+// A silent failure here would hand out predictable tokens and session
+// identifiers, so refusing to continue is the correct response — there is no
+// safe degraded mode for a random source.
+func mustReadRandom(buf []byte) {
+	if _, err := rand.Read(buf); err != nil {
+		panic("support: crypto/rand unavailable: " + err.Error())
+	}
 }
 
 // Slug generates a URL-friendly slug from a string.
@@ -262,18 +283,27 @@ func Sleep(d time.Duration) {
 	time.Sleep(d)
 }
 
-// RandomBytes generates random bytes.
+// RandomBytes generates n cryptographically random bytes.
 func RandomBytes(n int) ([]byte, error) {
 	bytes := make([]byte, n)
 	_, err := rand.Read(bytes)
 	return bytes, err
 }
 
-// RandomString generates a random string.
+// RandomString generates a cryptographically random URL-safe string of n
+// characters.
+//
+// As with Random, entropy is sized from the requested output length rather
+// than encoding n bytes and cutting the result short, which would discard a
+// quarter of the entropy the caller expected.
 func RandomString(n int) string {
-	bytes := make([]byte, n)
-	rand.Read(bytes)
-	return base64.URLEncoding.EncodeToString(bytes)[:n]
+	if n <= 0 {
+		return ""
+	}
+	// Each base64 character carries 6 bits, so ceil(n*6/8) bytes cover it.
+	buf := make([]byte, (n*6+7)/8)
+	mustReadRandom(buf)
+	return base64.RawURLEncoding.EncodeToString(buf)[:n]
 }
 
 // Tap calls the given function and returns the value.
