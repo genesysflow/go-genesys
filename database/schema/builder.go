@@ -657,12 +657,6 @@ type Grammar interface {
 	CompileDropPrimary(table string) (string, error)
 }
 
-// quoteString renders a Go string as a SQL string literal, escaping embedded
-// single quotes so values like "O'Reilly" produce valid SQL.
-func quoteString(v string) string {
-	return "'" + strings.ReplaceAll(v, "'", "''") + "'"
-}
-
 // NewGrammar creates a grammar for the given driver.
 func NewGrammar(driver string) Grammar {
 	switch driver {
@@ -673,19 +667,38 @@ func NewGrammar(driver string) Grammar {
 	}
 }
 
+// quoteIdentifier wraps a SQL identifier in double quotes, escaping any quote
+// it contains by doubling it, as the SQL standard requires.
+//
+// Identifiers cannot be passed as bind parameters, so they are necessarily
+// interpolated. Without escaping, an identifier containing a double quote
+// would terminate the quoted region early and let the remainder of the string
+// be parsed as SQL — table and column names normally come from migration
+// source, but any that reaches this from configuration or user input would be
+// an injection point.
+func quoteIdentifier(identifier string) string {
+	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
+}
+
+// quoteString renders a value as a single-quoted SQL string literal, escaping
+// embedded single quotes.
+func quoteString(value string) string {
+	return `'` + strings.ReplaceAll(value, `'`, `''`) + `'`
+}
+
 // SQLiteGrammar compiles schema for SQLite.
 type SQLiteGrammar struct{}
 
 func (g *SQLiteGrammar) WrapTable(table string) string {
-	return `"` + table + `"`
+	return quoteIdentifier(table)
 }
 
 func (g *SQLiteGrammar) WrapColumn(column string) string {
-	return `"` + column + `"`
+	return quoteIdentifier(column)
 }
 
 func (g *SQLiteGrammar) CompileTableExists(table string) string {
-	return fmt.Sprintf("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='%s'", table)
+	return fmt.Sprintf("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=%s", quoteString(table))
 }
 
 func (g *SQLiteGrammar) CompileCreate(bp *Blueprint) string {
@@ -749,7 +762,7 @@ func (g *SQLiteGrammar) compileColumn(col ColumnDefinition) string {
 	if col.DefaultValue != nil {
 		switch v := col.DefaultValue.(type) {
 		case string:
-			def.WriteString(fmt.Sprintf(" DEFAULT %s", quoteString(v)))
+			def.WriteString(" DEFAULT " + quoteString(v))
 		case bool:
 			if v {
 				def.WriteString(" DEFAULT 1")
@@ -859,15 +872,15 @@ func (g *SQLiteGrammar) CompileDropPrimary(table string) (string, error) {
 type PostgresGrammar struct{}
 
 func (g *PostgresGrammar) WrapTable(table string) string {
-	return `"` + table + `"`
+	return quoteIdentifier(table)
 }
 
 func (g *PostgresGrammar) WrapColumn(column string) string {
-	return `"` + column + `"`
+	return quoteIdentifier(column)
 }
 
 func (g *PostgresGrammar) CompileTableExists(table string) string {
-	return fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '%s'", table)
+	return fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = %s", quoteString(table))
 }
 
 func (g *PostgresGrammar) CompileCreate(bp *Blueprint) string {
@@ -934,7 +947,7 @@ func (g *PostgresGrammar) compileColumn(col ColumnDefinition) string {
 	if col.DefaultValue != nil {
 		switch v := col.DefaultValue.(type) {
 		case string:
-			def.WriteString(fmt.Sprintf(" DEFAULT %s", quoteString(v)))
+			def.WriteString(" DEFAULT " + quoteString(v))
 		case bool:
 			def.WriteString(fmt.Sprintf(" DEFAULT %t", v))
 		default:

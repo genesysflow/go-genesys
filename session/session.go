@@ -59,12 +59,18 @@ type Config struct {
 }
 
 // DefaultConfig returns the default session configuration.
+//
+// CookieSecure defaults to true. A session cookie sent over plaintext HTTP is
+// readable by anyone on the network path and replayable as a full account
+// takeover, so the secure attribute is the safe default and insecure transport
+// is the thing that must be opted into. Local development over http:// needs
+// `session.secure: false` in config; production should never set it.
 func DefaultConfig() Config {
 	return Config{
 		Expiration:     24 * time.Hour,
 		CookieName:     "genesys_session",
 		CookiePath:     "/",
-		CookieSecure:   false,
+		CookieSecure:   true,
 		CookieHTTPOnly: true,
 		CookieSameSite: "Lax",
 		KeyLookup:      "cookie:genesys_session",

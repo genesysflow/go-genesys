@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"io"
+	"net/url"
+	"strings"
 
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/gofiber/fiber/v2"
@@ -146,17 +148,68 @@ func (r *Response) Redirect(url string, status ...int) error {
 	return r.ctx.Redirect(url, code)
 }
 
-// RedirectBack redirects to the previous page.
+// RedirectBack redirects to the previous page, as reported by the Referer
+// header, falling back to the supplied path or "/".
+//
+// The Referer is attacker-controlled, so it is only honoured when it points at
+// this same host. Redirecting to it unconditionally would turn any handler
+// calling this into an open redirect: an attacker sends the victim to a
+// legitimate URL on this site carrying Referer: https://evil.example, and the
+// application bounces them onward, lending its own domain's credibility to the
+// destination.
 func (r *Response) RedirectBack(fallback ...string) error {
 	r.sent = true
-	referer := r.ctx.Get("Referer")
-	if referer == "" {
-		if len(fallback) > 0 {
-			return r.ctx.Redirect(fallback[0])
-		}
-		return r.ctx.Redirect("/")
+
+	target := "/"
+	if len(fallback) > 0 && fallback[0] != "" {
+		target = fallback[0]
 	}
-	return r.ctx.Redirect(referer)
+
+	if referer := r.ctx.Get("Referer"); sameHostRedirect(referer, r.ctx.Hostname()) {
+		target = referer
+	}
+
+	return r.ctx.Redirect(target)
+}
+
+// sameHostRedirect reports whether target is a safe same-host redirect
+// destination.
+func sameHostRedirect(target, host string) bool {
+	if target == "" {
+		return false
+	}
+
+	// Reject protocol-relative forms up front. "//evil.example" inherits the
+	// current scheme and leaves the origin, and browsers normalise a leading
+	// backslash to a slash, so "/\evil.example" and "\\evil.example" are the
+	// same attack written to slip past a naive check.
+	if strings.HasPrefix(target, "//") ||
+		strings.HasPrefix(target, `\\`) ||
+		strings.HasPrefix(target, `/\`) ||
+		strings.HasPrefix(target, `\/`) {
+		return false
+	}
+
+	parsed, err := url.Parse(target)
+	if err != nil {
+		return false
+	}
+
+	// A relative reference ("/dashboard") carries neither scheme nor host and
+	// therefore cannot leave the origin.
+	if parsed.Scheme == "" && parsed.Host == "" {
+		return true
+	}
+
+	// Anything else must be an absolute http(s) URL on this exact host. The
+	// scheme check must come before the host comparison: opaque schemes such
+	// as javascript: and data: parse with an empty Host and would otherwise
+	// be mistaken for a harmless relative reference.
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return false
+	}
+
+	return strings.EqualFold(parsed.Host, host)
 }
 
 // RedirectRoute redirects to a named route.

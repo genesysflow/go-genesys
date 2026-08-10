@@ -13,7 +13,9 @@ func TestDefaultConfig(t *testing.T) {
 
 	assert.Equal(t, "genesys_session", cfg.CookieName)
 	assert.Equal(t, "/", cfg.CookiePath)
-	assert.False(t, cfg.CookieSecure)
+	// Session cookies must default to Secure: over plaintext HTTP the cookie
+	// is readable on the wire and replayable as a full account takeover.
+	assert.True(t, cfg.CookieSecure)
 	assert.True(t, cfg.CookieHTTPOnly)
 	assert.Equal(t, "Lax", cfg.CookieSameSite)
 	assert.Equal(t, 24*time.Hour, cfg.Expiration)

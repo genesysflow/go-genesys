@@ -2,6 +2,7 @@
 package errors
 
 import (
+	goerrors "errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
@@ -113,14 +114,17 @@ func (h *Handler) Render(ctx contracts.Context, err error) error {
 	code := http.StatusInternalServerError
 	message := "Internal Server Error"
 
-	// Check for HTTP error
-	if httpErr, ok := err.(contracts.HTTPError); ok {
+	// errors.As rather than a bare type assertion, so an error that has been
+	// wrapped — for a stack annotation, or by any caller using %w — is still
+	// classified by its status instead of collapsing to a generic 500.
+	var httpErr contracts.HTTPError
+	if goerrors.As(err, &httpErr) {
 		code = httpErr.StatusCode()
 		message = httpErr.Message()
 	}
 
-	// Check for Fiber error
-	if fiberErr, ok := err.(*fiber.Error); ok {
+	var fiberErr *fiber.Error
+	if goerrors.As(err, &fiberErr) {
 		code = fiberErr.Code
 		message = fiberErr.Message
 	}
@@ -132,13 +136,53 @@ func (h *Handler) Render(ctx contracts.Context, err error) error {
 		"status":  code,
 	}
 
-	// Include stack trace in debug mode
+	// Include the underlying error and its stack in debug mode only: both
+	// routinely disclose internals (SQL text, filesystem layout, dependency
+	// versions) that must not reach a client in production.
 	if h.debug {
 		response["exception"] = err.Error()
-		response["stack"] = string(debug.Stack())
+		response["stack"] = stackFor(err)
 	}
 
 	return ctx.Status(code).JSONResponse(response)
+}
+
+// stackFor returns the stack captured when the error was raised, falling back
+// to the current stack.
+//
+// debug.Stack() called here would describe the error handler itself — frames
+// leading into Render — rather than where the failure happened, which is
+// exactly the information the reader needs.
+func stackFor(err error) string {
+	var traced interface{ Stack() string }
+	if goerrors.As(err, &traced) {
+		return traced.Stack()
+	}
+	return string(debug.Stack())
+}
+
+// tracedError couples an error with the stack captured at the point it was
+// raised.
+type tracedError struct {
+	err   error
+	stack string
+}
+
+func (e *tracedError) Error() string { return e.err.Error() }
+func (e *tracedError) Unwrap() error { return e.err }
+func (e *tracedError) Stack() string { return e.stack }
+
+// WithStack annotates err with the caller's stack so that a later Render or
+// Report can show where the failure originated.
+func WithStack(err error) error {
+	if err == nil {
+		return nil
+	}
+	var existing interface{ Stack() string }
+	if goerrors.As(err, &existing) {
+		return err
+	}
+	return &tracedError{err: err, stack: string(debug.Stack())}
 }
 
 // RecoverMiddleware creates a panic recovery middleware.
@@ -146,6 +190,10 @@ func (h *Handler) RecoverMiddleware() contracts.MiddlewareFunc {
 	return func(ctx contracts.Context, next func() error) error {
 		defer func() {
 			if r := recover(); r != nil {
+				// Captured inside the deferred function, so the frames still
+				// describe the panicking call rather than the recovery site.
+				stack := string(debug.Stack())
+
 				var err error
 				switch v := r.(type) {
 				case error:
@@ -160,18 +208,21 @@ func (h *Handler) RecoverMiddleware() contracts.MiddlewareFunc {
 				if h.logger != nil {
 					h.logger.Error("Panic recovered",
 						"error", err.Error(),
-						"stack", string(debug.Stack()),
+						"stack", stack,
 						"path", ctx.Request().Path(),
 						"method", ctx.Request().Method(),
 					)
 				}
 
 				// Render error response
-				h.Render(ctx, contracts.NewHTTPError(
-					http.StatusInternalServerError,
-					"Internal Server Error",
-					err,
-				))
+				h.Render(ctx, &tracedError{
+					err: contracts.NewHTTPError(
+						http.StatusInternalServerError,
+						"Internal Server Error",
+						err,
+					),
+					stack: stack,
+				})
 			}
 		}()
 

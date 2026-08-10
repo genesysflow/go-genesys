@@ -2,8 +2,15 @@
 package middleware
 
 import (
+	"context"
+	"crypto/subtle"
+	"errors"
 	"fmt"
+	"maps"
 	"runtime/debug"
+	"slices"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/genesysflow/go-genesys/container"
@@ -98,19 +105,36 @@ func CORS(config ...CORSConfig) http.MiddlewareFunc {
 		cfg = config[0]
 	}
 
+	allowedOrigins := splitAndTrim(cfg.AllowOrigins, ",")
+	wildcard := cfg.AllowOrigins == "*"
+
+	// The response varies by Origin whenever the allowed origin is derived from
+	// the request: either because a specific allowlist is configured, or because
+	// credentials force the wildcard to be echoed back as a concrete origin.
+	// Only a literal "*" is origin-independent. Without this a shared cache can
+	// hand one origin's Access-Control-Allow-Origin — and its
+	// Access-Control-Allow-Credentials: true — to a different origin.
+	varyOnOrigin := !wildcard || cfg.AllowCredentials
+
 	return func(ctx *http.Context, next func() error) error {
 		origin := ctx.Request().Header("Origin")
 
-		// Check if origin is allowed
+		if varyOnOrigin {
+			ctx.FiberCtx().Vary("Origin")
+		}
+
 		allowOrigin := ""
-		if cfg.AllowOrigins == "*" {
+		switch {
+		case wildcard && cfg.AllowCredentials:
+			// "*" is not a legal Allow-Origin when credentials are permitted;
+			// browsers reject the pair outright. Echo the caller's origin so
+			// the intent (any origin, with credentials) actually works.
+			allowOrigin = origin
+		case wildcard:
 			allowOrigin = "*"
-		} else {
-			for _, o := range splitAndTrim(cfg.AllowOrigins, ",") {
-				if o == origin {
-					allowOrigin = origin
-					break
-				}
+		default:
+			if slices.Contains(allowedOrigins, origin) {
+				allowOrigin = origin
 			}
 		}
 
@@ -128,7 +152,7 @@ func CORS(config ...CORSConfig) http.MiddlewareFunc {
 			}
 
 			if cfg.MaxAge > 0 {
-				ctx.Header("Access-Control-Max-Age", string(rune(cfg.MaxAge)))
+				ctx.Header("Access-Control-Max-Age", strconv.Itoa(cfg.MaxAge))
 			}
 		}
 
@@ -158,57 +182,134 @@ var DefaultCORSConfig = CORSConfig{
 	AllowHeaders: "Origin,Content-Type,Accept,Authorization",
 }
 
-// Timeout creates a request timeout middleware.
+// Timeout bounds how long a request may run by imposing a deadline on the
+// request context.
+//
+// The handler runs on the calling goroutine and the deadline is delivered
+// through ctx.Context(), so cancellation is cooperative: database drivers,
+// outbound HTTP clients and anything else that honours context.Context will
+// abort at the deadline, and the resulting error propagates normally.
+//
+// It deliberately does NOT run the handler on a separate goroutine and abandon
+// it at the deadline. Fiber returns *fiber.Ctx to a pool once the handler
+// chain returns, so an abandoned goroutine would keep writing into a context
+// that has already been recycled onto another connection — corrupting an
+// unrelated client's response and racing on every field of the context. A
+// goroutine cannot be killed from the outside in Go, so the only safe design
+// is cooperative cancellation.
+//
+// The corollary is that a handler which ignores its context (a busy loop, or a
+// blocking call with no context support) will not be interrupted. Pass the
+// context down to make the deadline effective, and keep the kernel's
+// ReadTimeout/WriteTimeout as the backstop for a genuinely stuck handler.
 func Timeout(timeout time.Duration) http.MiddlewareFunc {
 	return func(ctx *http.Context, next func() error) error {
-		done := make(chan error, 1)
+		fiberCtx := ctx.FiberCtx()
+		previous := fiberCtx.UserContext()
 
-		go func() {
-			done <- next()
-		}()
+		timedCtx, cancel := context.WithTimeout(previous, timeout)
+		defer cancel()
 
-		select {
-		case err := <-done:
-			return err
-		case <-time.After(timeout):
+		fiberCtx.SetUserContext(timedCtx)
+		defer fiberCtx.SetUserContext(previous)
+
+		err := next()
+
+		// Report a deadline overrun as 408 rather than surfacing the raw
+		// context error, but only if the handler has not already responded.
+		if errors.Is(timedCtx.Err(), context.DeadlineExceeded) && err != nil {
 			return ctx.Status(fiber.StatusRequestTimeout).JSONResponse(fiber.Map{
 				"error": "Request Timeout",
 			})
 		}
+
+		return err
 	}
 }
 
-// RateLimiter creates a rate limiting middleware.
+// rateLimiterStore is a concurrency-safe sliding-window request counter.
+//
+// The map is shared by every in-flight request, so all access must hold the
+// mutex: an unsynchronised map here is not merely a lost update, it is a
+// "concurrent map read and map write" runtime fatal error that terminates the
+// process and cannot be caught by recover().
+type rateLimiterStore struct {
+	mu       sync.Mutex
+	requests map[string][]time.Time
+	lastSeen map[string]time.Time
+	lastGC   time.Time
+}
+
+// gcInterval bounds how often idle keys are swept. Without eviction the map
+// grows one entry per distinct source IP and is never reclaimed, which is a
+// memory-exhaustion vector on an internet-facing service.
+const gcInterval = time.Minute
+
+// allow records a request for key and reports whether it is within the limit.
+func (s *rateLimiterStore) allow(key string, now time.Time, maxRequests int, window time.Duration) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.collectIdle(now, window)
+
+	// Drop timestamps that have fallen out of the window.
+	valid := s.requests[key][:0]
+	for _, t := range s.requests[key] {
+		if now.Sub(t) < window {
+			valid = append(valid, t)
+		}
+	}
+
+	if len(valid) >= maxRequests {
+		s.requests[key] = valid
+		s.lastSeen[key] = now
+		return false
+	}
+
+	s.requests[key] = append(valid, now)
+	s.lastSeen[key] = now
+	return true
+}
+
+// collectIdle removes keys with no activity for a full window.
+// Callers must hold s.mu.
+func (s *rateLimiterStore) collectIdle(now time.Time, window time.Duration) {
+	if now.Sub(s.lastGC) < gcInterval {
+		return
+	}
+	s.lastGC = now
+
+	for key, seen := range s.lastSeen {
+		if now.Sub(seen) >= window {
+			delete(s.requests, key)
+			delete(s.lastSeen, key)
+		}
+	}
+}
+
+// RateLimiter creates a rate limiting middleware allowing maxRequests per
+// window per client IP.
+//
+// State is per-process and in-memory: behind more than one instance each
+// replica enforces its own quota. Use a shared store (Redis) for a global
+// limit. The client IP is taken from ctx.IP(), which only reflects
+// X-Forwarded-For when trusted proxies are configured on the kernel — see
+// http.KernelConfig.TrustedProxies. Without that, a limiter keyed on a
+// spoofable header would be trivially bypassed.
 func RateLimiter(maxRequests int, window time.Duration) http.MiddlewareFunc {
-	// Simple in-memory rate limiter
-	// For production, use a distributed store like Redis
-	requests := make(map[string][]time.Time)
+	store := &rateLimiterStore{
+		requests: make(map[string][]time.Time),
+		lastSeen: make(map[string]time.Time),
+		lastGC:   time.Now(),
+	}
 
 	return func(ctx *http.Context, next func() error) error {
-		ip := ctx.IP()
-		now := time.Now()
-
-		// Clean old entries
-		if times, ok := requests[ip]; ok {
-			var valid []time.Time
-			for _, t := range times {
-				if now.Sub(t) < window {
-					valid = append(valid, t)
-				}
-			}
-			requests[ip] = valid
-		}
-
-		// Check rate limit
-		if len(requests[ip]) >= maxRequests {
-			ctx.Header("Retry-After", window.String())
+		if !store.allow(ctx.IP(), time.Now(), maxRequests, window) {
+			ctx.Header("Retry-After", strconv.Itoa(int(window.Seconds())))
 			return ctx.Status(fiber.StatusTooManyRequests).JSONResponse(fiber.Map{
 				"error": "Too Many Requests",
 			})
 		}
-
-		// Record request
-		requests[ip] = append(requests[ip], now)
 
 		return next()
 	}
@@ -232,7 +333,18 @@ func Secure(config ...SecureConfig) http.MiddlewareFunc {
 			ctx.Header("X-Frame-Options", cfg.XFrameOptions)
 		}
 		if cfg.HSTSMaxAge > 0 {
-			ctx.Header("Strict-Transport-Security", "max-age="+string(rune(cfg.HSTSMaxAge)))
+			// strconv, not string(rune(n)): the latter yields the Unicode
+			// character with that code point, producing a malformed header
+			// that browsers discard — HSTS would appear configured while
+			// silently never applying.
+			hsts := "max-age=" + strconv.Itoa(cfg.HSTSMaxAge)
+			if cfg.HSTSIncludeSubdomains {
+				hsts += "; includeSubDomains"
+			}
+			if cfg.HSTSPreload {
+				hsts += "; preload"
+			}
+			ctx.Header("Strict-Transport-Security", hsts)
 		}
 		if cfg.ContentSecurityPolicy != "" {
 			ctx.Header("Content-Security-Policy", cfg.ContentSecurityPolicy)
@@ -251,13 +363,30 @@ type SecureConfig struct {
 	ContentTypeNosniff    string
 	XFrameOptions         string
 	HSTSMaxAge            int
+	HSTSIncludeSubdomains bool
+	HSTSPreload           bool
 	ContentSecurityPolicy string
 	ReferrerPolicy        string
 }
 
 // DefaultSecureConfig is the default security configuration.
+//
+// HSTSMaxAge is 0 (header omitted) because enabling HSTS on a host that is not
+// yet fully served over TLS locks clients out of it for the lifetime of the
+// max-age. Set it explicitly — 31536000 with IncludeSubdomains is the usual
+// production value — once HTTPS is known to work on every subdomain.
+//
+// ContentSecurityPolicy is likewise empty: an effective policy is
+// application-specific, and a wrong default would either break pages or give
+// the illusion of protection.
+//
+// XSSProtection is "0", which disables the legacy XSS auditor. Every current
+// browser has removed that auditor, and in the browsers that did ship it the
+// filter was itself exploitable to introduce cross-site leaks — "1;
+// mode=block" is actively discouraged today. Use ContentSecurityPolicy for
+// real XSS defence.
 var DefaultSecureConfig = SecureConfig{
-	XSSProtection:      "1; mode=block",
+	XSSProtection:      "0",
 	ContentTypeNosniff: "nosniff",
 	XFrameOptions:      "SAMEORIGIN",
 	ReferrerPolicy:     "strict-origin-when-cross-origin",
@@ -272,21 +401,47 @@ func Compress() http.MiddlewareFunc {
 	}
 }
 
-// BasicAuth creates a basic authentication middleware.
+// BasicAuth creates an HTTP Basic authentication middleware.
+//
+// users maps username to password. Credentials are compared in constant time
+// so that neither the username nor the password can be recovered by timing the
+// response. Note that Basic auth transmits the password on every request, so
+// this must only be served over TLS.
 func BasicAuth(users map[string]string) http.MiddlewareFunc {
+	// Copy the credentials so later mutation of the caller's map cannot
+	// silently change who is authorised.
+	credentials := make(map[string]string, len(users))
+	maps.Copy(credentials, users)
+
 	return func(ctx *http.Context, next func() error) error {
-		auth := ctx.Request().Header("Authorization")
-		if auth == "" {
-			ctx.Header("WWW-Authenticate", `Basic realm="Restricted"`)
-			return ctx.Unauthorized()
+		username, password, ok := ctx.Request().BasicAuth()
+		if !ok {
+			return basicAuthChallenge(ctx)
 		}
 
-		// Verify credentials
-		// This is a simplified implementation
-		// Full implementation would decode base64 and verify
+		expected, found := credentials[username]
+
+		// Always run the comparison, even for an unknown username, so that a
+		// valid username is not distinguishable by response time.
+		if !found {
+			expected = ""
+		}
+		match := subtle.ConstantTimeCompare([]byte(password), []byte(expected)) == 1
+
+		if !found || !match {
+			return basicAuthChallenge(ctx)
+		}
+
+		ctx.Set("auth.user", username)
 
 		return next()
 	}
+}
+
+// basicAuthChallenge rejects the request with a WWW-Authenticate challenge.
+func basicAuthChallenge(ctx *http.Context) error {
+	ctx.Header("WWW-Authenticate", `Basic realm="Restricted", charset="UTF-8"`)
+	return ctx.Unauthorized()
 }
 
 // splitAndTrim splits a string and trims whitespace.
