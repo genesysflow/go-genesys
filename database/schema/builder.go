@@ -31,13 +31,25 @@
 //		table.DropIndex("column_name")
 //		table.DropUnique("column_name")
 //	})
+//
+// Table only understands the Add*/Drop*/RenameColumn/ModifyColumn commands; using the
+// create-style methods (String, ID, Unique, ...) inside it returns an error instead of
+// silently applying nothing. Operations a driver cannot express — modifying a column,
+// dropping a UNIQUE constraint or a primary key on SQLite — return ErrUnsupportedOperation
+// before any statement runs.
 package schema
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// ErrUnsupportedOperation is returned when a schema operation cannot be expressed
+// in SQL for the current driver (for example, modifying a column type on SQLite).
+// Callers can test for it with errors.Is.
+var ErrUnsupportedOperation = errors.New("schema: unsupported operation")
 
 // Builder provides fluent schema building.
 type Builder struct {
@@ -70,8 +82,18 @@ func (b *Builder) Table(table string, callback func(*Blueprint)) error {
 	bp := NewBlueprint(table)
 	callback(bp)
 
+	// Create-style methods (String, ID, Index, Unique, ...) populate columns/indexes,
+	// which CompileAlter never looks at. Committing an empty migration would silently
+	// do nothing, so fail with an actionable message instead.
+	if len(bp.columns) > 0 || len(bp.indexes) > 0 {
+		return fmt.Errorf("schema: create-style column/index methods (e.g. String, ID, Unique) cannot be used in Table migrations on %q; use Add*/Drop*/RenameColumn/ModifyColumn instead", table)
+	}
+
 	// Compile all ALTER commands
-	sqls := b.grammar.CompileAlter(bp)
+	sqls, err := b.grammar.CompileAlter(bp)
+	if err != nil {
+		return err
+	}
 
 	// Begin transaction for atomic schema changes
 	tx, err := b.db.Begin()
@@ -143,21 +165,21 @@ func NewBlueprint(table string) *Blueprint {
 
 // ColumnDefinition represents a column definition.
 type ColumnDefinition struct {
-	Name                 string
-	Type                 string
-	Length               int
-	Precision            int
-	Scale                int
-	IsNullable           bool
+	Name                  string
+	Type                  string
+	Length                int
+	Precision             int
+	Scale                 int
+	IsNullable            bool
 	NullableExplicitlySet bool // Track if nullable was explicitly set for ModifyColumn
-	DefaultValue         any
-	DefaultExplicitlySet bool // Track if default was explicitly set for ModifyColumn
-	AutoIncrement        bool
-	Primary              bool
-	IsUnique             bool
-	IsIndex              bool
-	Unsigned             bool
-	ColumnComment        string
+	DefaultValue          any
+	DefaultExplicitlySet  bool // Track if default was explicitly set for ModifyColumn
+	AutoIncrement         bool
+	Primary               bool
+	IsUnique              bool
+	IsIndex               bool
+	Unsigned              bool
+	ColumnComment         string
 }
 
 // IndexDefinition represents an index definition.
@@ -625,14 +647,20 @@ type Grammar interface {
 	CompileTableExists(table string) string
 	WrapTable(table string) string
 	WrapColumn(column string) string
-	CompileAlter(bp *Blueprint) []string
+	CompileAlter(bp *Blueprint) ([]string, error)
 	CompileAddColumn(table string, col ColumnDefinition) string
 	CompileDropColumn(table string, column string) string
 	CompileRenameColumn(table, from, to string) string
-	CompileModifyColumn(table string, col ColumnDefinition) []string
+	CompileModifyColumn(table string, col ColumnDefinition) ([]string, error)
 	CompileDropIndex(table string, columns []string) string
-	CompileDropUnique(table string, columns []string) []string
-	CompileDropPrimary(table string) string
+	CompileDropUnique(table string, columns []string) ([]string, error)
+	CompileDropPrimary(table string) (string, error)
+}
+
+// quoteString renders a Go string as a SQL string literal, escaping embedded
+// single quotes so values like "O'Reilly" produce valid SQL.
+func quoteString(v string) string {
+	return "'" + strings.ReplaceAll(v, "'", "''") + "'"
 }
 
 // NewGrammar creates a grammar for the given driver.
@@ -721,7 +749,7 @@ func (g *SQLiteGrammar) compileColumn(col ColumnDefinition) string {
 	if col.DefaultValue != nil {
 		switch v := col.DefaultValue.(type) {
 		case string:
-			def.WriteString(fmt.Sprintf(" DEFAULT '%s'", v))
+			def.WriteString(fmt.Sprintf(" DEFAULT %s", quoteString(v)))
 		case bool:
 			if v {
 				def.WriteString(" DEFAULT 1")
@@ -737,7 +765,9 @@ func (g *SQLiteGrammar) compileColumn(col ColumnDefinition) string {
 }
 
 // CompileAlter compiles ALTER table commands for SQLite.
-func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) []string {
+// It returns an error for operations SQLite cannot express, so callers fail fast
+// instead of committing a migration that changed nothing.
+func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 	var statements []string
 
 	for _, cmd := range bp.commands {
@@ -752,19 +782,29 @@ func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) []string {
 		case "rename":
 			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
 		case "modify":
-			// SQLite doesn't support ALTER COLUMN for modifying column types.
-			// Return an invalid SQL that will produce a database error instead of panicking.
-			statements = append(statements, g.CompileModifyColumn(bp.table, *cmd.Column)...)
+			stmts, err := g.CompileModifyColumn(bp.table, *cmd.Column)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmts...)
 		case "dropIndex":
 			statements = append(statements, g.CompileDropIndex(bp.table, cmd.Columns))
 		case "dropUnique":
-			statements = append(statements, g.CompileDropUnique(bp.table, cmd.Columns)...)
+			stmts, err := g.CompileDropUnique(bp.table, cmd.Columns)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmts...)
 		case "dropPrimary":
-			statements = append(statements, g.CompileDropPrimary(bp.table))
+			stmt, err := g.CompileDropPrimary(bp.table)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmt)
 		}
 	}
 
-	return statements
+	return statements, nil
 }
 
 // CompileAddColumn compiles ADD COLUMN statement for SQLite.
@@ -787,10 +827,10 @@ func (g *SQLiteGrammar) CompileRenameColumn(table, from, to string) string {
 }
 
 // CompileModifyColumn compiles ALTER COLUMN statement for SQLite.
-func (g *SQLiteGrammar) CompileModifyColumn(table string, col ColumnDefinition) []string {
-	// SQLite doesn't support modifying column types directly
-	return []string{fmt.Sprintf("SELECT 'ERROR: SQLite does not support ALTER COLUMN to modify column type for %s.%s'",
-		table, col.Name)}
+// SQLite has no ALTER COLUMN, so this always reports ErrUnsupportedOperation.
+func (g *SQLiteGrammar) CompileModifyColumn(table string, col ColumnDefinition) ([]string, error) {
+	return nil, fmt.Errorf("%w: SQLite cannot modify column %s.%s; recreate the table instead",
+		ErrUnsupportedOperation, table, col.Name)
 }
 
 // CompileDropIndex compiles DROP INDEX statement for SQLite.
@@ -801,20 +841,18 @@ func (g *SQLiteGrammar) CompileDropIndex(table string, columns []string) string 
 }
 
 // CompileDropUnique compiles DROP UNIQUE constraint for SQLite.
-func (g *SQLiteGrammar) CompileDropUnique(table string, columns []string) []string {
-	// SQLite does not support dropping inline UNIQUE constraints created in column definitions.
-	// Such constraints are backed by auto-generated sqlite_autoindex_* names that are not predictable
-	// from the table/column names. Dropping them requires recreating the table without the constraint.
-	// Return an invalid SQL that will produce a database error.
-	return []string{fmt.Sprintf("SELECT 'ERROR: SQLite does not support dropping UNIQUE constraints on %s(%s). Consider recreating the table without this constraint.'",
-		table, strings.Join(columns, ", "))}
+// Inline UNIQUE constraints are backed by auto-generated sqlite_autoindex_* names that
+// cannot be derived from the table/column names, so this reports ErrUnsupportedOperation.
+func (g *SQLiteGrammar) CompileDropUnique(table string, columns []string) ([]string, error) {
+	return nil, fmt.Errorf("%w: SQLite cannot drop the UNIQUE constraint on %s(%s); recreate the table without it",
+		ErrUnsupportedOperation, table, strings.Join(columns, ", "))
 }
 
 // CompileDropPrimary compiles DROP PRIMARY KEY for SQLite.
-func (g *SQLiteGrammar) CompileDropPrimary(table string) string {
-	// SQLite doesn't support dropping primary key directly.
-	// Return an invalid SQL that will produce a database error.
-	return "SELECT 'ERROR: SQLite does not support dropping primary keys. Consider recreating the table.'"
+// SQLite has no way to drop a primary key, so this reports ErrUnsupportedOperation.
+func (g *SQLiteGrammar) CompileDropPrimary(table string) (string, error) {
+	return "", fmt.Errorf("%w: SQLite cannot drop the primary key on %s; recreate the table instead",
+		ErrUnsupportedOperation, table)
 }
 
 // PostgresGrammar compiles schema for PostgreSQL.
@@ -896,7 +934,7 @@ func (g *PostgresGrammar) compileColumn(col ColumnDefinition) string {
 	if col.DefaultValue != nil {
 		switch v := col.DefaultValue.(type) {
 		case string:
-			def.WriteString(fmt.Sprintf(" DEFAULT '%s'", v))
+			def.WriteString(fmt.Sprintf(" DEFAULT %s", quoteString(v)))
 		case bool:
 			def.WriteString(fmt.Sprintf(" DEFAULT %t", v))
 		default:
@@ -908,7 +946,7 @@ func (g *PostgresGrammar) compileColumn(col ColumnDefinition) string {
 }
 
 // CompileAlter compiles ALTER table commands for PostgreSQL.
-func (g *PostgresGrammar) CompileAlter(bp *Blueprint) []string {
+func (g *PostgresGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 	var statements []string
 
 	for _, cmd := range bp.commands {
@@ -924,17 +962,29 @@ func (g *PostgresGrammar) CompileAlter(bp *Blueprint) []string {
 			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
 		case "modify":
 			// CompileModifyColumn returns multiple statements
-			statements = append(statements, g.CompileModifyColumn(bp.table, *cmd.Column)...)
+			stmts, err := g.CompileModifyColumn(bp.table, *cmd.Column)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmts...)
 		case "dropIndex":
 			statements = append(statements, g.CompileDropIndex(bp.table, cmd.Columns))
 		case "dropUnique":
-			statements = append(statements, g.CompileDropUnique(bp.table, cmd.Columns)...)
+			stmts, err := g.CompileDropUnique(bp.table, cmd.Columns)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmts...)
 		case "dropPrimary":
-			statements = append(statements, g.CompileDropPrimary(bp.table))
+			stmt, err := g.CompileDropPrimary(bp.table)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmt)
 		}
 	}
 
-	return statements
+	return statements, nil
 }
 
 // CompileAddColumn compiles ADD COLUMN statement for PostgreSQL.
@@ -955,7 +1005,7 @@ func (g *PostgresGrammar) CompileRenameColumn(table, from, to string) string {
 }
 
 // CompileModifyColumn compiles ALTER COLUMN statement for PostgreSQL.
-func (g *PostgresGrammar) CompileModifyColumn(table string, col ColumnDefinition) []string {
+func (g *PostgresGrammar) CompileModifyColumn(table string, col ColumnDefinition) ([]string, error) {
 	var statements []string
 	wrappedTable := g.WrapTable(table)
 	wrappedCol := g.WrapColumn(col.Name)
@@ -988,23 +1038,33 @@ func (g *PostgresGrammar) CompileModifyColumn(table string, col ColumnDefinition
 		}
 	}
 
-	// Set default (only if explicitly set)
-	if col.DefaultExplicitlySet && col.DefaultValue != nil {
-		var defaultVal string
-		switch v := col.DefaultValue.(type) {
-		case string:
-			defaultVal = fmt.Sprintf("'%s'", v)
-		case bool:
-			defaultVal = fmt.Sprintf("%t", v)
-		default:
-			defaultVal = fmt.Sprintf("%v", v)
+	// Set or drop the default (only if explicitly set). Default(nil) removes the
+	// existing default rather than being ignored.
+	if col.DefaultExplicitlySet {
+		if col.DefaultValue == nil {
+			statements = append(statements, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s DROP DEFAULT",
+				wrappedTable, wrappedCol))
+		} else {
+			var defaultVal string
+			switch v := col.DefaultValue.(type) {
+			case string:
+				defaultVal = quoteString(v)
+			case bool:
+				defaultVal = fmt.Sprintf("%t", v)
+			default:
+				defaultVal = fmt.Sprintf("%v", v)
+			}
+			statements = append(statements, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s",
+				wrappedTable, wrappedCol, defaultVal))
 		}
-		statements = append(statements, fmt.Sprintf("ALTER TABLE %s ALTER COLUMN %s SET DEFAULT %s",
-			wrappedTable, wrappedCol, defaultVal))
+	}
+
+	if len(statements) == 0 {
+		return nil, fmt.Errorf("schema: ModifyColumn(%q) on %q requests no change; set a type, nullability, or default", col.Name, table)
 	}
 
 	// Return individual statements, not joined with semicolons
-	return statements
+	return statements, nil
 }
 
 // CompileDropIndex compiles DROP INDEX statement for PostgreSQL.
@@ -1015,7 +1075,7 @@ func (g *PostgresGrammar) CompileDropIndex(table string, columns []string) strin
 }
 
 // CompileDropUnique compiles DROP UNIQUE constraint for PostgreSQL.
-func (g *PostgresGrammar) CompileDropUnique(table string, columns []string) []string {
+func (g *PostgresGrammar) CompileDropUnique(table string, columns []string) ([]string, error) {
 	// PostgreSQL uses named constraints for unique indexes. When a UNIQUE constraint is created
 	// inline without an explicit name, PostgreSQL will by default name it as
 	// "<table>_<columns>_key". Older code in this package assumes an explicit name
@@ -1026,12 +1086,12 @@ func (g *PostgresGrammar) CompileDropUnique(table string, columns []string) []st
 	return []string{
 		fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", g.WrapTable(table), g.WrapColumn(namedConstraint)),
 		fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", g.WrapTable(table), g.WrapColumn(defaultConstraint)),
-	}
+	}, nil
 }
 
 // CompileDropPrimary compiles DROP PRIMARY KEY for PostgreSQL.
-func (g *PostgresGrammar) CompileDropPrimary(table string) string {
+func (g *PostgresGrammar) CompileDropPrimary(table string) (string, error) {
 	// PostgreSQL names primary keys as table_pkey by default
 	constraintName := table + "_pkey"
-	return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", g.WrapTable(table), g.WrapColumn(constraintName))
+	return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", g.WrapTable(table), g.WrapColumn(constraintName)), nil
 }

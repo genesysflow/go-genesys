@@ -679,3 +679,114 @@ func TestBuilderTableMultipleOperations(t *testing.T) {
 	`, "John", "Doe", "john@example.com", "555-1234", "John Doe")
 	require.NoError(t, err)
 }
+
+// The compilation tests below need no database: Table validates the blueprint and
+// compiles the SQL before it opens a connection.
+
+func TestBuilderTableRejectsCreateStyleMethods(t *testing.T) {
+	builder := NewBuilder(nil, "postgres")
+
+	err := builder.Table("users", func(table *Blueprint) {
+		table.String("name", 100) // create-style: never compiled by CompileAlter
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create-style")
+
+	err = builder.Table("users", func(table *Blueprint) {
+		table.Unique("email")
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create-style")
+
+	// Alter-style methods stay accepted.
+	_, err = (&PostgresGrammar{}).CompileAlter(blueprintWith(func(table *Blueprint) {
+		table.AddString("phone", 20)
+	}))
+	require.NoError(t, err)
+}
+
+func TestSQLiteGrammarUnsupportedOperations(t *testing.T) {
+	g := &SQLiteGrammar{}
+
+	tests := map[string]func(*Blueprint){
+		"modify":      func(table *Blueprint) { table.ModifyColumn("status").String(50) },
+		"dropUnique":  func(table *Blueprint) { table.DropUnique("email") },
+		"dropPrimary": func(table *Blueprint) { table.DropPrimary() },
+	}
+
+	for name, build := range tests {
+		t.Run(name, func(t *testing.T) {
+			stmts, err := g.CompileAlter(blueprintWith(build))
+			require.Error(t, err, "unsupported operation must not compile to executable SQL")
+			assert.ErrorIs(t, err, ErrUnsupportedOperation)
+			assert.Nil(t, stmts)
+		})
+	}
+}
+
+func TestBuilderTableSurfacesUnsupportedOperation(t *testing.T) {
+	builder := NewBuilder(nil, "sqlite")
+
+	err := builder.Table("users", func(table *Blueprint) {
+		table.ModifyColumn("status").String(50)
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnsupportedOperation)
+}
+
+func TestPostgresCompileModifyColumn(t *testing.T) {
+	g := &PostgresGrammar{}
+
+	t.Run("drops default when set to nil", func(t *testing.T) {
+		col := ColumnDefinition{Name: "status"}
+		col.Default(nil)
+
+		stmts, err := g.CompileModifyColumn("users", col)
+		require.NoError(t, err)
+		assert.Equal(t, []string{`ALTER TABLE "users" ALTER COLUMN "status" DROP DEFAULT`}, stmts)
+	})
+
+	t.Run("escapes quotes in string defaults", func(t *testing.T) {
+		col := ColumnDefinition{Name: "author"}
+		col.Default("O'Reilly")
+
+		stmts, err := g.CompileModifyColumn("books", col)
+		require.NoError(t, err)
+		assert.Equal(t, []string{`ALTER TABLE "books" ALTER COLUMN "author" SET DEFAULT 'O''Reilly'`}, stmts)
+	})
+
+	t.Run("only emits clauses that were requested", func(t *testing.T) {
+		col := ColumnDefinition{Name: "status"}
+		col.String(50)
+
+		stmts, err := g.CompileModifyColumn("users", col)
+		require.NoError(t, err)
+		assert.Equal(t, []string{`ALTER TABLE "users" ALTER COLUMN "status" TYPE VARCHAR(50)`}, stmts)
+	})
+
+	t.Run("rejects a modify that changes nothing", func(t *testing.T) {
+		_, err := g.CompileModifyColumn("users", ColumnDefinition{Name: "status"})
+		require.Error(t, err)
+	})
+}
+
+func TestCompileCreateEscapesStringDefaults(t *testing.T) {
+	build := func(bp *Blueprint) {
+		bp.String("author", 100).Default("O'Reilly")
+	}
+
+	bp := NewBlueprint("books")
+	build(bp)
+	assert.Contains(t, (&PostgresGrammar{}).CompileCreate(bp), `DEFAULT 'O''Reilly'`)
+
+	bp = NewBlueprint("books")
+	build(bp)
+	assert.Contains(t, (&SQLiteGrammar{}).CompileCreate(bp), `DEFAULT 'O''Reilly'`)
+}
+
+// blueprintWith builds a blueprint for "users" using the given callback.
+func blueprintWith(callback func(*Blueprint)) *Blueprint {
+	bp := NewBlueprint("users")
+	callback(bp)
+	return bp
+}
