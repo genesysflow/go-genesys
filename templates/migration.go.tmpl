@@ -16,10 +16,37 @@ func (m *{{.Name}}) Up(builder *schema.Builder) error {
 		table.ID()
 		table.Timestamps()
 	})
+	
+	// Example: Modify an existing table
+	// return builder.Table("{{.LowerName}}", func(table *schema.Blueprint) {
+	// 	// Add new columns
+	// 	table.AddString("email", 255).Nullable().Unique()
+	// 	table.AddBoolean("active").Default(true)
+	// 	table.AddTimestamp("last_login_at").Nullable()
+	// 	
+	// 	// Drop columns
+	// 	table.DropColumn("old_column")
+	// 	
+	// 	// Rename column
+	// 	table.RenameColumn("old_name", "new_name")
+	// 	
+	// 	// Modify column (requires full redefinition)
+	// 	table.ModifyColumn("status").String(50).Default("active")
+	// 	
+	// 	// Drop indexes
+	// 	table.DropIndex("column_name")
+	// 	table.DropUnique("column_name")
+	// })
 }
 
 
 // Down reverses the migration.
 func (m *{{.Name}}) Down(builder *schema.Builder) error {
 	return builder.Drop("{{.LowerName}}")
+	
+	// Example: Reverse table modifications
+	// return builder.Table("{{.LowerName}}", func(table *schema.Blueprint) {
+	// 	table.DropColumn("email", "active", "last_login_at")
+	// 	table.RenameColumn("new_name", "old_name")
+	// })
 }
