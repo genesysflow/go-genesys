@@ -6,6 +6,7 @@ import (
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/database"
+	facadesession "github.com/genesysflow/go-genesys/facades/session"
 	"github.com/genesysflow/go-genesys/session"
 	"github.com/gofiber/fiber/v2"
 )
@@ -77,6 +78,7 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 	app.InstanceType(manager)
 	app.BindValue("session", manager)
 	app.BindValue("session.manager", manager)
+	facadesession.SetInstance(manager)
 
 	return nil
 }

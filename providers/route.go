@@ -5,6 +5,7 @@ import (
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	facaderoute "github.com/genesysflow/go-genesys/facades/route"
 	"github.com/genesysflow/go-genesys/http"
 )
 
@@ -64,6 +65,7 @@ func (p *RouteServiceProvider) Register(app contracts.Application) error {
 
 	app.InstanceType(p.kernel)
 	app.InstanceType(p.kernel.Router())
+	facaderoute.SetInstance(p.kernel.Router())
 
 	return nil
 }

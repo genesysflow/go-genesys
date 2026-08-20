@@ -3,6 +3,7 @@ package providers
 import (
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/events"
+	facadeevent "github.com/genesysflow/go-genesys/facades/event"
 )
 
 // EventServiceProvider registers the event dispatcher.
@@ -17,6 +18,7 @@ func (p *EventServiceProvider) Register(app contracts.Application) error {
 	dispatcher := events.NewDispatcher()
 	app.InstanceType(dispatcher)
 	app.BindValue("events", dispatcher)
+	facadeevent.SetInstance(dispatcher)
 
 	return nil
 }

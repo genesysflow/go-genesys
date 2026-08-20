@@ -4,6 +4,7 @@ import (
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/env"
 	"github.com/genesysflow/go-genesys/errors"
+	facadeconfig "github.com/genesysflow/go-genesys/facades/config"
 )
 
 // AppServiceProvider registers core application services.
@@ -34,6 +35,10 @@ func (p *AppServiceProvider) Register(app contracts.Application) error {
 
 // Boot bootstraps the application services.
 func (p *AppServiceProvider) Boot(app contracts.Application) error {
+	// Configuration is loaded by now; expose it through the facade.
+	if cfg := app.GetConfig(); cfg != nil {
+		facadeconfig.SetInstance(cfg)
+	}
 	return nil
 }
 
