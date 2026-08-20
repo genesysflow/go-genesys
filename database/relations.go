@@ -258,6 +258,7 @@ func loadHasMany(driver string, executor query.Executor, models reflect.Value, r
 
 	keys := collectKeys(models, ownerField.index)
 	if len(keys) == 0 {
+		clearRelationField(models, rel)
 		return nil
 	}
 
@@ -374,6 +375,9 @@ func loadBelongsToMany(driver string, executor query.Executor, models reflect.Va
 		}
 	}
 	if len(relatedKeys) == 0 {
+		// Nothing linked: clear the field so a reload never leaves
+		// stale, previously-loaded relations behind.
+		clearRelationField(models, rel)
 		return nil
 	}
 
@@ -427,6 +431,15 @@ func fetchInto(driver string, executor query.Executor, structType reflect.Type, 
 	return scanRowsIntoType(rows, structType)
 }
 
+// clearRelationField zeroes the relation field on every model, so
+// reloading after a detach reflects the empty state.
+func clearRelationField(models reflect.Value, rel *relation) {
+	for i := 0; i < models.Len(); i++ {
+		field := models.Index(i).FieldByIndex(rel.fieldIndex)
+		field.Set(reflect.Zero(field.Type()))
+	}
+}
+
 // collectKeys gathers the distinct, non-zero key values of a struct field
 // across the models slice, preserving order.
 func collectKeys(models reflect.Value, fieldIndex []int) []any {
@@ -459,6 +472,9 @@ func keyString(v any) string {
 func assignRelated(field reflect.Value, relatedSlice reflect.Value, indices []int, single bool) {
 	if single {
 		if len(indices) == 0 {
+			// No related row: zero the field so reloads never keep a
+			// stale pointer from an earlier load.
+			field.Set(reflect.Zero(field.Type()))
 			return
 		}
 		element := relatedSlice.Index(indices[0])

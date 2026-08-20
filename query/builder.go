@@ -681,3 +681,70 @@ func toFloat64(v any) float64 {
 	}
 	return 0
 }
+
+// neutralizePlaceholders rewrites $N placeholders back to ? so a compiled
+// subquery can be embedded in a raw where clause, whose compiler renumbers
+// placeholders for the active driver.
+func neutralizePlaceholders(sqlStr string) string {
+	var sb strings.Builder
+	i := 0
+	for i < len(sqlStr) {
+		if sqlStr[i] == '$' && i+1 < len(sqlStr) && sqlStr[i+1] >= '0' && sqlStr[i+1] <= '9' {
+			sb.WriteByte('?')
+			i++
+			for i < len(sqlStr) && sqlStr[i] >= '0' && sqlStr[i] <= '9' {
+				i++
+			}
+			continue
+		}
+		sb.WriteByte(sqlStr[i])
+		i++
+	}
+	return sb.String()
+}
+
+func (b *Builder) addExists(sub *Builder, boolean string, not bool) *Builder {
+	subSQL, bindings := sub.ToSQL()
+	op := "EXISTS"
+	if not {
+		op = "NOT EXISTS"
+	}
+	b.wheres = append(b.wheres, where{
+		kind:    whereRaw,
+		boolean: boolean,
+		rawSQL:  op + " (" + neutralizePlaceholders(subSQL) + ")",
+		values:  bindings,
+	})
+	return b
+}
+
+// WhereExists adds a WHERE EXISTS (subquery) clause:
+//
+//	sub := query.New(driver, nil).Table("posts").
+//	    WhereColumn("posts.user_id", "=", "users.id")
+//	users := query.New(driver, db).Table("users").WhereExists(sub)
+func (b *Builder) WhereExists(sub *Builder) *Builder {
+	return b.addExists(sub, "AND", false)
+}
+
+// WhereNotExists adds a WHERE NOT EXISTS (subquery) clause.
+func (b *Builder) WhereNotExists(sub *Builder) *Builder {
+	return b.addExists(sub, "AND", true)
+}
+
+// OrWhereExists adds an OR EXISTS (subquery) clause.
+func (b *Builder) OrWhereExists(sub *Builder) *Builder {
+	return b.addExists(sub, "OR", false)
+}
+
+// WhereInSub adds WHERE column IN (subquery).
+func (b *Builder) WhereInSub(column string, sub *Builder) *Builder {
+	subSQL, bindings := sub.ToSQL()
+	b.wheres = append(b.wheres, where{
+		kind:    whereRaw,
+		boolean: "AND",
+		rawSQL:  b.grammar.Wrap(column) + " IN (" + neutralizePlaceholders(subSQL) + ")",
+		values:  bindings,
+	})
+	return b
+}
