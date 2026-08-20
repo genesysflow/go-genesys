@@ -99,7 +99,10 @@ func (s *Signer) signatureFor(path string, query url.Values) string {
 		values := append([]string(nil), query[key]...)
 		sort.Strings(values)
 		for _, value := range values {
-			canonical.WriteString("&" + key + "=" + value)
+			// Escape both sides so a value containing "&" or "=" cannot
+			// be re-partitioned into different parameters that hash to
+			// the same canonical string (parameter smuggling).
+			canonical.WriteString("&" + url.QueryEscape(key) + "=" + url.QueryEscape(value))
 		}
 	}
 

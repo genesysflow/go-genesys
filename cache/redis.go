@@ -135,6 +135,32 @@ func (s *RedisStore) Forget(key string) error {
 	return s.client.Del(s.ctx, s.key(key)).Err()
 }
 
+// forgetIfEqualsScript deletes the key only while it still holds the
+// expected value - the atomic lock-release pattern from the Redis docs.
+var forgetIfEqualsScript = redis.NewScript(`
+if redis.call('get', KEYS[1]) == ARGV[1] then
+	return redis.call('del', KEYS[1])
+end
+return 0
+`)
+
+// ForgetIfEquals atomically removes the key only while it still holds
+// the given string value; the lock helper uses it so a Release can
+// never free a lock that expired and was re-acquired by another owner.
+func (s *RedisStore) ForgetIfEquals(key string, value string) (bool, error) {
+	// Values are stored JSON-encoded (see Put/Add), so compare against
+	// the encoded form.
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return false, err
+	}
+	n, err := forgetIfEqualsScript.Run(s.ctx, s.client, []string{s.key(key)}, string(encoded)).Int()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 // Flush removes every key under this store's prefix (not the whole DB).
 func (s *RedisStore) Flush() error {
 	iter := s.client.Scan(s.ctx, 0, s.prefix+"*", 100).Iterator()

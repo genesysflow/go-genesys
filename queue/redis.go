@@ -20,14 +20,21 @@ type RedisConfig struct {
 	DB int
 	// Prefix namespaces every queue key (default "queues:").
 	Prefix string
+	// RetryAfter is how long a reserved job may be held by a worker
+	// before it is assumed crashed and made available again
+	// (default 90s), Laravel's retry_after.
+	RetryAfter time.Duration
 }
 
-// RedisQueue is a durable queue driver backed by Redis lists, with a
-// sorted set holding delayed and released jobs until they come due.
+// RedisQueue is a durable queue driver backed by Redis lists, with
+// sorted sets holding delayed jobs until they come due and reserved
+// jobs while a worker processes them - a worker crash leaves the
+// reserved copy behind, and it is reclaimed after RetryAfter.
 type RedisQueue struct {
-	client *redis.Client
-	prefix string
-	ctx    context.Context
+	client     *redis.Client
+	prefix     string
+	retryAfter time.Duration
+	ctx        context.Context
 }
 
 // redisJob is the envelope stored on the list.
@@ -46,7 +53,11 @@ func NewRedisQueue(config RedisConfig) *RedisQueue {
 		Password: config.Password,
 		DB:       config.DB,
 	})
-	return NewRedisQueueWithClient(client, config.Prefix)
+	q := NewRedisQueueWithClient(client, config.Prefix)
+	if config.RetryAfter > 0 {
+		q.retryAfter = config.RetryAfter
+	}
+	return q
 }
 
 // NewRedisQueueWithClient wraps an existing Redis client.
@@ -54,7 +65,19 @@ func NewRedisQueueWithClient(client *redis.Client, prefix string) *RedisQueue {
 	if prefix == "" {
 		prefix = "queues:"
 	}
-	return &RedisQueue{client: client, prefix: prefix, ctx: context.Background()}
+	return &RedisQueue{
+		client:     client,
+		prefix:     prefix,
+		retryAfter: 90 * time.Second,
+		ctx:        context.Background(),
+	}
+}
+
+// WithRetryAfter sets how long a reserved job may be held before it is
+// assumed crashed and reclaimed.
+func (q *RedisQueue) WithRetryAfter(d time.Duration) *RedisQueue {
+	q.retryAfter = d
+	return q
 }
 
 // Client exposes the underlying Redis client.
@@ -67,12 +90,18 @@ func normalizeQueue(queue string) string {
 	return queue
 }
 
+// Queue keys live under a "queue:" segment so user queue names cannot
+// collide with the failed list or the id counter.
 func (q *RedisQueue) listKey(queue string) string {
-	return q.prefix + normalizeQueue(queue)
+	return q.prefix + "queue:" + normalizeQueue(queue)
 }
 
 func (q *RedisQueue) delayedKey(queue string) string {
-	return q.prefix + normalizeQueue(queue) + ":delayed"
+	return q.listKey(queue) + ":delayed"
+}
+
+func (q *RedisQueue) reservedKey(queue string) string {
+	return q.listKey(queue) + ":reserved"
 }
 
 func (q *RedisQueue) failedKey() string { return q.prefix + "failed" }
@@ -116,27 +145,43 @@ func (q *RedisQueue) enqueue(envelope redisJob, delay time.Duration) error {
 	return q.client.RPush(q.ctx, q.listKey(envelope.Queue), encoded).Err()
 }
 
-// migrateDue moves delayed jobs that have come due onto the ready list.
+// migrateScript atomically moves every due member of a sorted set onto
+// the ready list, so a crash can never lose a job between the ZREM and
+// the RPUSH.
+var migrateScript = redis.NewScript(`
+local due = redis.call('zrangebyscore', KEYS[1], '-inf', ARGV[1])
+for i = 1, #due do
+	redis.call('zrem', KEYS[1], due[i])
+	redis.call('rpush', KEYS[2], due[i])
+end
+return #due
+`)
+
+// popScript atomically pops the next ready job, increments its attempt
+// count, and parks it on the reserved set until the worker settles it -
+// Laravel's retrieveNextJob. A worker crash leaves the reserved copy to
+// be reclaimed by migrateDue once its score (the reservation expiry)
+// passes.
+var popScript = redis.NewScript(`
+local job = redis.call('lpop', KEYS[1])
+if job == false then
+	return false
+end
+local decoded = cjson.decode(job)
+decoded.attempts = decoded.attempts + 1
+local reserved = cjson.encode(decoded)
+redis.call('zadd', KEYS[2], ARGV[1], reserved)
+return reserved
+`)
+
+// migrateDue moves due delayed jobs and expired reservations (crashed
+// workers) onto the ready list.
 func (q *RedisQueue) migrateDue(queue string) error {
 	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	due, err := q.client.ZRangeArgs(q.ctx, redis.ZRangeArgs{
-		Key:     q.delayedKey(queue),
-		Start:   "-inf",
-		Stop:    now,
-		ByScore: true,
-	}).Result()
-	if err != nil {
-		return err
-	}
-	for _, member := range due {
-		removed, err := q.client.ZRem(q.ctx, q.delayedKey(queue), member).Result()
-		if err != nil {
+	for _, source := range []string{q.delayedKey(queue), q.reservedKey(queue)} {
+		keys := []string{source, q.listKey(queue)}
+		if err := migrateScript.Run(q.ctx, q.client, keys, now).Err(); err != nil {
 			return err
-		}
-		if removed > 0 { // we won the race for this job
-			if err := q.client.RPush(q.ctx, q.listKey(queue), member).Err(); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
@@ -147,7 +192,9 @@ func (q *RedisQueue) Pop(queue string) (*ReservedJob, error) {
 	if err := q.migrateDue(queue); err != nil {
 		return nil, err
 	}
-	raw, err := q.client.LPop(q.ctx, q.listKey(queue)).Result()
+	expiry := strconv.FormatInt(time.Now().Add(q.retryAfter).UnixMilli(), 10)
+	keys := []string{q.listKey(queue), q.reservedKey(queue)}
+	raw, err := popScript.Run(q.ctx, q.client, keys, expiry).Text()
 	if err == redis.Nil {
 		return nil, nil
 	}
@@ -163,27 +210,37 @@ func (q *RedisQueue) Pop(queue string) (*ReservedJob, error) {
 		Queue:    normalizeQueue(envelope.Queue),
 		Name:     envelope.Name,
 		Payload:  envelope.Payload,
-		Attempts: envelope.Attempts + 1,
+		Attempts: envelope.Attempts, // popScript already counted this attempt
+		reserved: raw,
 	}, nil
 }
 
-// Delete removes a completed job. Popping already removed it from the
-// list, so nothing remains to clean up.
-func (q *RedisQueue) Delete(_ *ReservedJob) error { return nil }
+// Delete removes a completed job's reserved copy.
+func (q *RedisQueue) Delete(job *ReservedJob) error {
+	if job.reserved == "" {
+		return nil
+	}
+	return q.client.ZRem(q.ctx, q.reservedKey(job.Queue), job.reserved).Err()
+}
 
 // Release returns a failed job to the queue after a delay, keeping its
-// attempt count.
+// attempt count. The job is re-queued before the reserved copy is
+// dropped, so a crash between the steps duplicates rather than loses it.
 func (q *RedisQueue) Release(job *ReservedJob, delay time.Duration) error {
-	return q.enqueue(redisJob{
+	if err := q.enqueue(redisJob{
 		ID:       job.ID,
-		Queue:    job.Queue,
+		Queue:    normalizeQueue(job.Queue),
 		Name:     job.Name,
 		Payload:  job.Payload,
 		Attempts: job.Attempts,
-	}, delay)
+	}, delay); err != nil {
+		return err
+	}
+	return q.Delete(job)
 }
 
-// Fail records a permanently failed job on the failed list.
+// Fail records a permanently failed job on the failed list and drops
+// its reserved copy.
 func (q *RedisQueue) Fail(job *ReservedJob, jobErr error) error {
 	failed := FailedJob{
 		ID:        job.ID,
@@ -197,7 +254,10 @@ func (q *RedisQueue) Fail(job *ReservedJob, jobErr error) error {
 	if err != nil {
 		return err
 	}
-	return q.client.RPush(q.ctx, q.failedKey(), encoded).Err()
+	if err := q.client.RPush(q.ctx, q.failedKey(), encoded).Err(); err != nil {
+		return err
+	}
+	return q.Delete(job)
 }
 
 // ListFailed returns all failed jobs.
@@ -260,11 +320,13 @@ func (q *RedisQueue) findFailed(id int64) (string, *FailedJob, error) {
 	return "", nil, fmt.Errorf("queue: failed job %d not found", id)
 }
 
-// Size returns the number of ready plus delayed jobs on a queue.
+// Size returns the number of ready, delayed, and reserved jobs on a
+// queue.
 func (q *RedisQueue) Size(queue string) int {
 	ready, _ := q.client.LLen(q.ctx, q.listKey(queue)).Result()
 	delayed, _ := q.client.ZCard(q.ctx, q.delayedKey(queue)).Result()
-	return int(ready + delayed)
+	reserved, _ := q.client.ZCard(q.ctx, q.reservedKey(queue)).Result()
+	return int(ready + delayed + reserved)
 }
 
 // Close closes the underlying client.

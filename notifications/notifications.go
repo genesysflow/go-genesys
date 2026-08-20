@@ -254,9 +254,43 @@ func (m *Manager) list(notifiableID any, unreadOnly bool) ([]Stored, error) {
 		if raw, ok := row["data"].([]byte); ok {
 			json.Unmarshal(raw, &item.Data)
 		}
+		if created, ok := scanTime(row["created_at"]); ok {
+			item.CreatedAt = created
+		}
+		if read, ok := scanTime(row["read_at"]); ok {
+			item.ReadAt = &read
+		}
 		stored = append(stored, item)
 	}
 	return stored, nil
+}
+
+// scanTime converts a driver-returned timestamp column: postgres hands
+// back time.Time, sqlite a string, mysql []byte.
+func scanTime(v any) (time.Time, bool) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, true
+	case string:
+		return parseTimeString(t)
+	case []byte:
+		return parseTimeString(string(t))
+	}
+	return time.Time{}, false
+}
+
+func parseTimeString(s string) (time.Time, bool) {
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999",
+		"2006-01-02 15:04:05",
+	} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, true
+		}
+	}
+	return time.Time{}, false
 }
 
 // MarkAsRead stamps a database notification as read.

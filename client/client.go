@@ -32,13 +32,31 @@ type Request struct {
 	retryDelay time.Duration
 }
 
-// New creates a request builder with a 30-second timeout.
+// New creates a request builder with a 30-second timeout. Custom
+// headers set on the builder are not forwarded to a different host on
+// redirect, so API keys cannot leak to a redirect target.
 func New() *Request {
-	return &Request{
-		client:  &nethttp.Client{Timeout: 30 * time.Second},
+	r := &Request{
 		headers: make(map[string]string),
 		query:   url.Values{},
 	}
+	r.client = &nethttp.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *nethttp.Request, via []*nethttp.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("client: stopped after 10 redirects")
+			}
+			// net/http only strips Authorization/Cookie cross-host; our
+			// builder headers (e.g. X-Api-Key) must not travel either.
+			if req.URL.Host != via[0].URL.Host {
+				for key := range r.headers {
+					req.Header.Del(key)
+				}
+			}
+			return nil
+		},
+	}
+	return r
 }
 
 // BaseURL prefixes all request URLs.
@@ -98,7 +116,11 @@ func (r *Request) Accept(contentType string) *Request {
 }
 
 // Retry retries failed requests (network errors and 5xx responses) up to
-// times with the given delay between attempts.
+// times with the given delay between attempts. Like Laravel's
+// Http::retry it applies to every verb: a POST/PATCH whose first
+// attempt reached the server but failed mid-response will be re-sent,
+// so give non-idempotent endpoints an idempotency key before retrying
+// them.
 func (r *Request) Retry(times int, delay time.Duration) *Request {
 	r.retries = times
 	r.retryDelay = delay

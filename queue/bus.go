@@ -222,22 +222,30 @@ func (j *batchJob) JobName() string { return "genesys.batch" }
 // SetQueue receives the popped-from queue (QueueAware).
 func (j *batchJob) SetQueue(q Queue) { j.queue = q }
 
-// Handle runs the wrapped job and reports the outcome to its batch.
+// Handle runs the wrapped job; the outcome reaches the batch through
+// settled once the worker decides it is final.
 func (j *batchJob) Handle() error {
 	job, name, err := unmarshalJob(j.Payload)
 	if err != nil {
-		j.report(err)
 		return err
 	}
 	if aware, ok := job.(QueueAware); ok && j.queue != nil {
 		aware.SetQueue(j.queue)
 	}
-	jobErr := job.Handle()
-	if jobErr != nil {
-		jobErr = fmt.Errorf("batch job %s: %w", name, jobErr)
+	if jobErr := job.Handle(); jobErr != nil {
+		return fmt.Errorf("batch job %s: %w", name, jobErr)
 	}
-	j.report(jobErr)
-	return jobErr
+	return nil
+}
+
+// settled reports the outcome to the batch only when it is terminal -
+// a release for retry must not settle the job, or a retried failure
+// would finish the batch early and double-count on later attempts.
+func (j *batchJob) settled(finalErr error, willRetry bool) {
+	if willRetry {
+		return
+	}
+	j.report(finalErr)
 }
 
 func (j *batchJob) report(jobErr error) {

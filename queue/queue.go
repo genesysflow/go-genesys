@@ -33,6 +33,11 @@ type ReservedJob struct {
 	// Attempts is the number of times the job has been attempted,
 	// including the current attempt.
 	Attempts int
+
+	// reserved is driver-private bookkeeping: the redis driver keeps
+	// the raw reserved-set member here so Delete/Release/Fail can
+	// remove it.
+	reserved string
 }
 
 // Driver is a queue connection that supports workers.

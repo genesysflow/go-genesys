@@ -35,7 +35,11 @@ func RouteListCommand(app contracts.Application) *cobra.Command {
 				return fmt.Errorf("failed to boot application: %w", err)
 			}
 
-			routes := routeProvider.Kernel().Router().Routes()
+			kernel, err := resolveKernel(app, routeProvider)
+			if err != nil {
+				return err
+			}
+			routes := kernel.Router().Routes()
 			if len(routes) == 0 {
 				fmt.Println("No routes registered.")
 				return nil

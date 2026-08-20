@@ -305,7 +305,11 @@ func (q *ModelQuery[T]) Delete() (int64, error) {
 	q.applySoftDeleteScope()
 	if q.meta != nil && q.meta.softDeletes {
 		now := time.Now().UTC().Truncate(time.Second)
-		return q.builder.Update(map[string]any{"deleted_at": now, "updated_at": now})
+		values := map[string]any{"deleted_at": now}
+		if _, ok := q.meta.byCol["updated_at"]; ok {
+			values["updated_at"] = now // only models that carry the column
+		}
+		return q.builder.Update(values)
 	}
 	return q.builder.Delete()
 }

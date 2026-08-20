@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/genesysflow/go-genesys/hash"
@@ -11,6 +12,23 @@ import (
 )
 
 const sessionKey = "_auth_id"
+
+var (
+	dummyHashOnce sync.Once
+	dummyHash     string
+)
+
+// timingDummyHash returns a bcrypt hash produced at the framework's
+// current default cost. Burning a comparison against a hash of a
+// DIFFERENT cost would defeat the timing equalisation: an attacker
+// could still distinguish unknown accounts by the faster (or slower)
+// response.
+func timingDummyHash() string {
+	dummyHashOnce.Do(func() {
+		dummyHash, _ = hash.Make("genesys-timing-equalizer")
+	})
+	return dummyHash
+}
 
 // SessionGuard authenticates users via the session. It requires the session
 // middleware to be registered on the kernel.
@@ -60,7 +78,7 @@ func (g *SessionGuard) Attempt(ctx *http.Context, credentials map[string]any) (A
 		if errors.Is(err, ErrUserNotFound) {
 			// Burn a hash comparison anyway so response timing does not
 			// reveal whether the account exists.
-			hash.Check(password, "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy")
+			hash.Check(password, timingDummyHash())
 			return nil, ErrInvalidCredentials
 		}
 		return nil, err

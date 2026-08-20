@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -195,12 +196,28 @@ func (t *Translator) TransChoice(key string, count int, replacements ...map[stri
 	return replacePlaceholders(chosen, all)
 }
 
-// replacePlaceholders substitutes :name style placeholders.
+// replacePlaceholders substitutes :name style placeholders. Keys are
+// applied longest-first (like Laravel) so ":name" cannot corrupt
+// ":name_full" when both are present.
 func replacePlaceholders(message string, replacements ...map[string]string) string {
+	merged := map[string]string{}
 	for _, set := range replacements {
 		for key, value := range set {
-			message = strings.ReplaceAll(message, ":"+key, value)
+			merged[key] = value
 		}
+	}
+	keys := make([]string, 0, len(merged))
+	for key := range merged {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) != len(keys[j]) {
+			return len(keys[i]) > len(keys[j])
+		}
+		return keys[i] < keys[j]
+	})
+	for _, key := range keys {
+		message = strings.ReplaceAll(message, ":"+key, merged[key])
 	}
 	return message
 }

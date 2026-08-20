@@ -1,6 +1,8 @@
 package auth_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -106,11 +108,16 @@ func TestRememberMeSurvivesLostSession(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode, "remember cookie re-authenticates")
 
-	// The stored token must match the cookie's token half.
+	// The database must hold the SHA-256 of the cookie's token half,
+	// never the raw token: a leaked users table must not be replayable
+	// as remember-me cookies.
 	rows, err := database.Default().Table("users").Where("id", 1).Get()
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
-	assert.Equal(t, strings.SplitN(rememberCookie, "|", 2)[1], rows[0]["remember_token"])
+	rawToken := strings.SplitN(rememberCookie, "|", 2)[1]
+	sum := sha256.Sum256([]byte(rawToken))
+	assert.Equal(t, hex.EncodeToString(sum[:]), rows[0]["remember_token"], "token is hashed at rest")
+	assert.NotEqual(t, rawToken, rows[0]["remember_token"])
 }
 
 func TestRememberMeRejectsBadCookies(t *testing.T) {

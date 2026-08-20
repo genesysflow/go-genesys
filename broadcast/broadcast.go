@@ -58,6 +58,7 @@ type client struct {
 	closed   bool
 	send     chan []byte
 	channels map[string]bool
+	conn     interface{ Close() error }
 }
 
 // trySend queues a frame unless the client is closed or its buffer is
@@ -164,7 +165,9 @@ func (h *Hub) unsubscribe(c *client, channel string) {
 	delete(c.channels, channel)
 }
 
-// drop disconnects a client from every channel and closes its outbox.
+// drop disconnects a client from every channel, closes its outbox, and
+// closes the underlying connection so the peer learns it was dropped
+// instead of lingering as a subscribed-looking zombie.
 func (h *Hub) drop(c *client) {
 	h.mu.Lock()
 	for channel := range c.channels {
@@ -176,6 +179,9 @@ func (h *Hub) drop(c *client) {
 	c.channels = make(map[string]bool)
 	h.mu.Unlock()
 	c.close()
+	if c.conn != nil {
+		_ = c.conn.Close() // unblocks the read loop; safe on repeat drops
+	}
 }
 
 // Handler returns the Fiber handler that upgrades requests to
@@ -190,6 +196,7 @@ func (h *Hub) serve(conn *websocket.Conn) {
 	c := &client{
 		send:     make(chan []byte, 64),
 		channels: make(map[string]bool),
+		conn:     conn,
 	}
 	defer h.drop(c)
 

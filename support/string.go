@@ -5,12 +5,25 @@ import (
 	"unicode"
 )
 
+// keepIdentifierRunes drops every rune that is not a letter, digit,
+// underscore, hyphen, or space. The case helpers feed generator names
+// into file paths, so path separators and dots must never survive
+// ("../../evil" -> "evil").
+func keepIdentifierRunes(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '_' || r == '-' || r == ' ' || unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return r
+		}
+		return -1
+	}, s)
+}
+
 // ToPascalCase converts a string to PascalCase. Mixed-case words keep
 // their interior capitals, so already-camelled input survives:
 // "send_email" -> "SendEmail", "sendEmail" -> "SendEmail",
 // "SendEmail" -> "SendEmail", "CREATE_USERS" -> "CreateUsers".
 func ToPascalCase(s string) string {
-	words := strings.FieldsFunc(s, func(r rune) bool {
+	words := strings.FieldsFunc(keepIdentifierRunes(s), func(r rune) bool {
 		return r == '_' || r == '-' || r == ' '
 	})
 
@@ -57,6 +70,7 @@ func Title(s string) string {
 
 // ToSnakeCase converts a string to snake_case.
 func ToSnakeCase(s string) string {
+	s = keepIdentifierRunes(s)
 	var result strings.Builder
 	for i, r := range s {
 		if i > 0 && r >= 'A' && r <= 'Z' {

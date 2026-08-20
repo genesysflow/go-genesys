@@ -88,26 +88,34 @@ type UniqueID interface {
 	UniqueID() string
 }
 
+// uniqueKeyFor derives the lock key DispatchUnique and
+// ReleaseUniqueLock share: the job's UniqueID, or its registered name
+// plus a payload hash.
+func uniqueKeyFor(job Job) (string, error) {
+	name, body, err := marshalJob(job)
+	if err != nil {
+		return "", err
+	}
+	if unique, ok := job.(UniqueID); ok {
+		return "queue:unique:" + unique.UniqueID(), nil
+	}
+	sum := sha256.Sum256(body)
+	return "queue:unique:" + name + ":" + hex.EncodeToString(sum[:8]), nil
+}
+
 // DispatchUnique pushes a job unless an identical one was dispatched in
 // the last ttl - Laravel's ShouldBeUnique. Reports whether the job was
-// actually pushed:
+// actually pushed. Pair it with ReleaseUniqueLock on the worker so a
+// completed job frees its slot before the ttl runs out:
 //
 //	pushed, err := queue.DispatchUnique(q, store, &RebuildIndex{}, time.Minute)
 func DispatchUnique(q Queue, locks Locker, job Job, ttl time.Duration) (bool, error) {
-	name, body, err := marshalJob(job)
+	key, err := uniqueKeyFor(job)
 	if err != nil {
 		return false, err
 	}
 
-	key := ""
-	if unique, ok := job.(UniqueID); ok {
-		key = unique.UniqueID()
-	} else {
-		sum := sha256.Sum256(body)
-		key = name + ":" + hex.EncodeToString(sum[:8])
-	}
-
-	acquired, err := locks.Add("queue:unique:"+key, 1, ttl)
+	acquired, err := locks.Add(key, 1, ttl)
 	if err != nil {
 		return false, err
 	}
@@ -115,8 +123,27 @@ func DispatchUnique(q Queue, locks Locker, job Job, ttl time.Duration) (bool, er
 		return false, nil
 	}
 	if err := q.Push(job); err != nil {
-		locks.Forget("queue:unique:" + key)
+		locks.Forget(key)
 		return false, err
 	}
 	return true, nil
+}
+
+// ReleaseUniqueLock frees a DispatchUnique lock as soon as the job
+// completes successfully, so the next dispatch is accepted immediately
+// instead of waiting out the ttl - like Laravel, which releases a
+// unique job's lock when it finishes. Failed or retrying jobs keep the
+// lock (preventing duplicates while a retry is pending) until it
+// expires:
+//
+//	worker.Use(queue.ReleaseUniqueLock(store))
+func ReleaseUniqueLock(locks Locker) JobMiddleware {
+	return func(job Job, next func() error) error {
+		key, keyErr := uniqueKeyFor(job) // derive before Handle mutates fields
+		runErr := next()
+		if runErr == nil && keyErr == nil {
+			locks.Forget(key)
+		}
+		return runErr
+	}
 }

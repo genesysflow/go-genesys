@@ -11,15 +11,18 @@ func NewSyncQueue() *SyncQueue {
 	return &SyncQueue{}
 }
 
-// Push executes the job immediately.
+// Push executes the job immediately. Inline runs settle in one shot,
+// so batch wrappers report their outcome right away.
 func (q *SyncQueue) Push(job Job) error {
-	return job.Handle()
+	err := job.Handle()
+	notifySettled(job, err, false)
+	return err
 }
 
 // Later executes the job immediately; the sync driver ignores delays,
 // matching Laravel's sync connection.
 func (q *SyncQueue) Later(_ time.Duration, job Job) error {
-	return job.Handle()
+	return q.Push(job)
 }
 
 // PushOn runs the job immediately - the sync driver has no named

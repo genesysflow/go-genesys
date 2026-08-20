@@ -137,7 +137,16 @@ func (m *Message) GetHTML() string { return m.htmlBody }
 // GetText returns the plain-text body.
 func (m *Message) GetText() string { return m.textBody }
 
-// validate checks the message can be sent.
+// headerSafe strips CR and LF so no caller-supplied value can smuggle
+// extra headers into the rendered message.
+func headerSafe(v string) string {
+	v = strings.ReplaceAll(v, "\r", "")
+	return strings.ReplaceAll(v, "\n", "")
+}
+
+// validate checks the message can be sent. Addresses containing CR/LF
+// are rejected outright: rendered into headers (or SMTP MAIL/RCPT
+// commands) they would inject arbitrary headers or commands.
 func (m *Message) validate() error {
 	if m.from == "" {
 		return fmt.Errorf("mail: message has no from address")
@@ -147,6 +156,15 @@ func (m *Message) validate() error {
 	}
 	if m.textBody == "" && m.htmlBody == "" {
 		return fmt.Errorf("mail: message has no body")
+	}
+	addresses := []string{m.from, m.replyTo}
+	addresses = append(addresses, m.to...)
+	addresses = append(addresses, m.cc...)
+	addresses = append(addresses, m.bcc...)
+	for _, addr := range addresses {
+		if strings.ContainsAny(addr, "\r\n") {
+			return fmt.Errorf("mail: address %q contains newline characters", addr)
+		}
 	}
 	return nil
 }
@@ -163,7 +181,9 @@ func (m *Message) Bytes() ([]byte, error) {
 
 	var buf bytes.Buffer
 	writeHeader := func(key, value string) {
-		fmt.Fprintf(&buf, "%s: %s\r\n", key, value)
+		// Belt and braces: no header value may carry CR/LF, whatever
+		// its origin (custom headers, filenames, display names).
+		fmt.Fprintf(&buf, "%s: %s\r\n", headerSafe(key), headerSafe(value))
 	}
 
 	fromHeader := m.from
@@ -194,10 +214,11 @@ func (m *Message) Bytes() ([]byte, error) {
 			return nil, err
 		}
 		for _, att := range m.attachments {
+			filename := strings.ReplaceAll(headerSafe(att.filename), `"`, `'`)
 			header := textproto.MIMEHeader{}
-			header.Set("Content-Type", att.contentType)
+			header.Set("Content-Type", headerSafe(att.contentType))
 			header.Set("Content-Transfer-Encoding", "base64")
-			header.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, att.filename))
+			header.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 			part, err := body.CreatePart(header)
 			if err != nil {
 				return nil, err

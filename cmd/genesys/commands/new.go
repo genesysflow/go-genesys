@@ -9,6 +9,7 @@ import (
 	"text/template"
 
 	"github.com/genesysflow/go-genesys/foundation"
+	"github.com/genesysflow/go-genesys/templates"
 	"github.com/spf13/cobra"
 )
 
@@ -210,18 +211,23 @@ func getTemplatesDir() (string, error) {
 	return "", fmt.Errorf("templates directory not found")
 }
 
-// loadTemplate loads a template file from the templates directory.
+// loadTemplate loads a template from the copy embedded in the binary,
+// so a release-built `genesys` scaffolds identically anywhere - it no
+// longer depends on (or gets confused by) a templates/ directory that
+// happens to exist in the working directory. The on-disk lookup remains
+// only as a fallback for templates not yet embedded.
 func loadTemplate(filename string) (string, error) {
-	templatesDir, err := getTemplatesDir()
-	if err != nil {
-		return "", err
+	if content, err := templates.FS.ReadFile(filename); err == nil {
+		return string(content), nil
 	}
 
-	path := filepath.Join(templatesDir, filename)
-	content, err := os.ReadFile(path)
+	templatesDir, err := getTemplatesDir()
+	if err != nil {
+		return "", fmt.Errorf("template %s is not embedded and no templates directory was found", filename)
+	}
+	content, err := os.ReadFile(filepath.Join(templatesDir, filename))
 	if err != nil {
 		return "", fmt.Errorf("failed to read template %s: %w", filename, err)
 	}
-
 	return string(content), nil
 }

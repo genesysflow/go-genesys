@@ -81,27 +81,45 @@ func (q *ModelQuery[T]) existsSubquery(parentType reflect.Type, parentTable, pat
 	var sub *query.Builder
 	relatedTable := relatedMeta.table
 
+	// Self-referential relations must alias the inner table, or the
+	// subquery's columns would shadow the outer row's and the EXISTS
+	// would be uncorrelated (Laravel's laravel_reserved_N alias).
+	innerRef := relatedTable
+	if relatedTable == parentTable {
+		innerRef = "genesys_self_" + relatedTable
+	}
+	tableExpr := func(name, ref string) string {
+		if name == ref {
+			return name
+		}
+		return name + " as " + ref
+	}
+
 	switch rel.kind {
 	case relHasOne, relHasMany:
-		sub = query.New(q.driver, q.executor).Table(relatedTable).
-			WhereColumn(relatedTable+"."+rel.foreignKey, "=", parentTable+"."+rel.ownerKey)
+		sub = query.New(q.driver, q.executor).Table(tableExpr(relatedTable, innerRef)).
+			WhereColumn(innerRef+"."+rel.foreignKey, "=", parentTable+"."+rel.ownerKey)
 	case relBelongsTo:
-		sub = query.New(q.driver, q.executor).Table(relatedTable).
-			WhereColumn(relatedTable+"."+rel.ownerKey, "=", parentTable+"."+rel.foreignKey)
+		sub = query.New(q.driver, q.executor).Table(tableExpr(relatedTable, innerRef)).
+			WhereColumn(innerRef+"."+rel.ownerKey, "=", parentTable+"."+rel.foreignKey)
 	case relBelongsToMany:
-		sub = query.New(q.driver, q.executor).Table(rel.pivotTable).
-			Join(relatedTable, rel.pivotTable+"."+rel.pivotRK, "=", relatedTable+"."+rel.ownerKey).
-			WhereColumn(rel.pivotTable+"."+rel.pivotFK, "=", parentTable+"."+rel.ownerKey)
+		pivotRef := rel.pivotTable
+		if rel.pivotTable == parentTable {
+			pivotRef = "genesys_self_" + rel.pivotTable
+		}
+		sub = query.New(q.driver, q.executor).Table(tableExpr(rel.pivotTable, pivotRef)).
+			Join(tableExpr(relatedTable, innerRef), pivotRef+"."+rel.pivotRK, "=", innerRef+"."+rel.ownerKey).
+			WhereColumn(pivotRef+"."+rel.pivotFK, "=", parentTable+"."+rel.ownerKey)
 	default:
 		return nil, fmt.Errorf("database: unsupported relation kind for %q", head)
 	}
 
 	if relatedMeta.softDeletes {
-		sub.WhereNull(relatedTable + ".deleted_at")
+		sub.WhereNull(innerRef + ".deleted_at")
 	}
 
 	if rest != "" {
-		nested, err := q.existsSubquery(rel.related, relatedTable, rest, fn)
+		nested, err := q.existsSubquery(rel.related, innerRef, rest, fn)
 		if err != nil {
 			return nil, err
 		}

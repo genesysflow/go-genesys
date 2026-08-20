@@ -65,15 +65,22 @@ func NewBuilder(db *sql.DB, driver string) *Builder {
 	}
 }
 
-// Create creates a new table.
+// Create creates a new table, then any secondary indexes declared on
+// the blueprint (table-level Index(...) or column-level .Index()).
 func (b *Builder) Create(table string, callback func(*Blueprint)) error {
 	bp := NewBlueprint(table)
 	bp.create = true
 	callback(bp)
 
-	sql := b.grammar.CompileCreate(bp)
-	_, err := b.db.Exec(sql)
-	return err
+	if _, err := b.db.Exec(b.grammar.CompileCreate(bp)); err != nil {
+		return err
+	}
+	for _, stmt := range b.grammar.CompileCreateIndexes(bp) {
+		if _, err := b.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Table modifies an existing table.
@@ -645,6 +652,7 @@ func (c *ColumnDefinition) Timestamp() *ColumnDefinition {
 // Grammar compiles schema to SQL.
 type Grammar interface {
 	CompileCreate(bp *Blueprint) string
+	CompileCreateIndexes(bp *Blueprint) []string
 	CompileTableExists(table string) string
 	WrapTable(table string) string
 	WrapColumn(column string) string
@@ -663,9 +671,62 @@ func NewGrammar(driver string) Grammar {
 	switch driver {
 	case "pgsql", "postgres", "postgresql":
 		return &PostgresGrammar{}
+	case "mysql", "mariadb":
+		return &MySQLGrammar{}
 	default:
 		return &SQLiteGrammar{}
 	}
+}
+
+// wrapAll wraps each identifier in a list.
+func wrapAll(columns []string, wrap func(string) string) []string {
+	wrapped := make([]string, len(columns))
+	for i, c := range columns {
+		wrapped[i] = wrap(c)
+	}
+	return wrapped
+}
+
+// compileTableConstraints renders bp's table-level UNIQUE and PRIMARY
+// entries as CREATE TABLE constraint parts. Unique constraints are
+// named "<table>_<cols>_unique" so DropUnique can find them on every
+// driver.
+func compileTableConstraints(bp *Blueprint, wrap func(string) string) []string {
+	var parts []string
+	for _, idx := range bp.indexes {
+		joined := strings.Join(wrapAll(idx.Columns, wrap), ", ")
+		switch idx.Type {
+		case "UNIQUE":
+			name := bp.table + "_" + strings.Join(idx.Columns, "_") + "_unique"
+			parts = append(parts, fmt.Sprintf("CONSTRAINT %s UNIQUE (%s)", wrap(name), joined))
+		case "PRIMARY":
+			parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", joined))
+		}
+	}
+	return parts
+}
+
+// compileCreateIndexStatements renders CREATE INDEX statements for bp's
+// table-level Index(...) entries and column-level .Index() modifiers,
+// named "<table>_<cols>_index" to match CompileDropIndex.
+func compileCreateIndexStatements(bp *Blueprint, wrapTable, wrapIdent func(string) string) []string {
+	var stmts []string
+	add := func(columns []string) {
+		name := bp.table + "_" + strings.Join(columns, "_") + "_index"
+		stmts = append(stmts, fmt.Sprintf("CREATE INDEX %s ON %s (%s)",
+			wrapIdent(name), wrapTable(bp.table), strings.Join(wrapAll(columns, wrapIdent), ", ")))
+	}
+	for _, col := range bp.columns {
+		if col.IsIndex {
+			add([]string{col.Name})
+		}
+	}
+	for _, idx := range bp.indexes {
+		if idx.Type == "INDEX" {
+			add(idx.Columns)
+		}
+	}
+	return stmts
 }
 
 // quoteIdentifier wraps a SQL identifier in double quotes, escaping any quote
@@ -719,9 +780,16 @@ func (g *SQLiteGrammar) CompileCreate(bp *Blueprint) string {
 		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
 
+	parts = append(parts, compileTableConstraints(bp, g.WrapColumn)...)
 	parts = append(parts, compileForeignKeys(bp, g.WrapColumn)...)
 
 	return fmt.Sprintf("CREATE TABLE %s (\n  %s\n)", g.WrapTable(bp.table), strings.Join(parts, ",\n  "))
+}
+
+// CompileCreateIndexes compiles the CREATE INDEX statements that follow
+// a table's creation.
+func (g *SQLiteGrammar) CompileCreateIndexes(bp *Blueprint) []string {
+	return compileCreateIndexStatements(bp, g.WrapTable, g.WrapColumn)
 }
 
 func (g *SQLiteGrammar) compileColumn(col ColumnDefinition) string {
@@ -905,9 +973,16 @@ func (g *PostgresGrammar) CompileCreate(bp *Blueprint) string {
 		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
 
+	parts = append(parts, compileTableConstraints(bp, g.WrapColumn)...)
 	parts = append(parts, compileForeignKeys(bp, g.WrapColumn)...)
 
 	return fmt.Sprintf("CREATE TABLE %s (\n  %s\n)", g.WrapTable(bp.table), strings.Join(parts, ",\n  "))
+}
+
+// CompileCreateIndexes compiles the CREATE INDEX statements that follow
+// a table's creation.
+func (g *PostgresGrammar) CompileCreateIndexes(bp *Blueprint) []string {
+	return compileCreateIndexStatements(bp, g.WrapTable, g.WrapColumn)
 }
 
 func (g *PostgresGrammar) compileColumn(col ColumnDefinition) string {
@@ -1115,4 +1190,197 @@ func (g *PostgresGrammar) CompileDropPrimary(table string) (string, error) {
 	// PostgreSQL names primary keys as table_pkey by default
 	constraintName := table + "_pkey"
 	return fmt.Sprintf("ALTER TABLE %s DROP CONSTRAINT IF EXISTS %s", g.WrapTable(table), g.WrapColumn(constraintName)), nil
+}
+
+// MySQLGrammar compiles schema for MySQL and MariaDB: backtick-quoted
+// identifiers, AUTO_INCREMENT keys, and MODIFY COLUMN alters.
+type MySQLGrammar struct{}
+
+// quoteBacktick wraps a MySQL identifier in backticks, escaping any
+// backtick it contains by doubling it.
+func quoteBacktick(identifier string) string {
+	return "`" + strings.ReplaceAll(identifier, "`", "``") + "`"
+}
+
+func (g *MySQLGrammar) WrapTable(table string) string { return quoteBacktick(table) }
+
+func (g *MySQLGrammar) WrapColumn(column string) string { return quoteBacktick(column) }
+
+func (g *MySQLGrammar) CompileTableExists(table string) string {
+	return fmt.Sprintf(
+		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = %s",
+		quoteString(table))
+}
+
+func (g *MySQLGrammar) CompileCreate(bp *Blueprint) string {
+	var parts []string
+	var primaryKeys []string
+
+	for _, col := range bp.columns {
+		parts = append(parts, g.compileColumn(col))
+		if col.Primary && !col.AutoIncrement {
+			primaryKeys = append(primaryKeys, g.WrapColumn(col.Name))
+		}
+	}
+
+	if len(primaryKeys) > 1 {
+		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
+	}
+
+	parts = append(parts, compileTableConstraints(bp, g.WrapColumn)...)
+	parts = append(parts, compileForeignKeys(bp, g.WrapColumn)...)
+
+	return fmt.Sprintf("CREATE TABLE %s (\n  %s\n)", g.WrapTable(bp.table), strings.Join(parts, ",\n  "))
+}
+
+// CompileCreateIndexes compiles the CREATE INDEX statements that follow
+// a table's creation.
+func (g *MySQLGrammar) CompileCreateIndexes(bp *Blueprint) []string {
+	return compileCreateIndexStatements(bp, g.WrapTable, g.WrapColumn)
+}
+
+func (g *MySQLGrammar) compileColumn(col ColumnDefinition) string {
+	var def strings.Builder
+
+	def.WriteString(g.WrapColumn(col.Name))
+	def.WriteString(" ")
+
+	switch col.Type {
+	case "varchar":
+		def.WriteString(fmt.Sprintf("VARCHAR(%d)", col.Length))
+	case "decimal":
+		def.WriteString(fmt.Sprintf("DECIMAL(%d,%d)", col.Precision, col.Scale))
+	case "integer":
+		def.WriteString("INT")
+	case "bigint":
+		def.WriteString("BIGINT")
+	case "boolean":
+		def.WriteString("TINYINT(1)")
+	case "datetime":
+		def.WriteString("DATETIME")
+	default:
+		def.WriteString(strings.ToUpper(col.Type))
+	}
+
+	if col.Unsigned {
+		def.WriteString(" UNSIGNED")
+	}
+	if !col.IsNullable && !col.Primary {
+		def.WriteString(" NOT NULL")
+	}
+	if col.AutoIncrement {
+		def.WriteString(" AUTO_INCREMENT")
+	}
+	if col.Primary {
+		def.WriteString(" PRIMARY KEY")
+	}
+	if col.IsUnique {
+		def.WriteString(" UNIQUE")
+	}
+	if col.DefaultValue != nil {
+		switch v := col.DefaultValue.(type) {
+		case string:
+			def.WriteString(" DEFAULT " + quoteString(v))
+		case bool:
+			if v {
+				def.WriteString(" DEFAULT 1")
+			} else {
+				def.WriteString(" DEFAULT 0")
+			}
+		default:
+			def.WriteString(fmt.Sprintf(" DEFAULT %v", v))
+		}
+	}
+
+	return def.String()
+}
+
+// CompileAlter compiles ALTER table commands for MySQL.
+func (g *MySQLGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
+	var statements []string
+
+	for _, cmd := range bp.commands {
+		switch cmd.Type {
+		case "add":
+			statements = append(statements, g.CompileAddColumn(bp.table, *cmd.Column))
+		case "drop":
+			for _, col := range cmd.Columns {
+				statements = append(statements, g.CompileDropColumn(bp.table, col))
+			}
+		case "rename":
+			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
+		case "modify":
+			stmts, err := g.CompileModifyColumn(bp.table, *cmd.Column)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmts...)
+		case "dropIndex":
+			statements = append(statements, g.CompileDropIndex(bp.table, cmd.Columns))
+		case "dropUnique":
+			stmts, err := g.CompileDropUnique(bp.table, cmd.Columns)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmts...)
+		case "dropPrimary":
+			stmt, err := g.CompileDropPrimary(bp.table)
+			if err != nil {
+				return nil, err
+			}
+			statements = append(statements, stmt)
+		}
+	}
+
+	return statements, nil
+}
+
+// CompileAddColumn compiles ADD COLUMN statement for MySQL.
+func (g *MySQLGrammar) CompileAddColumn(table string, col ColumnDefinition) string {
+	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", g.WrapTable(table), g.compileColumn(col))
+}
+
+// CompileDropColumn compiles DROP COLUMN statement for MySQL.
+func (g *MySQLGrammar) CompileDropColumn(table string, column string) string {
+	return fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", g.WrapTable(table), g.WrapColumn(column))
+}
+
+// CompileRenameColumn compiles RENAME COLUMN (MySQL 8+ / MariaDB 10.5+).
+func (g *MySQLGrammar) CompileRenameColumn(table, from, to string) string {
+	return fmt.Sprintf("ALTER TABLE %s RENAME COLUMN %s TO %s",
+		g.WrapTable(table), g.WrapColumn(from), g.WrapColumn(to))
+}
+
+// CompileModifyColumn compiles MODIFY COLUMN for MySQL. MySQL replaces
+// the whole column definition, so the blueprint must provide the full
+// definition including the type.
+func (g *MySQLGrammar) CompileModifyColumn(table string, col ColumnDefinition) ([]string, error) {
+	if col.Type == "" {
+		return nil, fmt.Errorf("%w: MySQL MODIFY COLUMN replaces the whole definition of %s.%s; specify the column type as well",
+			ErrUnsupportedOperation, table, col.Name)
+	}
+	return []string{
+		fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", g.WrapTable(table), g.compileColumn(col)),
+	}, nil
+}
+
+// CompileDropIndex compiles DROP INDEX for MySQL.
+func (g *MySQLGrammar) CompileDropIndex(table string, columns []string) string {
+	indexName := table + "_" + strings.Join(columns, "_") + "_index"
+	return fmt.Sprintf("DROP INDEX %s ON %s", g.WrapColumn(indexName), g.WrapTable(table))
+}
+
+// CompileDropUnique compiles the drop of a named unique constraint
+// ("<table>_<cols>_unique", the name CompileCreate assigns); MySQL
+// stores unique constraints as indexes.
+func (g *MySQLGrammar) CompileDropUnique(table string, columns []string) ([]string, error) {
+	name := table + "_" + strings.Join(columns, "_") + "_unique"
+	return []string{
+		fmt.Sprintf("ALTER TABLE %s DROP INDEX %s", g.WrapTable(table), g.WrapColumn(name)),
+	}, nil
+}
+
+// CompileDropPrimary compiles DROP PRIMARY KEY for MySQL.
+func (g *MySQLGrammar) CompileDropPrimary(table string) (string, error) {
+	return fmt.Sprintf("ALTER TABLE %s DROP PRIMARY KEY", g.WrapTable(table)), nil
 }

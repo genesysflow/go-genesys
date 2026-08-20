@@ -211,11 +211,12 @@ func GetTypeName(t reflect.Type) string {
 	return t.String()
 }
 
-// Make resolves a service by name from the container.
+// Make resolves a service by name from the container. It deliberately
+// holds no container lock: samber/do is internally synchronized, and a
+// read lock here would deadlock lazy factories that resolve their own
+// dependencies through a nested Make once a writer (Bind/Instance) is
+// queued - Go's RWMutex blocks re-entrant RLock in that case.
 func (c *Container) Make(name string) (any, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	return do.InvokeNamed[any](c.injector, name)
 }
 

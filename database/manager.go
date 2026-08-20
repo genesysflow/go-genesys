@@ -4,6 +4,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"sync"
 	"time"
@@ -103,19 +104,42 @@ func (m *Manager) Connection(name ...string) contracts.Connection {
 	// Create new connection
 	conn, err := m.makeConnection(connName)
 	if err != nil {
-		// Return connection with error state
+		// Return connection with error state. The failing DB handle makes
+		// every method - including QueryRow, which cannot return an error -
+		// surface the connection error instead of dereferencing a nil DB.
 		return &Connection{
 			name: connName,
 			err:  err,
+			db:   sql.OpenDB(failingConnector{err: err}),
 		}
 	}
 
+	// Re-check under the write lock: a concurrent first call may have
+	// opened the same connection. Keep the stored one and close ours so
+	// the losing pool doesn't leak for the process lifetime.
 	m.mu.Lock()
+	if existing, ok := m.connections[connName]; ok {
+		m.mu.Unlock()
+		conn.db.Close()
+		return existing
+	}
 	m.connections[connName] = conn
 	m.mu.Unlock()
 
 	return conn
 }
+
+// failingConnector is a database/sql connector whose every connection
+// attempt reports the original connection error; error-state
+// Connections carry one so no code path sees a nil *sql.DB.
+type failingConnector struct{ err error }
+
+func (c failingConnector) Connect(context.Context) (driver.Conn, error) { return nil, c.err }
+func (c failingConnector) Driver() driver.Driver                        { return failingDriver(c) }
+
+type failingDriver struct{ err error }
+
+func (d failingDriver) Open(string) (driver.Conn, error) { return nil, d.err }
 
 // makeConnection creates a new database connection.
 func (m *Manager) makeConnection(name string) (*Connection, error) {
@@ -312,8 +336,11 @@ func buildDSN(config ConnectionConfig) string {
 			config.Port = 3306
 		}
 		// parseTime makes DATETIME/TIMESTAMP columns scan into time.Time.
+		// clientFoundRows makes UPDATE report matched rows rather than
+		// changed rows, so an update writing identical values is not
+		// mistaken for a missing row (the ORM maps 0 to ErrNotFound).
 		return fmt.Sprintf(
-			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC",
+			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC&clientFoundRows=true",
 			config.Username, config.Password, config.Host, config.Port, config.Database,
 		)
 

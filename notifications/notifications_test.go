@@ -98,6 +98,16 @@ func TestDatabaseChannelLifecycle(t *testing.T) {
 	all, err := manager.For(user.ID)
 	require.NoError(t, err)
 	assert.Len(t, all, 2, "read notifications still listed by For")
+	for _, item := range all {
+		assert.False(t, item.CreatedAt.IsZero(), "CreatedAt populated from the row")
+	}
+	readCount := 0
+	for _, item := range all {
+		if item.ReadAt != nil {
+			readCount++
+		}
+	}
+	assert.Equal(t, 1, readCount, "the marked notification carries its ReadAt")
 
 	require.NoError(t, manager.MarkAllAsRead(user.ID))
 	unread, err = manager.UnreadFor(user.ID)

@@ -50,9 +50,23 @@ func (l *Lock) Block(timeout time.Duration) (bool, error) {
 	}
 }
 
+// conditionalForgetter is implemented by stores that can atomically
+// delete a key only while it still holds the given value (Laravel's
+// Lua-scripted lock release). The memory and redis stores implement it.
+type conditionalForgetter interface {
+	ForgetIfEquals(key string, value string) (bool, error)
+}
+
 // Release frees the lock when this instance owns it, reporting whether
-// anything was released.
+// anything was released. On stores supporting an atomic
+// compare-and-delete the release cannot free a lock that expired and
+// was re-acquired by someone else in between.
 func (l *Lock) Release() (bool, error) {
+	if store, ok := l.store.(conditionalForgetter); ok {
+		return store.ForgetIfEquals(l.name, l.owner)
+	}
+	// Fallback for stores without compare-and-delete: a narrow race
+	// remains between the ownership check and the delete.
 	current, err := l.store.Get(l.name)
 	if err != nil {
 		return false, err

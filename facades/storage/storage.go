@@ -23,12 +23,15 @@ func SetInstance(factory contracts.FilesystemFactory) {
 	instance = factory
 }
 
-// Disk returns a filesystem instance by name.
+// Disk returns a filesystem instance by name. Like the sibling facades
+// it panics with a registration hint when no factory is set, instead of
+// returning a nil interface that explodes without a diagnostic at the
+// first method call.
 func Disk(name ...string) contracts.Filesystem {
 	mu.RLock()
 	defer mu.RUnlock()
 	if instance == nil {
-		return nil
+		panic("storage facade: no instance set - register the FilesystemServiceProvider or call storage.SetInstance")
 	}
 	return instance.Disk(name...)
 }

@@ -112,6 +112,23 @@ func (s *MemoryStore) incrementBy(key string, amount int64) (int64, error) {
 	return current, nil
 }
 
+// ForgetIfEquals atomically removes the key only while it still holds
+// the given string value; the lock helper uses it so a Release can
+// never free a lock that expired and was re-acquired by another owner.
+func (s *MemoryStore) ForgetIfEquals(key string, value string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it, ok := s.items[key]
+	if !ok || it.expired() {
+		return false, nil
+	}
+	if current, ok := it.value.(string); !ok || current != value {
+		return false, nil
+	}
+	delete(s.items, key)
+	return true, nil
+}
+
 // Forget removes an item from the cache.
 func (s *MemoryStore) Forget(key string) error {
 	s.mu.Lock()

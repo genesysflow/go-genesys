@@ -2,6 +2,8 @@ package commands
 
 import (
 	"fmt"
+	"net"
+	"time"
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
@@ -83,7 +85,9 @@ func runServer(app contracts.Application, host, port string) error {
 		}
 	}
 
-	// Create route service provider
+	// Create route service provider. Register dedupes by type, so this
+	// no-ops when the bootstrap already registered one - the kernel is
+	// then resolved from the container below.
 	routeProvider := &providers.RouteServiceProvider{
 		Routes:       routesCallback,
 		Middleware:   globalMiddleware,
@@ -95,10 +99,28 @@ func runServer(app contracts.Application, host, port string) error {
 		return fmt.Errorf("failed to boot application: %w", err)
 	}
 
-	kernel := routeProvider.Kernel()
+	kernel, err := resolveKernel(app, routeProvider)
+	if err != nil {
+		return err
+	}
 
+	addr := net.JoinHostPort(host, port)
 	logger.Info("Starting server", "host", host, "port", port)
-	fmt.Printf("Server starting at http://%s:%s\n", host, port)
+	fmt.Printf("Server starting at http://%s\n", addr)
 
-	return kernel.RunWithGracefulShutdown(":"+port, 10)
+	return kernel.RunWithGracefulShutdown(addr, 10*time.Second)
+}
+
+// resolveKernel returns the provider's kernel, falling back to the one
+// a previously registered RouteServiceProvider bound in the container
+// (app.Register dedupes by type, leaving ours empty in that case).
+func resolveKernel(app contracts.Application, routeProvider *providers.RouteServiceProvider) (*http.Kernel, error) {
+	if kernel := routeProvider.Kernel(); kernel != nil {
+		return kernel, nil
+	}
+	kernel, err := container.Resolve[*http.Kernel](app)
+	if err != nil {
+		return nil, fmt.Errorf("no HTTP kernel available - register a RouteServiceProvider: %w", err)
+	}
+	return kernel, nil
 }

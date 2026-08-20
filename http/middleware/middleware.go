@@ -108,13 +108,20 @@ func CORS(config ...CORSConfig) http.MiddlewareFunc {
 	allowedOrigins := splitAndTrim(cfg.AllowOrigins, ",")
 	wildcard := cfg.AllowOrigins == "*"
 
-	// The response varies by Origin whenever the allowed origin is derived from
-	// the request: either because a specific allowlist is configured, or because
-	// credentials force the wildcard to be echoed back as a concrete origin.
-	// Only a literal "*" is origin-independent. Without this a shared cache can
-	// hand one origin's Access-Control-Allow-Origin — and its
-	// Access-Control-Allow-Credentials: true — to a different origin.
-	varyOnOrigin := !wildcard || cfg.AllowCredentials
+	// Reflecting every caller's origin together with
+	// Access-Control-Allow-Credentials: true would let any website on
+	// the internet make credentialed requests and read the responses -
+	// a full same-origin-policy bypass. The combination is a
+	// misconfiguration; require an explicit origin list instead.
+	if wildcard && cfg.AllowCredentials {
+		panic(`middleware: CORS AllowOrigins "*" cannot be combined with AllowCredentials; list the origins explicitly`)
+	}
+
+	// The response varies by Origin whenever the allowed origin is derived
+	// from the request, i.e. whenever a specific allowlist is configured.
+	// Only a literal "*" is origin-independent. Without this a shared cache
+	// can hand one origin's Access-Control-Allow-Origin to another origin.
+	varyOnOrigin := !wildcard
 
 	return func(ctx *http.Context, next func() error) error {
 		origin := ctx.Request().Header("Origin")
@@ -125,11 +132,6 @@ func CORS(config ...CORSConfig) http.MiddlewareFunc {
 
 		allowOrigin := ""
 		switch {
-		case wildcard && cfg.AllowCredentials:
-			// "*" is not a legal Allow-Origin when credentials are permitted;
-			// browsers reject the pair outright. Echo the caller's origin so
-			// the intent (any origin, with credentials) actually works.
-			allowOrigin = origin
 		case wildcard:
 			allowOrigin = "*"
 		default:

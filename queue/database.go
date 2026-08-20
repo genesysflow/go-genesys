@@ -19,6 +19,7 @@ type DatabaseQueue struct {
 	table       string
 	failedTable string
 	queue       string
+	retryAfter  time.Duration
 }
 
 // DatabaseQueueConfig configures a DatabaseQueue.
@@ -31,6 +32,11 @@ type DatabaseQueueConfig struct {
 
 	// Queue is the default queue name for pushed jobs (default "default").
 	Queue string
+
+	// RetryAfter is how long a job may stay reserved before it is
+	// assumed crashed and can be claimed again (default 90s),
+	// Laravel's retry_after. Keep it longer than your slowest job.
+	RetryAfter time.Duration
 }
 
 // NewDatabaseQueue creates a database queue for the given SQL driver name
@@ -49,12 +55,16 @@ func NewDatabaseQueue(driver string, executor query.Executor, config ...Database
 	if cfg.Queue == "" {
 		cfg.Queue = "default"
 	}
+	if cfg.RetryAfter <= 0 {
+		cfg.RetryAfter = 90 * time.Second
+	}
 	return &DatabaseQueue{
 		driver:      driver,
 		executor:    executor,
 		table:       cfg.Table,
 		failedTable: cfg.FailedTable,
 		queue:       cfg.Queue,
+		retryAfter:  cfg.RetryAfter,
 	}
 }
 
@@ -99,16 +109,19 @@ func (q *DatabaseQueue) PushOn(queueName string, delay time.Duration, job Job) e
 
 // Pop reserves the next available job. Reservation is claimed with a
 // conditional UPDATE so concurrent workers never process the same job.
+// Jobs whose reservation is older than RetryAfter (a crashed worker)
+// become claimable again.
 func (q *DatabaseQueue) Pop(queueName string) (*ReservedJob, error) {
 	if queueName == "" {
 		queueName = q.queue
 	}
 	now := time.Now().Unix()
+	expired := now - int64(q.retryAfter/time.Second)
 
 	for i := 0; i < 5; i++ {
 		row, err := q.jobs().
 			Where("queue", queueName).
-			WhereNull("reserved_at").
+			WhereRaw("(reserved_at IS NULL OR reserved_at <= ?)", expired).
 			Where("available_at", "<=", now).
 			OrderBy("id").
 			First()
@@ -124,7 +137,7 @@ func (q *DatabaseQueue) Pop(queueName string) (*ReservedJob, error) {
 
 		claimed, err := q.jobs().
 			Where("id", id).
-			WhereNull("reserved_at").
+			WhereRaw("(reserved_at IS NULL OR reserved_at <= ?)", expired).
 			Update(map[string]any{"reserved_at": now, "attempts": attempts})
 		if err != nil {
 			return nil, err
@@ -136,8 +149,8 @@ func (q *DatabaseQueue) Pop(queueName string) (*ReservedJob, error) {
 		return &ReservedJob{
 			ID:       id,
 			Queue:    queueName,
-			Name:     fmt.Sprint(row["name"]),
-			Payload:  []byte(fmt.Sprint(row["payload"])),
+			Name:     toStringValue(row["name"]),
+			Payload:  []byte(toStringValue(row["payload"])),
 			Attempts: attempts,
 		}, nil
 	}
@@ -150,10 +163,12 @@ func (q *DatabaseQueue) Delete(job *ReservedJob) error {
 	return err
 }
 
-// Release returns a failed job to the queue after a delay.
+// Release returns a failed job to the queue after a delay, persisting
+// the caller's attempt count.
 func (q *DatabaseQueue) Release(job *ReservedJob, delay time.Duration) error {
 	_, err := q.jobs().Where("id", job.ID).Update(map[string]any{
 		"reserved_at":  nil,
+		"attempts":     job.Attempts,
 		"available_at": time.Now().Add(delay).Unix(),
 	})
 	return err
@@ -183,10 +198,10 @@ func (q *DatabaseQueue) ListFailed() ([]FailedJob, error) {
 	for _, row := range rows {
 		failed = append(failed, FailedJob{
 			ID:        toInt64Value(row["id"]),
-			Queue:     fmt.Sprint(row["queue"]),
-			Name:      fmt.Sprint(row["name"]),
-			Payload:   []byte(fmt.Sprint(row["payload"])),
-			Exception: fmt.Sprint(row["exception"]),
+			Queue:     toStringValue(row["queue"]),
+			Name:      toStringValue(row["name"]),
+			Payload:   []byte(toStringValue(row["payload"])),
+			Exception: toStringValue(row["exception"]),
 			FailedAt:  time.Unix(toInt64Value(row["failed_at"]), 0),
 		})
 	}
@@ -205,9 +220,9 @@ func (q *DatabaseQueue) RetryFailed(id int64) error {
 
 	now := time.Now().Unix()
 	if err := q.jobs().Insert(map[string]any{
-		"queue":        fmt.Sprint(row["queue"]),
-		"name":         fmt.Sprint(row["name"]),
-		"payload":      fmt.Sprint(row["payload"]),
+		"queue":        toStringValue(row["queue"]),
+		"name":         toStringValue(row["name"]),
+		"payload":      toStringValue(row["payload"]),
 		"attempts":     0,
 		"reserved_at":  nil,
 		"available_at": now,
@@ -231,6 +246,19 @@ func (q *DatabaseQueue) Size(queueName string) (int64, error) {
 		queueName = q.queue
 	}
 	return q.jobs().Where("queue", queueName).WhereNull("reserved_at").Count()
+}
+
+// toStringValue converts a driver-returned column to a string; MySQL's
+// driver returns TEXT columns as []byte, which fmt.Sprint would render
+// as a decimal byte dump.
+func toStringValue(v any) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case []byte:
+		return string(s)
+	}
+	return fmt.Sprint(v)
 }
 
 func toInt64Value(v any) int64 {

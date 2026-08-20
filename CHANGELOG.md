@@ -5,6 +5,62 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed - whole-project audit
+
+A framework-wide adversarial review; the notable fixes, by area:
+
+- **Queue durability**: the redis driver now parks popped jobs on a
+  reserved set via atomic Lua scripts (Laravel's `retry_after`), so a
+  worker crash can no longer lose a job; the database driver reclaims
+  reservations older than `RetryAfter`; delayed-job migration is
+  atomic; queue keys are namespaced so a queue named "failed" cannot
+  collide with the failed list. MySQL `[]byte` columns decode correctly.
+- **Batches**: a failing-then-retried job settles its batch exactly
+  once, on the terminal attempt - counters no longer exceed the total
+  and `Catch` no longer fires early. `WithoutOverlapping` postpones a
+  blocked job instead of burning attempts; `ReleaseUniqueLock`
+  middleware frees a unique job's slot the moment it completes.
+  `RegisterJob`'s explicit names now round-trip through serialization.
+- **Schema**: table-level `Unique`/`Primary`/`Index` and column-level
+  `.Index()` now actually reach the generated SQL (previously silently
+  dropped); a real MySQL grammar (backticks, `AUTO_INCREMENT`,
+  `MODIFY COLUMN`) replaces the SQLite fallthrough.
+- **ORM/query**: `Has`/`WhereHas` correlate self-referential relations
+  through an alias; `Count` is correct over `DISTINCT`/`GROUP BY`;
+  `Skip` without `Take` emits valid SQL on every driver; `Chunk` and
+  cursor pagination enforce their keyset ordering; an outer field now
+  overrides an embedded model's column; the `Where`/`Having` operator
+  position is whitelisted (SQL-injection hardening); MySQL updates
+  count matched rows (`clientFoundRows`) so no-op updates are not
+  mistaken for missing rows; error-state connections surface their
+  error from `QueryRow` instead of panicking, and concurrent first
+  connections no longer leak a pool.
+- **Security**: login timing equalisation burns a hash at the real
+  default cost; signed URLs canonicalise with escaping so values
+  containing `&`/`=` cannot be re-partitioned into smuggled parameters;
+  remember-me tokens are stored SHA-256-hashed; CORS refuses the
+  wildcard-plus-credentials combination; maintenance-mode secrets
+  compare in constant time and the bypass cookie is Secure/SameSite;
+  mail rejects addresses containing CRLF and strips newlines from all
+  header values (header-injection hardening).
+- **Foundation**: configuration is loaded before provider registration
+  (so providers can read config in `Register`, as scaffolded apps do);
+  deferred providers no longer boot half-initialised; nested container
+  resolution can no longer deadlock against concurrent registration;
+  `serve` reuses an already-registered RouteServiceProvider, honours
+  `--host`, and gracefully shuts down for 10 seconds (previously 10ns).
+- **Services**: loggers apply their level to zerolog (Info-default no
+  longer emits debug records) and are race-safe; lang placeholders
+  apply longest-first; cache lock release is an atomic compare-and-
+  delete on memory/redis stores; the HTTP client strips custom headers
+  on cross-host redirects; `Str.Limit` is multibyte-safe;
+  `Collection.Skip` tolerates negative counts; generator names are
+  stripped of path separators; `genesys new` scaffolds from embedded
+  templates; `genesys upgrade` fetches `@latest` instead of pinning to
+  the CLI's own version; notifications populate `CreatedAt`/`ReadAt`;
+  the broadcast hub closes a dropped client's connection; the scheduler
+  no longer skips minutes while a slow task runs.
+
 ### Added
 - **ORM transactions**: `database.WithinTransaction(fn(tx *TxScope))`
   with an optional trailing scope on every ORM helper (and

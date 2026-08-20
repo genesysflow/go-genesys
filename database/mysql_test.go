@@ -17,7 +17,7 @@ func TestBuildDSNMySQL(t *testing.T) {
 		Password: "s3cret",
 	})
 	assert.Equal(t,
-		"app_user:s3cret@tcp(db.internal:3307)/app?parseTime=true&charset=utf8mb4&loc=UTC", dsn)
+		"app_user:s3cret@tcp(db.internal:3307)/app?parseTime=true&charset=utf8mb4&loc=UTC&clientFoundRows=true", dsn)
 
 	// The default port fills in, and mariadb builds the same DSN shape.
 	dsn = buildDSN(ConnectionConfig{

@@ -39,10 +39,18 @@ func Register[T any]() {
 	})
 }
 
-// nameForJob resolves the stable name for a job instance.
+// nameForJob resolves the stable name for a job instance: JobName()
+// first, then a name given to RegisterJob, then the reflect-derived
+// package path.
 func nameForJob(job Job) string {
 	if named, ok := job.(Nameable); ok {
 		return named.JobName()
+	}
+	registryMu.RLock()
+	name, ok := typeNames[reflect.TypeOf(job)]
+	registryMu.RUnlock()
+	if ok {
+		return name
 	}
 	t := reflect.TypeOf(job)
 	for t.Kind() == reflect.Pointer {

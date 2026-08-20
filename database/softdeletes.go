@@ -30,10 +30,11 @@ func (q *ModelQuery[T]) Restore() (int64, error) {
 		q.trashed = trashedInclude
 	}
 	q.applySoftDeleteScope()
-	return q.builder.Update(map[string]any{
-		"deleted_at": nil,
-		"updated_at": time.Now().UTC().Truncate(time.Second),
-	})
+	values := map[string]any{"deleted_at": nil}
+	if _, ok := q.meta.byCol["updated_at"]; ok {
+		values["updated_at"] = time.Now().UTC().Truncate(time.Second)
+	}
+	return q.builder.Update(values)
 }
 
 // ForceDelete permanently removes all matching rows, trashed or not.

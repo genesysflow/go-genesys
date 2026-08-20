@@ -130,6 +130,29 @@ func (b *Builder) OrWhere(column string, args ...any) *Builder {
 	return b.addWhere("OR", column, args...)
 }
 
+// validOperators is the whitelist for the operator position of
+// Where/Having/WhereColumn, mirroring Laravel's $operators. The
+// operator is interpolated into SQL, so anything outside this list -
+// e.g. a client-supplied comparator - is rejected instead of becoming
+// an injection point.
+var validOperators = map[string]bool{
+	"=": true, "<": true, ">": true, "<=": true, ">=": true,
+	"<>": true, "!=": true, "<=>": true,
+	"like": true, "not like": true, "ilike": true, "not ilike": true,
+	"like binary": true, "rlike": true,
+	"is": true, "is not": true,
+	"regexp": true, "not regexp": true,
+	"~": true, "!~": true, "~*": true, "!~*": true, "similar to": true, "not similar to": true,
+	"&": true, "|": true, "^": true, "<<": true, ">>": true, "&~": true,
+}
+
+func assertOperator(operator string) string {
+	if !validOperators[strings.ToLower(operator)] {
+		panic(fmt.Sprintf("query: illegal operator %q", operator))
+	}
+	return operator
+}
+
 func (b *Builder) addWhere(boolean, column string, args ...any) *Builder {
 	operator := "="
 	var value any
@@ -137,7 +160,7 @@ func (b *Builder) addWhere(boolean, column string, args ...any) *Builder {
 	case 1:
 		value = args[0]
 	case 2:
-		operator = fmt.Sprint(args[0])
+		operator = assertOperator(fmt.Sprint(args[0]))
 		value = args[1]
 	default:
 		panic("query: Where expects (column, value) or (column, operator, value)")
@@ -156,7 +179,7 @@ func (b *Builder) addWhere(boolean, column string, args ...any) *Builder {
 
 // WhereColumn compares two columns.
 func (b *Builder) WhereColumn(first, operator, second string) *Builder {
-	b.wheres = append(b.wheres, where{kind: whereColumn, boolean: "AND", column: first, operator: operator, valueColumn: second})
+	b.wheres = append(b.wheres, where{kind: whereColumn, boolean: "AND", column: first, operator: assertOperator(operator), valueColumn: second})
 	return b
 }
 
@@ -253,7 +276,7 @@ func (b *Builder) Having(column string, args ...any) *Builder {
 	case 1:
 		value = args[0]
 	case 2:
-		operator = fmt.Sprint(args[0])
+		operator = assertOperator(fmt.Sprint(args[0]))
 		value = args[1]
 	default:
 		panic("query: Having expects (column, value) or (column, operator, value)")
@@ -281,6 +304,14 @@ func (b *Builder) OrderBy(column string, direction ...string) *Builder {
 // OrderByDesc adds a descending ORDER BY clause.
 func (b *Builder) OrderByDesc(column string) *Builder {
 	return b.OrderBy(column, "desc")
+}
+
+// Reorder removes every previously added ORDER BY clause - Laravel's
+// reorder(). Keyset iterators (Chunk, cursor pagination) use it to
+// guarantee their own ordering wins.
+func (b *Builder) Reorder() *Builder {
+	b.orders = nil
+	return b
 }
 
 // OrderByRaw adds a raw ORDER BY expression.
@@ -464,11 +495,23 @@ func (b *Builder) Min(column string) (any, error) {
 
 func (b *Builder) aggregate(expression string) (any, error) {
 	clone := b.Clone()
-	clone.columns = []string{expression + " AS aggregate"}
 	clone.orders = nil
 	clone.limit = -1
 	clone.offset = 0
-	sqlStr, bindings := clone.grammar.CompileSelect(clone)
+
+	var sqlStr string
+	var bindings []any
+	if clone.distinct || len(clone.groups) > 0 {
+		// DISTINCT and GROUP BY change what a row means: aggregate over
+		// the query as a subquery, or COUNT would tally the raw rows
+		// (and a grouped query would return one count per group).
+		innerSQL, innerBindings := clone.grammar.CompileSelect(clone)
+		sqlStr = "SELECT " + expression + " AS aggregate FROM (" + innerSQL + ") AS aggregate_table"
+		bindings = innerBindings
+	} else {
+		clone.columns = []string{expression + " AS aggregate"}
+		sqlStr, bindings = clone.grammar.CompileSelect(clone)
+	}
 
 	var value any
 	if err := b.executor.QueryRow(sqlStr, bindings...).Scan(&value); err != nil {

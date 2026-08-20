@@ -129,8 +129,12 @@ func (c *Collection[T]) Take(n int) *Collection[T] {
 	return FromSlice(append([]T(nil), c.items[:n]...))
 }
 
-// Skip returns the collection without its first n items.
+// Skip returns the collection without its first n items; n <= 0 skips
+// nothing.
 func (c *Collection[T]) Skip(n int) *Collection[T] {
+	if n <= 0 {
+		return FromSlice(append([]T(nil), c.items...))
+	}
 	if n >= len(c.items) {
 		return FromSlice([]T{})
 	}

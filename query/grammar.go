@@ -142,6 +142,14 @@ func (g *Grammar) CompileSelect(b *Builder) (string, []any) {
 
 	if b.limit >= 0 {
 		sqlParts = append(sqlParts, fmt.Sprintf("LIMIT %d", b.limit))
+	} else if b.offset > 0 && !g.isPostgres() {
+		// SQLite and MySQL reject OFFSET without LIMIT; emit the
+		// driver's "no limit" sentinel so Skip() alone still works.
+		if g.driver == "mysql" {
+			sqlParts = append(sqlParts, "LIMIT 18446744073709551615")
+		} else {
+			sqlParts = append(sqlParts, "LIMIT -1")
+		}
 	}
 	if b.offset > 0 {
 		sqlParts = append(sqlParts, fmt.Sprintf("OFFSET %d", b.offset))

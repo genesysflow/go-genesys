@@ -128,16 +128,21 @@ func (s *StringHelper) Upper(str string) string {
 	return strings.ToUpper(str)
 }
 
-// Limit limits a string to the given length.
+// Limit truncates a string to the given number of characters (runes,
+// not bytes, so multibyte text is never cut mid-character).
 func (s *StringHelper) Limit(str string, limit int, end ...string) string {
 	suffix := "..."
 	if len(end) > 0 {
 		suffix = end[0]
 	}
-	if len(str) <= limit {
+	if limit < 0 {
+		limit = 0
+	}
+	runes := []rune(str)
+	if len(runes) <= limit {
 		return str
 	}
-	return str[:limit] + suffix
+	return string(runes[:limit]) + suffix
 }
 
 // Contains checks if a string contains a substring.

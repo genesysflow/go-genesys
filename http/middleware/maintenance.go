@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -55,18 +56,24 @@ func Maintenance(config ...MaintenanceConfig) http.MiddlewareFunc {
 		json.Unmarshal(raw, &payload)
 
 		// Secret bypass: the query param plants a cookie so subsequent
-		// requests keep working.
+		// requests keep working. Comparisons are constant-time so the
+		// secret cannot be recovered byte-by-byte from response timing.
 		if payload.Secret != "" {
-			if ctx.Query("secret") == payload.Secret {
+			secretMatches := func(candidate string) bool {
+				return subtle.ConstantTimeCompare([]byte(candidate), []byte(payload.Secret)) == 1
+			}
+			if secretMatches(ctx.Query("secret")) {
 				ctx.FiberCtx().Cookie(&fiber.Cookie{
 					Name:     maintenanceCookie,
 					Value:    payload.Secret,
 					Path:     "/",
 					HTTPOnly: true,
+					Secure:   true,
+					SameSite: "Lax",
 				})
 				return next()
 			}
-			if ctx.FiberCtx().Cookies(maintenanceCookie) == payload.Secret {
+			if secretMatches(ctx.FiberCtx().Cookies(maintenanceCookie)) {
 				return next()
 			}
 		}

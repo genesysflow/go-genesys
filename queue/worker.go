@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -100,20 +101,43 @@ func (w *Worker) RunOnce() (bool, error) {
 	}
 
 	if jobErr := w.runJob(job); jobErr != nil {
+		if errors.Is(jobErr, ErrOverlapping) {
+			// Blocked by a running sibling, not failed: put it back
+			// without consuming an attempt.
+			reserved.Attempts--
+			notifySettled(job, jobErr, true)
+			return true, w.driver.Release(reserved, w.backoffFor(job))
+		}
 		w.report(fmt.Errorf("queue: job %s failed (attempt %d): %w", reserved.Name, reserved.Attempts, jobErr))
 		if reserved.Attempts >= w.triesFor(job) {
+			notifySettled(job, jobErr, false)
 			if err := w.driver.Fail(reserved, jobErr); err != nil {
 				return true, err
 			}
 			return true, nil
 		}
+		notifySettled(job, jobErr, true)
 		if err := w.driver.Release(reserved, w.backoffFor(job)); err != nil {
 			return true, err
 		}
 		return true, nil
 	}
 
+	notifySettled(job, nil, false)
 	return true, w.driver.Delete(reserved)
+}
+
+// settlementAware jobs (batch wrappers) learn the final outcome of a
+// run once the worker has decided it; willRetry marks a release for
+// another attempt rather than a terminal result.
+type settlementAware interface {
+	settled(finalErr error, willRetry bool)
+}
+
+func notifySettled(job Job, err error, willRetry bool) {
+	if aware, ok := job.(settlementAware); ok {
+		aware.settled(err, willRetry)
+	}
 }
 
 // pop reserves the next job, honouring the priority list when set.

@@ -197,7 +197,10 @@ func (e *Event) label() string {
 }
 
 // Work runs the schedule until the context is cancelled, evaluating due
-// events at the top of every minute.
+// events at the top of every minute. Each minute's batch runs in its
+// own goroutine so a slow task cannot make the loop skip the following
+// minutes (like Laravel's schedule:work, tasks from consecutive minutes
+// may overlap); onResult must therefore be safe for concurrent calls.
 func (s *Schedule) Work(ctx context.Context, onResult func(label string, err error)) error {
 	for {
 		now := time.Now()
@@ -208,10 +211,12 @@ func (s *Schedule) Work(ctx context.Context, onResult func(label string, err err
 		case <-time.After(time.Until(next)):
 		}
 
-		for label, err := range s.RunDue(next) {
-			if onResult != nil {
-				onResult(label, err)
+		go func(tick time.Time) {
+			for label, err := range s.RunDue(tick) {
+				if onResult != nil {
+					onResult(label, err)
+				}
 			}
-		}
+		}(next)
 	}
 }

@@ -1,12 +1,22 @@
 package auth
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/genesysflow/go-genesys/database"
 )
+
+// rememberHash is the at-rest form of a remember-me token. The cookie
+// carries the raw token; the database stores only its SHA-256, so a
+// leaked users table cannot be replayed as remember-me cookies.
+func rememberHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
 
 // ORMUserProvider retrieves users through the framework ORM:
 //
@@ -99,7 +109,7 @@ func (p *ORMUserProvider[T]) RetrieveByRememberToken(id any, token string) (Auth
 			id = n
 		}
 	}
-	user, err := database.Query[T]().Where("id", id).Where(p.RememberField, token).First()
+	user, err := database.Query[T]().Where("id", id).Where(p.RememberField, rememberHash(token)).First()
 	if err != nil {
 		if errors.Is(err, database.ErrNotFound) {
 			return nil, ErrUserNotFound
@@ -109,10 +119,15 @@ func (p *ORMUserProvider[T]) RetrieveByRememberToken(id any, token string) (Auth
 	return any(user).(Authenticatable), nil
 }
 
-// UpdateRememberToken stores a new remember token for the user.
+// UpdateRememberToken stores a new remember token for the user, hashed
+// at rest. Pass "" to clear it (logout).
 func (p *ORMUserProvider[T]) UpdateRememberToken(user Authenticatable, token string) error {
+	stored := ""
+	if token != "" {
+		stored = rememberHash(token)
+	}
 	_, err := database.Query[T]().
 		Where("id", user.GetAuthIdentifier()).
-		Update(map[string]any{p.RememberField: token})
+		Update(map[string]any{p.RememberField: stored})
 	return err
 }

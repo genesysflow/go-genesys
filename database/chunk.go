@@ -38,7 +38,9 @@ func (q *ModelQuery[T]) CursorPaginate(perPage int, cursor string, column ...str
 	}
 
 	q.applySoftDeleteScope()
-	builder := q.builder.Clone().OrderBy(col).Limit(perPage + 1)
+	// Reorder: the keyset predicate (col > cursor) is only correct when
+	// the cursor column is the primary sort.
+	builder := q.builder.Clone().Reorder().OrderBy(col).Limit(perPage + 1)
 	if cursor != "" {
 		after, err := query.DecodeCursor(cursor)
 		if err != nil {
@@ -92,7 +94,8 @@ func (q *ModelQuery[T]) Chunk(size int, fn func(items []T) error) error {
 	q.applySoftDeleteScope()
 	var last any
 	for {
-		builder := q.builder.Clone().OrderBy(pkField.column).Limit(size)
+		// Reorder: keyset chunking must sort by the key it advances.
+		builder := q.builder.Clone().Reorder().OrderBy(pkField.column).Limit(size)
 		if last != nil {
 			builder.Where(pkField.column, ">", last)
 		}

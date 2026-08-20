@@ -144,8 +144,14 @@ func collectFields(t reflect.Type, parentIndex []int, meta *modelMeta) {
 			column = support.ToSnakeCase(field.Name)
 		}
 
-		// Skip shadowed columns (an outer field overrides an embedded one).
-		if _, exists := findField(meta, column); exists {
+		// Shadowed columns: the shallower field wins (an outer field
+		// overrides an embedded one, like encoding/json). Embedded
+		// structs are walked first, so on conflict the outer field must
+		// replace the recorded index, not be skipped.
+		if existing, exists := findField(meta, column); exists {
+			if len(index) < len(existing.index) {
+				existing.index = index
+			}
 			continue
 		}
 
