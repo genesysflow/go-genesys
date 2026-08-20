@@ -93,7 +93,7 @@ func PushOn(q Queue, queueName string, job Job) error {
 func LaterOn(q Queue, queueName string, delay time.Duration, job Job) error {
 	pusher, ok := q.(NamedQueuePusher)
 	if !ok {
-		return fmt.Errorf("queue: this driver does not support named queues")
+		return fmt.Errorf("queue: %T does not support named queues", q)
 	}
 	return pusher.PushOn(queueName, delay, job)
 }

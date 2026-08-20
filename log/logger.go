@@ -12,6 +12,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// contextKey is a private type for context keys the logger reads, so
+// they cannot collide with keys from other packages.
+type contextKey struct{ name string }
+
+// RequestIDKey is the context key WithContext inspects for a request
+// id; set it with context.WithValue(ctx, log.RequestIDKey, id). The
+// bare string key "request_id" is also honoured for compatibility.
+var RequestIDKey = contextKey{"request_id"}
+
 // Logger is the default logger implementation using zerolog.
 type Logger struct {
 	logger zerolog.Logger
@@ -106,7 +115,11 @@ func (l *Logger) log(level zerolog.Level, msg string, fields ...any) {
 
 	// Add context values if present
 	if l.ctx != nil {
-		if reqID := l.ctx.Value("request_id"); reqID != nil {
+		reqID := l.ctx.Value(RequestIDKey)
+		if reqID == nil {
+			reqID = l.ctx.Value("request_id") // legacy string key
+		}
+		if reqID != nil {
 			event = event.Interface("request_id", reqID)
 		}
 	}

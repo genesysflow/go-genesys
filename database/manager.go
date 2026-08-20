@@ -168,11 +168,9 @@ func (m *Manager) makeConnection(name string) (*Connection, error) {
 
 // Raw executes a raw SQL query.
 func (m *Manager) Raw(sqlQuery string, bindings ...any) (*sql.Rows, error) {
-	conn := m.Connection()
-	if conn == nil {
-		return nil, fmt.Errorf("no database connection available")
-	}
-	return conn.Query(sqlQuery, bindings...)
+	// Connection() never returns nil; a failed connection carries its
+	// error and surfaces it from Query.
+	return m.Connection().Query(sqlQuery, bindings...)
 }
 
 // Select executes a raw select query.
@@ -182,11 +180,7 @@ func (m *Manager) Select(sqlQuery string, bindings ...any) (*sql.Rows, error) {
 
 // Insert executes a raw insert query.
 func (m *Manager) Insert(sqlQuery string, bindings ...any) (sql.Result, error) {
-	conn := m.Connection()
-	if conn == nil {
-		return nil, fmt.Errorf("no database connection available")
-	}
-	return conn.Exec(sqlQuery, bindings...)
+	return m.Connection().Exec(sqlQuery, bindings...)
 }
 
 // Update executes a raw update query.
@@ -206,20 +200,12 @@ func (m *Manager) Statement(sqlQuery string, bindings ...any) (sql.Result, error
 
 // Transaction runs a callback in a database transaction.
 func (m *Manager) Transaction(fn func(tx contracts.Transaction) error) error {
-	conn := m.Connection()
-	if conn == nil {
-		return fmt.Errorf("no database connection available")
-	}
-	return conn.Transaction(fn)
+	return m.Connection().Transaction(fn)
 }
 
 // BeginTransaction starts a new database transaction.
 func (m *Manager) BeginTransaction() (contracts.Transaction, error) {
-	conn := m.Connection()
-	if conn == nil {
-		return nil, fmt.Errorf("no database connection available")
-	}
-	return conn.BeginTransaction()
+	return m.Connection().BeginTransaction()
 }
 
 // GetDefaultConnection returns the default connection name.

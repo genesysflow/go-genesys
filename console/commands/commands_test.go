@@ -242,3 +242,27 @@ func TestGeneratorNamesAreSanitised(t *testing.T) {
 	require.Len(t, entries, 1)
 	assert.False(t, strings.Contains(entries[0].Name(), " "))
 }
+
+func TestQueueWorkPriorityListIsTrimmed(t *testing.T) {
+	queue.Register[noopJob]()
+
+	manager := queue.NewManager()
+	memory := queue.NewMemoryQueue()
+	manager.Register("memory", memory)
+	manager.SetDefaultConnection("memory")
+
+	app := testutil.NewMockApplication()
+	require.NoError(t, app.InstanceType(manager))
+
+	// Jobs on both queues; a sloppy comma list with spaces must still
+	// drain both (untrimmed " default" would poll a nonexistent queue).
+	require.NoError(t, queue.PushOn(memory, "high", &noopJob{}))
+	require.NoError(t, queue.PushOn(memory, "default", &noopJob{}))
+
+	work := QueueWorkCommand(app)
+	work.SetArgs([]string{"--queue", "high, default", "--stop-when-empty"})
+	require.NoError(t, work.Execute())
+
+	assert.Equal(t, 0, memory.Size("high"))
+	assert.Equal(t, 0, memory.Size("default"))
+}

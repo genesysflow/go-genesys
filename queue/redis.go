@@ -119,8 +119,11 @@ func (q *RedisQueue) enqueue(envelope redisJob, delay time.Duration) error {
 // migrateDue moves delayed jobs that have come due onto the ready list.
 func (q *RedisQueue) migrateDue(queue string) error {
 	now := strconv.FormatInt(time.Now().UnixMilli(), 10)
-	due, err := q.client.ZRangeByScore(q.ctx, q.delayedKey(queue), &redis.ZRangeBy{
-		Min: "-inf", Max: now,
+	due, err := q.client.ZRangeArgs(q.ctx, redis.ZRangeArgs{
+		Key:     q.delayedKey(queue),
+		Start:   "-inf",
+		Stop:    now,
+		ByScore: true,
 	}).Result()
 	if err != nil {
 		return err

@@ -26,6 +26,22 @@ func TestToPascalCase(t *testing.T) {
 	}
 }
 
+func TestTitle(t *testing.T) {
+	cases := map[string]string{
+		"hello world":      "Hello World",
+		"hello WORLD":      "Hello World",
+		"user name":        "User Name",
+		"":                 "",
+		"a":                "A",
+		"  spaced  words ": "  Spaced  Words ",
+		"café au lait":     "Café Au Lait",
+		"x1y sees 2 words": "X1y Sees 2 Words",
+	}
+	for input, expected := range cases {
+		assert.Equal(t, expected, support.Title(input), "input %q", input)
+	}
+}
+
 func TestToSnakeCase(t *testing.T) {
 	cases := map[string]string{
 		"SendEmailJob": "send_email_job",

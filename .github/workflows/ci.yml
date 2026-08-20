@@ -54,6 +54,11 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      - name: Staticcheck
+        run: |
+          go install honnef.co/go/tools/cmd/staticcheck@latest
+          staticcheck ./...
+
       - name: Test (race, includes Postgres integration and the example app smoke test)
         run: go test -race -count=1 ./...
 

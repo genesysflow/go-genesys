@@ -52,3 +52,19 @@ func TestViewHTMLDefersRenderErrors(t *testing.T) {
 	require.Error(t, err, "the deferred render error surfaces at send time")
 	assert.Contains(t, err.Error(), "emails.missing")
 }
+
+func TestViewHTMLRecoversAfterFailedRender(t *testing.T) {
+	views := mailViews(t)
+	mailer := mail.NewArrayMailer(mail.Config{FromAddress: "app@example.com"})
+
+	// A failed render followed by a successful one must send cleanly -
+	// the stale error may not poison the message.
+	message := mail.NewMessage().
+		To("ada@example.com").
+		Subject("Recovered").
+		ViewHTML(views, "emails.missing", nil).
+		ViewHTML(views, "emails.welcome", map[string]any{"name": "Ada"})
+
+	require.NoError(t, mailer.Send(message))
+	mailer.AssertSentCount(t, 1)
+}

@@ -48,9 +48,9 @@ func TestQueuedNotificationRoundTrip(t *testing.T) {
 
 	require.NoError(t, manager.SendQueued(q, user, &paymentReceived{Amount: 250}))
 
-	// Nothing delivered until a worker runs.
+	// Nothing delivered until a worker runs; one job per channel.
 	mailer.AssertNothingSent(t)
-	assert.Equal(t, 1, q.Size(""))
+	assert.Equal(t, 2, q.Size(""))
 
 	worker := queue.NewWorker(q)
 	require.NoError(t, worker.Drain())
@@ -96,6 +96,55 @@ func TestQueuedJobFailsWithoutDefaultManager(t *testing.T) {
 
 	failed, err := q.ListFailed()
 	require.NoError(t, err)
-	require.Len(t, failed, 1)
+	require.Len(t, failed, 2, "one job per declared channel")
 	assert.Contains(t, failed[0].Exception, "no default manager")
+}
+
+func TestQueuedNotificationPreservesLargeIDs(t *testing.T) {
+	notifications.RegisterQueued[paymentReceived]()
+
+	executor := newNotificationDB(t)
+	manager := notifications.New(notifications.WithDatabase("sqlite", executor, ""))
+	notifications.SetDefault(manager)
+	t.Cleanup(func() { notifications.SetDefault(nil) })
+
+	q := queue.NewMemoryQueue()
+	// IDs at and beyond float64's exact-integer range must survive the
+	// queue round-trip byte-for-byte.
+	user := &customer{ID: 9007199254740993, Email: "big@example.com"}
+
+	require.NoError(t, manager.SendQueued(q, user, &paymentReceived{Amount: 1}))
+	require.NoError(t, queue.NewWorker(q).Drain())
+
+	stored, err := manager.For(user.ID)
+	require.NoError(t, err)
+	require.Len(t, stored, 1, "queued delivery stored a findable notifiable_id")
+	assert.Equal(t, "9007199254740993", stored[0].NotifiableID)
+}
+
+func TestQueuedChannelsRetryIndependently(t *testing.T) {
+	notifications.RegisterQueued[paymentReceived]()
+
+	mailer := mail.NewArrayMailer(mail.Config{FromAddress: "app@example.com"})
+	// No database configured: the database channel fails, mail succeeds.
+	manager := notifications.New(notifications.WithMailer(mailer))
+	notifications.SetDefault(manager)
+	t.Cleanup(func() { notifications.SetDefault(nil) })
+
+	q := queue.NewMemoryQueue()
+	user := &customer{ID: 5, Email: "once@example.com"}
+	require.NoError(t, manager.SendQueued(q, user, &paymentReceived{Amount: 9}))
+
+	worker := queue.NewWorker(q)
+	worker.Tries = 3
+	worker.Backoff = 0
+	require.NoError(t, worker.Drain())
+
+	// The database job failed and retried, but the mail job succeeded
+	// exactly once - no duplicate emails from the retries.
+	mailer.AssertSentCount(t, 1)
+	failed, err := q.ListFailed()
+	require.NoError(t, err)
+	require.Len(t, failed, 1)
+	assert.Contains(t, failed[0].Exception, "database")
 }

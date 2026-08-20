@@ -30,9 +30,6 @@ func (p *MigrationServiceProvider) Boot(app contracts.Application) error {
 	}
 
 	conn := mgr.Connection()
-	if conn == nil {
-		return fmt.Errorf("no default database connection available")
-	}
 
 	// Check if connection was established successfully
 	if conn.DB() == nil {

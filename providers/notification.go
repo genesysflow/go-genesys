@@ -37,7 +37,7 @@ func (p *NotificationServiceProvider) Boot(app contracts.Application) error {
 		options = append(options, notifications.WithMailer(mailer))
 	}
 	if dbManager, err := container.Resolve[*database.Manager](app); err == nil && dbManager != nil {
-		if conn := dbManager.Connection(); conn != nil {
+		if conn := dbManager.Connection(); conn.Error() == nil {
 			options = append(options, notifications.WithDatabase(conn.Driver(), conn, p.Table))
 		}
 	}

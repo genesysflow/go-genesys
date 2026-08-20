@@ -46,7 +46,7 @@ func MigrateCommand(app contracts.Application) *cobra.Command {
 						fmt.Printf("Warning: could not resolve database manager for schema dump: %v\n", err)
 					} else {
 						conn := mgr.Connection()
-						if conn == nil || conn.DB() == nil {
+						if conn.DB() == nil {
 							fmt.Println("Warning: no database connection available for schema dump")
 						} else {
 							// Default driver from connection
@@ -107,7 +107,7 @@ func MigrateRollbackCommand(app contracts.Application) *cobra.Command {
 						fmt.Printf("Warning: could not resolve database manager for schema dump: %v\n", err)
 					} else {
 						conn := mgr.Connection()
-						if conn == nil || conn.DB() == nil {
+						if conn.DB() == nil {
 							fmt.Println("Warning: no database connection available for schema dump")
 						} else {
 							// Default driver from connection

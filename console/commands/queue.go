@@ -49,8 +49,13 @@ func QueueWorkCommand(app contracts.Application) *cobra.Command {
 			}
 
 			worker := queue.NewWorker(driver)
+			displayQueue := queueName
 			if strings.Contains(queueName, ",") {
-				worker.Queues = strings.Split(queueName, ",")
+				for _, entry := range strings.Split(queueName, ",") {
+					if trimmed := strings.TrimSpace(entry); trimmed != "" {
+						worker.Queues = append(worker.Queues, trimmed)
+					}
+				}
 				queueName = ""
 			}
 			worker.Queue = queueName
@@ -71,7 +76,7 @@ func QueueWorkCommand(app contracts.Application) *cobra.Command {
 			ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer stop()
 
-			fmt.Printf("Processing jobs from the [%s] queue. Press Ctrl+C to stop.\n", displayQueueName(queueName))
+			fmt.Printf("Processing jobs from the [%s] queue. Press Ctrl+C to stop.\n", displayQueueName(displayQueue))
 			if err := worker.Run(ctx); err != nil && err != context.Canceled {
 				return err
 			}

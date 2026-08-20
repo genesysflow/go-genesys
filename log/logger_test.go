@@ -171,7 +171,7 @@ func TestWithContext(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := NewJSON(buf)
 
-	ctx := context.WithValue(context.Background(), "request_id", "req-123")
+	ctx := context.WithValue(context.Background(), RequestIDKey, "req-123")
 	newLogger := logger.WithContext(ctx)
 	newLogger.Info("with context")
 

@@ -21,6 +21,7 @@ func (m *Message) ViewHTML(r Renderer, name string, data map[string]any) *Messag
 		m.viewErr = err
 		return m
 	}
+	m.viewErr = nil // a successful render supersedes an earlier failure
 	m.htmlBody = html
 	return m
 }
@@ -32,6 +33,7 @@ func (m *Message) ViewText(r Renderer, name string, data map[string]any) *Messag
 		m.viewErr = err
 		return m
 	}
+	m.viewErr = nil
 	m.textBody = text
 	return m
 }

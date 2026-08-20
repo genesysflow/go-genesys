@@ -62,9 +62,19 @@ func TestLaterOnDelays(t *testing.T) {
 	assert.Equal(t, 1, q.Size("reports"))
 }
 
-func TestPushOnRejectsSyncDriver(t *testing.T) {
-	err := queue.PushOn(queue.NewSyncQueue(), "high", &priorityJob{})
-	assert.ErrorContains(t, err, "does not support named queues")
+func TestPushOnSyncDriverRunsInline(t *testing.T) {
+	queue.Register[priorityJob]()
+	priorityMu.Lock()
+	priorityLog = nil
+	priorityMu.Unlock()
+
+	// Like Laravel's sync connection, onQueue is a no-op: the job runs
+	// immediately instead of erroring, so dev/test setups keep working.
+	require.NoError(t, queue.PushOn(queue.NewSyncQueue(), "high", &priorityJob{Label: "inline"}))
+
+	priorityMu.Lock()
+	defer priorityMu.Unlock()
+	assert.Equal(t, []string{"inline"}, priorityLog)
 }
 
 func TestRedisPushOnNamedQueues(t *testing.T) {

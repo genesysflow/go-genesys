@@ -56,3 +56,17 @@ func Dispatch(job basequeue.Job) error {
 func DispatchLater(delay time.Duration, job basequeue.Job) error {
 	return connection().Later(delay, job)
 }
+
+// DispatchOn dispatches a job onto a named queue of the default
+// connection - Laravel's onQueue:
+//
+//	queue.DispatchOn("high", &SendAlert{})
+func DispatchOn(queueName string, job basequeue.Job) error {
+	return basequeue.PushOn(connection(), queueName, job)
+}
+
+// DispatchLaterOn dispatches a delayed job onto a named queue of the
+// default connection.
+func DispatchLaterOn(queueName string, delay time.Duration, job basequeue.Job) error {
+	return basequeue.LaterOn(connection(), queueName, delay, job)
+}

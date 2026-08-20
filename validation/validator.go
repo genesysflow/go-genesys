@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/genesysflow/go-genesys/support"
 	"github.com/go-playground/validator/v10"
 )
 
@@ -261,7 +262,7 @@ func (v *Validator) getAttributeName(field string) string {
 		}
 	}
 	// Convert camelCase/snake_case to Title Case
-	return strings.Title(strings.ReplaceAll(strings.ReplaceAll(field, "_", " "), "-", " "))
+	return support.Title(strings.ReplaceAll(strings.ReplaceAll(field, "_", " "), "-", " "))
 }
 
 // replaceMessagePlaceholders replaces placeholders in custom messages.

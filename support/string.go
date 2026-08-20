@@ -1,6 +1,9 @@
 package support
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // ToPascalCase converts a string to PascalCase. Mixed-case words keep
 // their interior capitals, so already-camelled input survives:
@@ -22,6 +25,34 @@ func ToPascalCase(s string) string {
 	}
 
 	return strings.Join(words, "")
+}
+
+// Title converts a string to Title Case: the first letter of each word
+// is uppercased and the rest lowercased, like Laravel's Str::title
+// ("hello WORLD" -> "Hello World"). Letters and digits continue a word
+// ("x1y" -> "X1y"); everything else ends one, and spacing is preserved.
+func Title(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	inWord := false
+	for _, r := range s {
+		switch {
+		case unicode.IsLetter(r):
+			if inWord {
+				b.WriteRune(unicode.ToLower(r))
+			} else {
+				b.WriteRune(unicode.ToUpper(r))
+			}
+			inWord = true
+		case unicode.IsDigit(r):
+			b.WriteRune(r)
+			inWord = true
+		default:
+			b.WriteRune(r)
+			inWord = false
+		}
+	}
+	return b.String()
 }
 
 // ToSnakeCase converts a string to snake_case.

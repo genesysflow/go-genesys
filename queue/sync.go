@@ -21,3 +21,9 @@ func (q *SyncQueue) Push(job Job) error {
 func (q *SyncQueue) Later(_ time.Duration, job Job) error {
 	return job.Handle()
 }
+
+// PushOn runs the job immediately - the sync driver has no named
+// queues, matching Laravel's sync connection where onQueue is a no-op.
+func (q *SyncQueue) PushOn(queueName string, delay time.Duration, job Job) error {
+	return q.Push(job)
+}

@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/genesysflow/go-genesys/support"
 )
 
 // Config configures the view manager.
@@ -61,7 +63,7 @@ func defaultFuncs() template.FuncMap {
 		},
 		"upper": strings.ToUpper,
 		"lower": strings.ToLower,
-		"title": strings.Title,
+		"title": support.Title,
 		// dict builds a map inline, for passing data to components:
 		// {{component "alert" (dict "type" "error" "message" .err)}}
 		"dict": func(pairs ...any) (map[string]any, error) {

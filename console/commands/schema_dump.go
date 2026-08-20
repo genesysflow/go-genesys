@@ -26,7 +26,7 @@ func DbSchemaDumpCommand(app contracts.Application) *cobra.Command {
 			}
 
 			conn := mgr.Connection()
-			if conn == nil || conn.DB() == nil {
+			if conn.DB() == nil {
 				return fmt.Errorf("no database connection available")
 			}
 

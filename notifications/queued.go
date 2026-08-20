@@ -29,6 +29,20 @@ var (
 	queuedFactory = make(map[string]func() Notification)
 )
 
+// typeKey identifies a notification type unambiguously (package path +
+// name), so same-named types in different packages cannot collide in
+// the registry. The stored display name (nameFor) stays snake-cased.
+func typeKey(notification Notification) string {
+	t := reflect.TypeOf(notification)
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t.PkgPath() != "" {
+		return t.PkgPath() + "." + t.Name()
+	}
+	return t.Name()
+}
+
 // SetDefault installs the manager workers use to deliver queued
 // notifications. The NotificationServiceProvider calls this.
 func SetDefault(m *Manager) {
@@ -52,28 +66,33 @@ func RegisterQueued[N any]() {
 	if !ok {
 		panic(fmt.Sprintf("notifications: *%T does not implement notifications.Notification", probe))
 	}
-	name := nameFor(notification)
 	queuedMu.Lock()
 	defer queuedMu.Unlock()
-	queuedFactory[name] = func() Notification {
+	queuedFactory[typeKey(notification)] = func() Notification {
 		var instance N
 		return any(&instance).(Notification)
 	}
 }
 
-// queuedNotificationJob is the serializable envelope pushed onto the
-// queue for one notifiable.
+// queuedNotificationJob is the serializable envelope for one channel
+// of one notifiable. One job per channel means a transient failure on
+// one channel retries only that channel - a succeeded email is never
+// re-sent because the database insert flaked.
 type queuedNotificationJob struct {
 	Notification string          `json:"notification"`
 	Data         json.RawMessage `json:"data"`
-	Routes       map[string]any  `json:"routes"` // channel -> resolved address
+	Channel      string          `json:"channel"`
+	// Route is the resolved address, normalized to a string at dispatch
+	// so numeric ids survive the JSON round-trip exactly (float64 would
+	// render 1000000 as "1e+06").
+	Route string `json:"route"`
 }
 
 // JobName gives the wrapper a stable registered name.
 func (j *queuedNotificationJob) JobName() string { return "genesys.notification" }
 
-// Handle reconstructs the notification and delivers it on each
-// recorded channel through the default manager.
+// Handle reconstructs the notification and delivers it on the job's
+// channel through the default manager.
 func (j *queuedNotificationJob) Handle() error {
 	manager := Default()
 	if manager == nil {
@@ -91,10 +110,8 @@ func (j *queuedNotificationJob) Handle() error {
 		return fmt.Errorf("notifications: corrupt queued payload: %w", err)
 	}
 
-	for channel, address := range j.Routes {
-		if err := manager.sendOn(channel, Route(channel, address), notification); err != nil {
-			return fmt.Errorf("notifications: channel %s: %w", channel, err)
-		}
+	if err := manager.sendOn(j.Channel, Route(j.Channel, j.Route), notification); err != nil {
+		return fmt.Errorf("notifications: channel %s: %w", j.Channel, err)
 	}
 	return nil
 }
@@ -103,34 +120,33 @@ func (j *queuedNotificationJob) Handle() error {
 // delivering inline. Channel routes are resolved now; delivery happens
 // on a worker.
 func (m *Manager) SendQueued(q queue.Queue, notifiable Notifiable, notification Notification) error {
-	name := nameFor(notification)
+	key := typeKey(notification)
 	queuedMu.RLock()
-	_, registered := queuedFactory[name]
+	_, registered := queuedFactory[key]
 	queuedMu.RUnlock()
 	if !registered {
-		return fmt.Errorf("notifications: %q is not registered for queueing - call notifications.RegisterQueued[%s]()",
-			name, reflect.TypeOf(notification).Elem().Name())
-	}
-
-	routes := make(map[string]any)
-	for _, channel := range notification.Via(notifiable) {
-		if address := notifiable.RouteNotificationFor(channel); address != nil {
-			routes[channel] = address
-		}
-	}
-	if len(routes) == 0 {
-		return nil // the notifiable routes none of the channels
+		return fmt.Errorf("notifications: %s is not registered for queueing - call notifications.RegisterQueued for it first", key)
 	}
 
 	data, err := json.Marshal(notification)
 	if err != nil {
 		return err
 	}
-	return q.Push(&queuedNotificationJob{
-		Notification: name,
-		Data:         data,
-		Routes:       routes,
-	})
+	for _, channel := range notification.Via(notifiable) {
+		address := notifiable.RouteNotificationFor(channel)
+		if address == nil {
+			continue // the notifiable opted out of this channel
+		}
+		if err := q.Push(&queuedNotificationJob{
+			Notification: key,
+			Data:         data,
+			Channel:      channel,
+			Route:        fmt.Sprint(address),
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func init() {

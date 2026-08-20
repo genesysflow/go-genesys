@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/genesysflow/go-genesys/notifications"
+	"github.com/genesysflow/go-genesys/queue"
 )
 
 var (
@@ -64,4 +65,11 @@ func MarkAsRead(id int64) error {
 // MarkAllAsRead stamps all of a notifiable's notifications as read.
 func MarkAllAsRead(notifiableID any) error {
 	return mustInstance().MarkAllAsRead(notifiableID)
+}
+
+// SendQueued dispatches a notification onto the queue; a worker
+// delivers it on every routed channel. The notification type must be
+// registered with notifications.RegisterQueued.
+func SendQueued(q queue.Queue, notifiable notifications.Notifiable, notification notifications.Notification) error {
+	return mustInstance().SendQueued(q, notifiable, notification)
 }
