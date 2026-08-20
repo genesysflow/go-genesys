@@ -1,0 +1,23 @@
+package console
+
+import (
+	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/spf13/cobra"
+)
+
+// {{.Name}}Command creates the {{.LowerName}} command. Register it via the
+// ConsoleServiceProvider's Commands callback:
+//
+//	Commands: func(root *cobra.Command) {
+//	    root.AddCommand(console.{{.Name}}Command(app))
+//	}
+func {{.Name}}Command(app contracts.Application) *cobra.Command {
+	return &cobra.Command{
+		Use:   "{{.LowerName}}",
+		Short: "Describe the {{.LowerName}} command",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Command logic here.
+			return nil
+		},
+	}
+}

@@ -1,0 +1,13 @@
+package requests
+
+// {{.Name}} is a validated form request. Use it in a handler:
+//
+//	req, err := http.ValidateRequest[requests.{{.Name}}](ctx)
+//	if err != nil {
+//	    return err // rendered as 422 with per-field errors
+//	}
+type {{.Name}} struct {
+	// Add fields with validation tags, e.g.:
+	// Name  string `json:"name" validate:"required,min=3"`
+	// Email string `json:"email" validate:"required,email"`
+}
