@@ -24,6 +24,10 @@ type ORMUserProvider[T any] struct {
 	// TokenField is the column checked by RetrieveByToken
 	// (default "api_token").
 	TokenField string
+
+	// RememberField is the column holding the remember-me token
+	// (default "remember_token").
+	RememberField string
 }
 
 // NewORMUserProvider creates an ORM-backed user provider. Panics unless *T
@@ -33,7 +37,7 @@ func NewORMUserProvider[T any]() *ORMUserProvider[T] {
 	if _, ok := any(&probe).(Authenticatable); !ok {
 		panic(fmt.Sprintf("auth: *%T does not implement auth.Authenticatable", probe))
 	}
-	return &ORMUserProvider[T]{TokenField: "api_token"}
+	return &ORMUserProvider[T]{TokenField: "api_token", RememberField: "remember_token"}
 }
 
 // RetrieveByID returns the user with the given identifier.
@@ -85,4 +89,30 @@ func (p *ORMUserProvider[T]) RetrieveByToken(token string) (Authenticatable, err
 		return nil, err
 	}
 	return any(user).(Authenticatable), nil
+}
+
+// RetrieveByRememberToken returns the user with the given id whose
+// stored remember token matches.
+func (p *ORMUserProvider[T]) RetrieveByRememberToken(id any, token string) (Authenticatable, error) {
+	if s, ok := id.(string); ok {
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			id = n
+		}
+	}
+	user, err := database.Query[T]().Where("id", id).Where(p.RememberField, token).First()
+	if err != nil {
+		if errors.Is(err, database.ErrNotFound) {
+			return nil, ErrUserNotFound
+		}
+		return nil, err
+	}
+	return any(user).(Authenticatable), nil
+}
+
+// UpdateRememberToken stores a new remember token for the user.
+func (p *ORMUserProvider[T]) UpdateRememberToken(user Authenticatable, token string) error {
+	_, err := database.Query[T]().
+		Where("id", user.GetAuthIdentifier()).
+		Update(map[string]any{p.RememberField: token})
+	return err
 }

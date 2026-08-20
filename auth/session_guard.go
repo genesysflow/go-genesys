@@ -3,6 +3,7 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/genesysflow/go-genesys/hash"
 	"github.com/genesysflow/go-genesys/http"
@@ -16,6 +17,17 @@ const sessionKey = "_auth_id"
 type SessionGuard struct {
 	name     string
 	provider UserProvider
+
+	// RememberCookie overrides the persistent-login cookie name
+	// (default "remember_<guard name>").
+	RememberCookie string
+
+	// RememberTTL is the persistent-login lifetime (default 30 days).
+	RememberTTL time.Duration
+
+	// RememberCookieInsecure drops the cookie's Secure flag for local
+	// development over plain HTTP.
+	RememberCookieInsecure bool
 }
 
 // NewSessionGuard creates a session guard backed by the given user provider.
@@ -84,8 +96,11 @@ func (g *SessionGuard) Login(ctx *http.Context, user Authenticatable) error {
 	return nil
 }
 
-// Logout ends the authenticated session.
+// Logout ends the authenticated session and revokes any persistent
+// login (the remember cookie is expired and its token cycled).
 func (g *SessionGuard) Logout(ctx *http.Context) error {
+	g.forgetRememberCookie(ctx, g.User(ctx))
+
 	sess := g.session(ctx)
 	if sess == nil {
 		return nil
@@ -113,6 +128,11 @@ func (g *SessionGuard) User(ctx *http.Context) Authenticatable {
 	}
 	id := sess.Get(sessionKey)
 	if id == nil {
+		// No session login - fall back to the remember-me cookie.
+		if user := g.userFromRememberCookie(ctx); user != nil {
+			ctx.Set(g.cacheKey(), user)
+			return user
+		}
 		return nil
 	}
 
