@@ -1,11 +1,13 @@
 package http
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/validation"
+	"github.com/genesysflow/go-genesys/view"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -188,6 +190,24 @@ func (c *Context) JSONResponse(v any) error {
 func (c *Context) HTML(html string) error {
 	c.fiberCtx.Set("Content-Type", "text/html; charset=utf-8")
 	return c.fiberCtx.SendString(html)
+}
+
+// View renders a template by dot-notation name (e.g. "users.index") and
+// sends it as an HTML response. Requires the ViewServiceProvider.
+func (c *Context) View(name string, data ...map[string]any) error {
+	manager, err := container.Resolve[*view.Manager](c.app)
+	if err != nil {
+		return fmt.Errorf("http: view manager not available - register the ViewServiceProvider: %w", err)
+	}
+	var viewData map[string]any
+	if len(data) > 0 {
+		viewData = data[0]
+	}
+	html, err := manager.RenderString(name, viewData)
+	if err != nil {
+		return err
+	}
+	return c.HTML(html)
 }
 
 // File sends a file response.
