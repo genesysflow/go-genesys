@@ -24,6 +24,7 @@ Laravel-style docs, one topic per file.
 - [Queues](queue.md)
 - [Task Scheduling](scheduling.md)
 - [Events](events.md)
+- [Broadcasting](broadcasting.md)
 - [Mail](mail.md)
 - [Notifications](notifications.md)
 - [Localization](localization.md)

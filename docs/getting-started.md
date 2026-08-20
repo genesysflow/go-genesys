@@ -82,3 +82,17 @@ func (p *BillingServiceProvider) Boot(app contracts.Application) error {
     return nil // runs after all providers are registered
 }
 ```
+
+## Validating Configuration at Boot
+
+Fail fast on missing configuration instead of at first use:
+
+```go
+config.MustValidate(cfg,
+    "app.key",
+    "database.default",
+    "mail.from_address",
+)
+```
+
+All missing keys are reported together; empty strings count as missing.

@@ -204,3 +204,69 @@ func replacePlaceholders(message string, replacements ...map[string]string) stri
 	}
 	return message
 }
+
+// lookupIn finds a key in a specific locale, then the fallback.
+func (t *Translator) lookupIn(locale, key string) (string, bool) {
+	if message, ok := t.loadLocale(locale)[key]; ok {
+		return message, true
+	}
+	if fallback := t.fallback; fallback != locale {
+		if message, ok := t.loadLocale(fallback)[key]; ok {
+			return message, true
+		}
+	}
+	return "", false
+}
+
+// LocaleView resolves translations in one fixed locale, so a request
+// can translate in the visitor's language without mutating the shared
+// translator's active locale.
+type LocaleView struct {
+	t      *Translator
+	locale string
+}
+
+// In returns a view over the translator pinned to the given locale:
+//
+//	t.In("de").Trans("messages.hi", map[string]string{"name": "Ada"})
+func (t *Translator) In(locale string) *LocaleView {
+	return &LocaleView{t: t, locale: locale}
+}
+
+// Locale returns the view's locale.
+func (v *LocaleView) Locale() string { return v.locale }
+
+// Trans translates a key in the view's locale.
+func (v *LocaleView) Trans(key string, replacements ...map[string]string) string {
+	message, ok := v.t.lookupIn(v.locale, key)
+	if !ok {
+		return key
+	}
+	return replacePlaceholders(message, replacements...)
+}
+
+// Has reports whether a key exists in the view's locale or fallback.
+func (v *LocaleView) Has(key string) bool {
+	_, ok := v.t.lookupIn(v.locale, key)
+	return ok
+}
+
+// TransChoice translates a pluralizable key in the view's locale.
+func (v *LocaleView) TransChoice(key string, count int, replacements ...map[string]string) string {
+	message, ok := v.t.lookupIn(v.locale, key)
+	if !ok {
+		return key
+	}
+	parts := strings.Split(message, "|")
+	chosen := parts[0]
+	if count != 1 && len(parts) > 1 {
+		chosen = parts[1]
+	}
+	all := map[string]string{"count": fmt.Sprint(count)}
+	for _, extra := range replacements {
+		for k, v := range extra {
+			all[k] = v
+		}
+	}
+	return replacePlaceholders(chosen, all)
+}

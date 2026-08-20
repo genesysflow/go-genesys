@@ -138,3 +138,42 @@ genesys up
 With `middleware.Maintenance` registered, every request gets a 503 (and
 `Retry-After`) while the down file exists; `?secret=...` bypasses via a
 cookie for operators.
+
+## Job Middleware
+
+Middleware wraps job execution on the worker; jobs may also declare
+their own via a `Middleware()` method:
+
+```go
+worker.Use(func(job queue.Job, next func() error) error {
+    started := time.Now()
+    defer func() { log.Info("job done", "took", time.Since(started)) }()
+    return next()
+})
+```
+
+`WithoutOverlapping` serialises jobs sharing an `OverlapKey()` through a
+cache lock, and `DispatchUnique` drops duplicate dispatches within a
+window (`UniqueID()` or a payload hash):
+
+```go
+worker.Use(queue.WithoutOverlapping(store, time.Minute))
+pushed, _ := queue.DispatchUnique(q, store, &RebuildIndex{}, time.Minute)
+```
+
+## Cross-Process Batches
+
+With a batch repository installed, batch counters persist to a
+`job_batches` table and are visible from any process:
+
+```go
+queue.SetBatchRepository(queue.NewDatabaseBatchRepository(conn.Driver(), conn, ""))
+
+batch := queue.NewBatch().Then(func(b *queue.Batch) { ... })
+batch.Dispatch(q, jobs...)
+
+// anywhere, any process:
+progress, _ := queue.FindBatch(batch.ID) // Total/Completed/Failed/Finished()
+```
+
+Completion callbacks still fire in the process that registered them.

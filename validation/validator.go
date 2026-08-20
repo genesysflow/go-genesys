@@ -16,6 +16,7 @@ type Validator struct {
 	validate       *validator.Validate
 	customMessages map[string]string
 	attributeNames map[string]string
+	translator     Translator
 	mu             sync.RWMutex
 }
 
@@ -139,8 +140,39 @@ func (v *Validator) formatErrorWithField(fe validator.FieldError, fieldNameOverr
 		return v.replaceMessagePlaceholders(msg, fe, fieldNameOverride)
 	}
 
+	// Translated messages: validation.<field>.<tag> beats validation.<tag>.
+	if v.translator != nil {
+		for _, transKey := range []string{
+			"validation." + strings.ToLower(lookupField) + "." + fe.Tag(),
+			"validation." + fe.Tag(),
+		} {
+			if v.translator.Has(transKey) {
+				msg := v.translator.Trans(transKey, nil)
+				return v.replaceMessagePlaceholders(msg, fe, fieldNameOverride)
+			}
+		}
+	}
+
 	// Default messages
 	return v.defaultMessage(fe, fieldNameOverride)
+}
+
+// Translator resolves translation keys; lang.Translator and
+// lang.LocaleView both satisfy it.
+type Translator interface {
+	Trans(key string, replacements ...map[string]string) string
+	Has(key string) bool
+}
+
+// SetTranslator localizes validation messages through a translator.
+// Message keys: "validation.<tag>" (e.g. validation.required) with
+// :attribute/:param/:value placeholders, overridable per field via
+// "validation.<field>.<tag>". Attribute display names come from
+// "validation.attributes.<field>".
+func (v *Validator) SetTranslator(t Translator) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.translator = t
 }
 
 // defaultMessage returns the default error message for a validation tag.
@@ -222,6 +254,11 @@ func (v *Validator) defaultMessage(fe validator.FieldError, fieldNameOverride st
 func (v *Validator) getAttributeName(field string) string {
 	if name, ok := v.attributeNames[field]; ok {
 		return name
+	}
+	if v.translator != nil {
+		if key := "validation.attributes." + strings.ToLower(field); v.translator.Has(key) {
+			return v.translator.Trans(key, nil)
+		}
 	}
 	// Convert camelCase/snake_case to Title Case
 	return strings.Title(strings.ReplaceAll(strings.ReplaceAll(field, "_", " "), "-", " "))

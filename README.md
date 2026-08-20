@@ -5,27 +5,28 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 ## Features
 
 - **Service Container & Providers**: Dependency injection with a clean register/boot lifecycle
-- **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) with middleware pipeline, route groups, named routes, fallbacks, redirects, and middleware groups/aliases
+- **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) with middleware pipeline, route groups, subdomain routing (`Domain("{account}.example.com", ...)`), named routes, fallbacks, redirects, and middleware groups/aliases
 - **Query Builder**: Fluent SQL builder with per-driver grammar (`db.Table("users").Where(...).Get()`)
-- **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, automatic timestamps, pagination, relationships with batched eager loading (`With("Posts.Tags")`), soft deletes, lifecycle hooks/observers, and dirty tracking with partial updates
+- **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, automatic timestamps, pagination (offset + cursor), relationships with batched eager loading (`With("Posts.Tags")`), existence queries (`WhereHas`/`DoesntHave`), pivot writes (`Attach`/`Detach`/`Sync`/`Toggle`), `CreateFor`/`Associate`, soft deletes, lifecycle hooks/observers, dirty tracking with partial updates, and delete-safe `Chunk`/`Each`
 - **Route Model Binding**: `http.BindModel[User](ctx, "user")` with automatic 404s
 - **Form Requests**: `http.ValidateRequest[T](ctx)` with Laravel-shaped 422 responses
 - **Migrations & Schema Builder**: Programmatic schema with foreign keys, indexes, rollback/reset/fresh
 - **Seeders & Factories**: `db:seed`, `database.NewFactory[T]`
-- **Views**: `html/template`-based view layer with layouts, partials, and `ctx.View("users.index", data)`
+- **Views**: `html/template`-based view layer with layouts, partials, components with slots (`{{component "alert" (dict ...)}}`), and `ctx.View("users.index", data)`
 - **Authentication**: Session and token guards, ORM user provider, login/logout/attempt, remember-me cookies, password reset broker, and signed email verification
 - **Authorization**: Gate with `Define/Allows/Authorize` and before-hooks
 - **Sessions**: Memory, file, database, and Redis drivers; flash data and old input
 - **Cache**: Memory, file, and Redis stores with `Remember`, `Increment`, `Add`, `Pull`, atomic locks (`cache.NewLock`), and a cache-backed `Throttle` rate limiter
-- **Queue**: Sync, memory, database, and Redis drivers; workers with retries/backoff, failed-job management, job chaining (`queue.Chain`), and batches with `Then/Catch/Finally`
+- **Queue**: Sync, memory, database, and Redis drivers; workers with retries/backoff, failed-job management, job middleware (`WithoutOverlapping`, unique dispatch), chaining (`queue.Chain`), and batches with `Then/Catch/Finally` plus a cross-process `job_batches` repository
 - **Task Scheduling**: Cron-style scheduler with `schedule:run` / `schedule:work`
-- **Events**: Dispatcher with typed generic listeners (`events.Listen[T]`)
+- **Events**: Dispatcher with typed generic listeners (`events.Listen[T]`) and wildcard listeners
+- **Broadcasting**: WebSocket channels (public + authorized private) with an event-dispatcher bridge (`Broadcastable`)
 - **Mail**: Message builder with SMTP, log, and array (test) drivers
 - **Notifications**: Multi-channel notifications (mail + database) with on-demand routes and unread feeds
 - **Encryption**: AES-256-GCM `crypt` package keyed by `APP_KEY`, plus `key:generate`
 - **Signed URLs**: HMAC-signed links with optional expiry and a validation middleware
 - **HTTP Client**: Fluent outbound client with retries (`client.New().WithToken(...).Get(...)`)
-- **Localization**: Per-locale YAML lang files, `Trans`/`TransChoice`
+- **Localization**: Per-locale YAML lang files, `Trans`/`TransChoice`, locale-pinned views (`translator.In("de")`), request-locale detection middleware, and translated validation messages
 - **Collections**: Generic fluent collections (`Map`, `Filter`, `GroupBy`, ...)
 - **Validation**: Struct-tag validation with custom rules and messages
 - **Security**: CSRF protection, bcrypt hashing, security headers, secure-by-default cookies

@@ -6,6 +6,35 @@ All notable changes to Go-Genesys are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Relation existence queries**: `Has`/`WhereHas`/`OrWhereHas`/
+  `DoesntHave` with correlated EXISTS (pivot join for belongsToMany),
+  dotted nested paths, and related-table constraints; query builder
+  `WhereExists`/`WhereNotExists`/`WhereInSub` with cross-driver
+  placeholder renumbering.
+- **Relationship writes**: `Attach`/`Detach`/`Sync`/`Toggle` pivot
+  management, `CreateFor` (hasOne/hasMany create with FK fill), and
+  `Associate`/`Dissociate` for belongsTo. Reloading relations after a
+  detach now clears stale fields.
+- **Cursor pagination** (`CursorPaginate` on builder and ORM) and
+  delete-safe keyset `Chunk`/`Each`.
+- **Queue**: worker + per-job middleware (`worker.Use`,
+  `WithoutOverlapping` over cache locks, `DispatchUnique` dedupe) and a
+  database-backed `job_batches` repository making batch progress visible
+  across processes (`queue.FindBatch`).
+- **Broadcasting** (`broadcast`): WebSocket hub with public and
+  authorized private channels, JSON subscribe protocol, slow-consumer
+  protection, and a dispatcher bridge (`Broadcastable` events push to
+  their channel). Dispatcher gains `ListenAll` wildcard listeners.
+- **View components**: `{{component "alert" (dict ...)}}` renders
+  templates under components/ with slot content via `{{slot .}}`.
+- **Localization**: locale-pinned translator views
+  (`translator.In("de")`), `DetectLocale` middleware
+  (query/session/Accept-Language), and translated validation messages
+  and attribute names via `validator.SetTranslator`.
+- **Subdomain routing**: `router.Domain("{account}.example.com", ...)`
+  with captured domain parameters and host fall-through.
+- **Config validation**: `config.Validate`/`MustValidate` fail fast on
+  missing keys at boot.
 - **ORM relationships**: `rel` struct tags (hasOne/hasMany/belongsTo/
   belongsToMany) with Laravel-convention keys, batched eager loading via
   `With("Posts", "Posts.Tags")` (one query per relation, nested paths),

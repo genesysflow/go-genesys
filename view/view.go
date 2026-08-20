@@ -62,6 +62,22 @@ func defaultFuncs() template.FuncMap {
 		"upper": strings.ToUpper,
 		"lower": strings.ToLower,
 		"title": strings.Title,
+		// dict builds a map inline, for passing data to components:
+		// {{component "alert" (dict "type" "error" "message" .err)}}
+		"dict": func(pairs ...any) (map[string]any, error) {
+			if len(pairs)%2 != 0 {
+				return nil, fmt.Errorf("dict: odd number of arguments")
+			}
+			d := make(map[string]any, len(pairs)/2)
+			for i := 0; i < len(pairs); i += 2 {
+				key, ok := pairs[i].(string)
+				if !ok {
+					return nil, fmt.Errorf("dict: keys must be strings, got %T", pairs[i])
+				}
+				d[key] = pairs[i+1]
+			}
+			return d, nil
+		},
 	}
 }
 
@@ -95,7 +111,43 @@ func (m *Manager) Load() error {
 }
 
 func (m *Manager) loadLocked() error {
-	root := template.New("").Funcs(m.funcs)
+	funcs := make(template.FuncMap, len(m.funcs)+2)
+	for name, fn := range m.funcs {
+		funcs[name] = fn
+	}
+	// component renders a view under components/ as a reusable partial,
+	// Blade components without the compiler:
+	//
+	//	{{component "alert" (dict "type" "error" "slot" "Something broke")}}
+	//
+	// The component template reads its data as usual ({{.type}}) and
+	// injects slot content with {{raw .slot}} (or {{slot .}}).
+	funcs["component"] = func(name string, data ...map[string]any) (template.HTML, error) {
+		var payload map[string]any
+		if len(data) > 0 {
+			payload = data[0]
+		}
+		out, err := m.RenderString("components."+name, payload)
+		if err != nil {
+			return "", err
+		}
+		return template.HTML(out), nil // #nosec G203 -- component output is template-rendered
+	}
+	// slot renders a component's slot content as HTML.
+	funcs["slot"] = func(data map[string]any) template.HTML {
+		if data == nil {
+			return ""
+		}
+		if s, ok := data["slot"].(string); ok {
+			return template.HTML(s) // #nosec G203 -- explicit slot opt-in
+		}
+		if h, ok := data["slot"].(template.HTML); ok {
+			return h
+		}
+		return ""
+	}
+
+	root := template.New("").Funcs(funcs)
 
 	err := filepath.WalkDir(m.path, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {

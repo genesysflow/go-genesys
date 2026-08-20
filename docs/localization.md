@@ -56,3 +56,39 @@ langfacade.TransChoice("messages.apples", 5)  // "5 apples"
 
 `:count` is replaced automatically; other `:placeholder` values come from
 the optional replacements map.
+
+## Localized Validation Messages
+
+Wire the validator to the translator and define messages under
+`validation.*` — per-tag, per-field overrides, and attribute names:
+
+```yaml
+# lang/de/validation.yaml
+required: ":attribute ist erforderlich"
+email: ":attribute muss eine gültige E-Mail sein"
+attributes:
+  email: "E-Mail-Adresse"
+```
+
+```go
+v.SetTranslator(translator)          // app-wide locale
+v.SetTranslator(translator.In("de")) // pinned locale (per request)
+```
+
+## Detecting the Request Locale
+
+`DetectLocale` resolves the visitor's locale from an explicit
+`?locale=` choice (remembered in the session), then the session, then
+`Accept-Language` — always constrained to your supported list:
+
+```go
+kernel.Use(middleware.DetectLocale(middleware.LocaleConfig{
+    Supported: []string{"en", "de", "fr"},
+}))
+
+// in handlers:
+view := translator.In(middleware.LocaleFromContext(ctx))
+```
+
+`translator.In(locale)` returns a locale-pinned view, so concurrent
+requests in different languages never fight over a shared locale.

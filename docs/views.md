@@ -61,3 +61,24 @@ viewManager.AddFunc("money", formatMoney)     // custom template function
 
 Built-in helpers: `raw` (opt out of escaping for trusted HTML), `upper`,
 `lower`, `title`. All output is HTML-escaped by default.
+
+## Components
+
+Templates under `components/` are reusable partials, called with
+`component` and an inline `dict`; slot content passes as the `slot` key
+and renders with `{{slot .}}`:
+
+```html
+<!-- components/alert.html -->
+<div class="alert alert-{{.type}}">{{.message}}</div>
+
+<!-- components/card.html -->
+<div class="card"><h2>{{.title}}</h2>{{slot .}}</div>
+
+<!-- any view -->
+{{component "alert" (dict "type" "error" "message" .err)}}
+{{component "card" (dict "title" "Hello" "slot" "<p>Body</p>")}}
+```
+
+Regular data stays HTML-escaped inside components; only slot content is
+injected as-is.

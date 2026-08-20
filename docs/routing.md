@@ -78,3 +78,20 @@ post, err := http.BindModelBy[models.Post](ctx, "slug", "slug")
 router.Resource("photos", photoController)      // index/create/store/show/edit/update/destroy
 router.APIResource("videos", videoController)   // no create/edit
 ```
+
+## Subdomain Routing
+
+`Domain` groups routes under a host pattern; `{name}` segments capture
+into domain parameters, and non-matching hosts fall through to later
+routes on the same path:
+
+```go
+router.Domain("{account}.example.com", func(r *http.Router) {
+    r.GET("/dashboard", func(ctx *http.Context) error {
+        account := http.DomainParam(ctx, "account")
+        return ctx.String("Hello, " + account)
+    })
+})
+
+router.GET("/dashboard", apexDashboard) // example.com keeps working
+```

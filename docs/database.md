@@ -248,3 +248,65 @@ manager.Listen(func(e database.QueryEvent) {
     }
 })
 ```
+
+## Relation Existence Queries
+
+`Has`/`WhereHas` filter parents by their relations using correlated
+EXISTS subqueries (a pivot join for belongsToMany), with dotted nested
+paths and soft-deleted related rows excluded:
+
+```go
+authors, _ := database.Query[Author]().Has("Posts").Get()
+authors, _ = database.Query[Author]().DoesntHave("Posts").Get()
+
+authors, _ = database.Query[Author]().
+    WhereHas("Posts", func(posts *query.Builder) {
+        posts.Where("published", true)
+    }).Get()
+
+// Authors with a post tagged "web":
+authors, _ = database.Query[Author]().
+    WhereHas("Posts.Tags", func(tags *query.Builder) {
+        tags.Where("tags.name", "web")
+    }).Get()
+```
+
+## Relationship Writes
+
+Pivot tables are managed by relation name; ids and models both work:
+
+```go
+database.Attach(post, "Tags", tagGo, tagWeb) // idempotent
+database.Detach(post, "Tags", tagGo)          // or Detach(post, "Tags") for all
+database.Sync(post, "Tags", tagGo, tagRust)   // make the pivot exactly this set
+database.Toggle(post, "Tags", tagGo)          // attach if missing, detach if present
+```
+
+Children are created through their relation, foreign key filled in:
+
+```go
+database.CreateFor(author, "Posts", &Article{Title: "New"})
+database.Associate(article, "Author", author) // set belongsTo FK in memory
+database.Update(article)
+```
+
+## Cursor Pagination
+
+For infinite scroll and deep pagination, cursors beat OFFSET — no
+rescan of skipped rows, stable under concurrent inserts:
+
+```go
+page, _ := database.Query[User]().Where("active", true).CursorPaginate(25, cursor)
+// page.Data, page.NextCursor ("" on the last page)
+```
+
+## Chunking Large Tables
+
+`Chunk` walks a table in keyset-ordered batches (delete-safe), `Each`
+per row:
+
+```go
+database.Query[User]().Where("active", true).Chunk(500, func(users []User) error {
+    return exportBatch(users)
+})
+```
