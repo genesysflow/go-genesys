@@ -58,11 +58,39 @@ type driverExecutor interface {
 
 // ModelQuery is a typed query builder for a model.
 type ModelQuery[T any] struct {
-	builder  *query.Builder
-	driver   string
-	executor query.Executor
-	withs    []string
-	err      error
+	builder     *query.Builder
+	driver      string
+	executor    query.Executor
+	withs       []string
+	meta        *modelMeta
+	trashed     trashedMode
+	trashedDone bool
+	err         error
+}
+
+type trashedMode int
+
+const (
+	trashedExclude trashedMode = iota // default: hide soft-deleted rows
+	trashedInclude                    // WithTrashed
+	trashedOnly                       // OnlyTrashed
+)
+
+// applySoftDeleteScope adds the deleted_at constraint once, right before
+// the query executes, so WithTrashed/OnlyTrashed can be called at any
+// point in the chain.
+func (q *ModelQuery[T]) applySoftDeleteScope() {
+	if q.trashedDone || q.builder == nil || q.meta == nil || !q.meta.softDeletes {
+		q.trashedDone = true
+		return
+	}
+	switch q.trashed {
+	case trashedExclude:
+		q.builder.WhereNull("deleted_at")
+	case trashedOnly:
+		q.builder.WhereNotNull("deleted_at")
+	}
+	q.trashedDone = true
 }
 
 // Query starts a typed query for a model:
@@ -78,6 +106,7 @@ func Query[T any]() *ModelQuery[T] {
 		builder:  query.New(driver, executor).Table(meta.table),
 		driver:   driver,
 		executor: executor,
+		meta:     meta,
 	}
 }
 
@@ -91,6 +120,7 @@ func QueryOn[T any](driver string, executor query.Executor) *ModelQuery[T] {
 		builder:  query.New(driver, executor).Table(meta.table),
 		driver:   driver,
 		executor: executor,
+		meta:     meta,
 	}
 }
 
@@ -202,6 +232,7 @@ func (q *ModelQuery[T]) Get() ([]T, error) {
 	if q.err != nil {
 		return nil, q.err
 	}
+	q.applySoftDeleteScope()
 	rows, err := q.builder.Rows()
 	if err != nil {
 		return nil, err
@@ -242,6 +273,7 @@ func (q *ModelQuery[T]) Count() (int64, error) {
 	if q.err != nil {
 		return 0, q.err
 	}
+	q.applySoftDeleteScope()
 	return q.builder.Count()
 }
 
@@ -250,6 +282,7 @@ func (q *ModelQuery[T]) Exists() (bool, error) {
 	if q.err != nil {
 		return false, q.err
 	}
+	q.applySoftDeleteScope()
 	return q.builder.Exists()
 }
 
@@ -258,13 +291,21 @@ func (q *ModelQuery[T]) Update(values map[string]any) (int64, error) {
 	if q.err != nil {
 		return 0, q.err
 	}
+	q.applySoftDeleteScope()
 	return q.builder.Update(values)
 }
 
 // Delete removes all matching rows.
+// For soft-deletable models this marks matching rows as trashed;
+// ForceDelete removes them permanently.
 func (q *ModelQuery[T]) Delete() (int64, error) {
 	if q.err != nil {
 		return 0, q.err
+	}
+	q.applySoftDeleteScope()
+	if q.meta != nil && q.meta.softDeletes {
+		now := time.Now().UTC().Truncate(time.Second)
+		return q.builder.Update(map[string]any{"deleted_at": now, "updated_at": now})
 	}
 	return q.builder.Delete()
 }
@@ -292,6 +333,7 @@ func (q *ModelQuery[T]) Paginate(page, perPage int) (*ModelPaginator[T], error) 
 		perPage = 15
 	}
 
+	q.applySoftDeleteScope()
 	total, err := q.builder.Clone().Count()
 	if err != nil {
 		return nil, err
@@ -399,13 +441,10 @@ func Update[T any](model *T) error {
 }
 
 // Delete removes the row with the given primary key.
+// For soft-deletable models this trashes the row; use ForceDelete to
+// remove it permanently.
 func Delete[T any](id any) error {
-	meta, err := metaFor(reflect.TypeOf((*T)(nil)).Elem())
-	if err != nil {
-		return err
-	}
-	driver, executor := connectionFor[T]()
-	affected, err := query.New(driver, executor).Table(meta.table).Where("id", id).Delete()
+	affected, err := Query[T]().Where("id", id).Delete()
 	if err != nil {
 		return err
 	}
@@ -415,13 +454,21 @@ func Delete[T any](id any) error {
 	return nil
 }
 
-// DeleteModel removes the given model's row by primary key.
+// DeleteModel removes the given model's row by primary key. On
+// soft-deletable models the in-memory DeletedAt field is set to match.
 func DeleteModel[T any](model *T) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
 		return err
 	}
-	return Delete[T](pkValue(meta, model))
+	if err := Delete[T](pkValue(meta, model)); err != nil {
+		return err
+	}
+	if meta.softDeletes {
+		now := time.Now().UTC().Truncate(time.Second)
+		markDeletedAt(meta, model, &now)
+	}
+	return nil
 }
 
 func pkValue[T any](meta *modelMeta, model *T) int64 {

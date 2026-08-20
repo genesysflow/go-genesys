@@ -27,6 +27,19 @@ type Model struct {
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }
 
+// SoftDeletes adds a deleted_at column to a model, switching the ORM to
+// soft deletion: Delete marks the row instead of removing it, and queries
+// exclude trashed rows unless WithTrashed/OnlyTrashed is used.
+//
+//	type User struct {
+//	    database.Model
+//	    database.SoftDeletes
+//	    Name string `db:"name"`
+//	}
+type SoftDeletes struct {
+	DeletedAt *time.Time `db:"deleted_at" json:"deleted_at,omitempty"`
+}
+
 // TableNamer lets a model override its inferred table name.
 type TableNamer interface {
 	TableName() string
@@ -43,13 +56,15 @@ type fieldMeta struct {
 	isPK      bool
 	isCreated bool
 	isUpdated bool
+	isDeleted bool
 }
 
 type modelMeta struct {
-	table   string
-	fields  []fieldMeta
-	byCol   map[string]*fieldMeta
-	pkIndex int // index into fields, -1 when absent
+	table       string
+	fields      []fieldMeta
+	byCol       map[string]*fieldMeta
+	pkIndex     int // index into fields, -1 when absent
+	softDeletes bool
 }
 
 var metaCache sync.Map // reflect.Type -> *modelMeta
@@ -79,6 +94,9 @@ func metaFor(t reflect.Type) (*modelMeta, error) {
 		meta.byCol[f.column] = f
 		if f.isPK {
 			meta.pkIndex = i
+		}
+		if f.isDeleted {
+			meta.softDeletes = true
 		}
 	}
 
@@ -123,6 +141,7 @@ func collectFields(t reflect.Type, parentIndex []int, meta *modelMeta) {
 			isPK:      column == "id",
 			isCreated: column == "created_at",
 			isUpdated: column == "updated_at",
+			isDeleted: column == "deleted_at",
 		})
 	}
 }

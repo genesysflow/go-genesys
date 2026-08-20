@@ -414,8 +414,12 @@ func loadBelongsToMany(driver string, executor query.Executor, models reflect.Va
 }
 
 // fetchInto runs the builder and scans its rows into an addressable slice
-// of the given struct type.
+// of the given struct type. Soft-deleted related rows are excluded, like
+// Laravel's relations.
 func fetchInto(driver string, executor query.Executor, structType reflect.Type, builder *query.Builder) (reflect.Value, error) {
+	if meta, err := metaFor(structType); err == nil && meta.softDeletes {
+		builder.WhereNull("deleted_at")
+	}
 	rows, err := builder.Rows()
 	if err != nil {
 		return reflect.Value{}, err
