@@ -75,3 +75,19 @@ notify.MarkAllAsRead(user.ID)
 
 The stored `name` defaults to the snake_cased type name
 (`invoice_paid`); implement `NotificationName() string` to override it.
+
+## Queued Notifications
+
+`SendQueued` resolves each channel's route (email address, database id)
+at dispatch time and pushes a serializable job, so any worker process
+can deliver it. Register the notification type once:
+
+```go
+notifications.RegisterQueued[InvoicePaid]()
+
+manager.SendQueued(q, user, &InvoicePaid{Amount: 100})
+// ... a worker later delivers on every routed channel
+```
+
+Workers deliver through the manager installed by the
+NotificationServiceProvider (`notifications.SetDefault`).

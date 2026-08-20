@@ -69,7 +69,7 @@ if sess.HasOldInput() { ... }
 # config/session.yaml
 driver: redis
 redis:
-  addr: ${REDIS_ADDR:localhost:6379}
+  addr: ${REDIS_ADDR:-localhost:6379}
   prefix: "session:"
 ```
 

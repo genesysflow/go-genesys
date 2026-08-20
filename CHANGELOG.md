@@ -6,6 +6,26 @@ All notable changes to Go-Genesys are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **ORM transactions**: `database.WithinTransaction(fn(tx *TxScope))`
+  with an optional trailing scope on every ORM helper (and
+  `AttachScoped`/`LoadScoped`-style variants), so creates, updates,
+  deletes, soft deletes, and pivot writes are all-or-nothing.
+  Previously ORM writes inside a transaction callback silently escaped
+  it.
+- **FirstOrCreate / UpdateOrCreate** (scope-aware; update keeps the
+  found row's id and creation timestamp).
+- **MySQL/MariaDB**: DSN building, driver mapping, backtick grammar
+  normalization; apps register go-sql-driver/mysql with a blank import.
+- **S3 temporary URLs**: `disk.TemporaryURL(ctx, path, ttl)` presigned
+  GET links, with manager and storage-facade passthroughs.
+- **Named queues**: `PushOn`/`LaterOn` across memory/database/redis
+  drivers and priority draining via `worker.Queues` /
+  `queue:work --queue=high,default`.
+- **Templated mail**: `Message.ViewHTML`/`ViewText` render bodies
+  through the view layer, deferring render errors to send time.
+- **Queued notifications**: `RegisterQueued[T]` + `SendQueued` resolve
+  channel routes at dispatch into a serializable job any worker can
+  deliver.
 - **Relation existence queries**: `Has`/`WhereHas`/`OrWhereHas`/
   `DoesntHave` with correlated EXISTS (pivot join for belongsToMany),
   dotted nested paths, and related-table constraints; query builder
@@ -143,6 +163,8 @@ All notable changes to Go-Genesys are documented here. The format follows
   clearing the bulk of the dependency-audit findings.
 
 ### Fixed
+- Documentation and example configs used `${VAR:default}` for env
+  interpolation; the supported syntax is `${VAR:-default}`.
 - Session flash data previously persisted forever; it now expires after
   one request as intended.
 - `make:model` referenced a template that did not exist.

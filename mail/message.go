@@ -32,6 +32,7 @@ type Message struct {
 	htmlBody    string
 	attachments []attachment
 	headers     map[string]string
+	viewErr     error // deferred view-render failure (see ViewHTML)
 }
 
 type attachment struct {
@@ -153,6 +154,9 @@ func (m *Message) validate() error {
 // Bytes renders the full RFC 5322 message (headers + MIME body). Bcc
 // addresses are intentionally not rendered into headers.
 func (m *Message) Bytes() ([]byte, error) {
+	if m.viewErr != nil {
+		return nil, m.viewErr
+	}
 	if err := m.validate(); err != nil {
 		return nil, err
 	}

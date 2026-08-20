@@ -7,8 +7,8 @@
 driver: log             # smtp, log, array
 host: smtp.example.com
 port: 587
-username: ${MAIL_USERNAME:}
-password: ${MAIL_PASSWORD:}
+username: ${MAIL_USERNAME:-}
+password: ${MAIL_PASSWORD:-}
 encryption: starttls    # tls (implicit, port 465), starttls, none
 from_address: hello@example.com
 from_name: My App
@@ -58,3 +58,17 @@ sent := mailer.Sent()
 assert.Len(t, sent, 1)
 assert.Equal(t, "Welcome!", sent[0].GetSubject())
 ```
+
+## Templated Emails
+
+Render mail bodies through the view layer:
+
+```go
+message := mail.NewMessage().
+    To(user.Email).
+    Subject("Welcome!").
+    ViewHTML(views, "emails.welcome", map[string]any{"name": user.Name})
+```
+
+`ViewText` renders a plain-text body the same way; render errors are
+deferred and surface from `Send`.

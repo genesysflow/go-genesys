@@ -88,7 +88,7 @@ default: redis
 connections:
   redis:
     driver: redis
-    addr: ${REDIS_ADDR:localhost:6379}
+    addr: ${REDIS_ADDR:-localhost:6379}
     prefix: "queues:"
 ```
 
@@ -177,3 +177,20 @@ progress, _ := queue.FindBatch(batch.ID) // Total/Completed/Failed/Finished()
 ```
 
 Completion callbacks still fire in the process that registered them.
+
+## Named Queues & Priorities
+
+Dispatch onto named queues and drain them in priority order:
+
+```go
+queue.PushOn(q, "high", &SendAlert{})
+queue.LaterOn(q, "reports", time.Hour, &BuildReport{})
+```
+
+```bash
+genesys queue:work --queue=high,default   # high drains first
+```
+
+Programmatically, set `worker.Queues = []string{"high", "default"}`.
+The memory, database, and redis drivers all support named queues; the
+sync driver runs everything inline.

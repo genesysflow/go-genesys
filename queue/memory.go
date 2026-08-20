@@ -37,6 +37,17 @@ func (q *MemoryQueue) Push(job Job) error {
 
 // Later dispatches a job to become available after the given delay.
 func (q *MemoryQueue) Later(delay time.Duration, job Job) error {
+	return q.PushOn("", delay, job)
+}
+
+// PushOn dispatches a job onto a named queue after the given delay -
+// Laravel's onQueue("high"):
+//
+//	q.PushOn("high", 0, &SendAlert{})
+func (q *MemoryQueue) PushOn(queueName string, delay time.Duration, job Job) error {
+	if queueName == "" {
+		queueName = "default"
+	}
 	name, body, err := marshalJob(job)
 	if err != nil {
 		return err
@@ -44,7 +55,7 @@ func (q *MemoryQueue) Later(delay time.Duration, job Job) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.nextID++
-	q.jobs["default"] = append(q.jobs["default"], &memoryJob{
+	q.jobs[queueName] = append(q.jobs[queueName], &memoryJob{
 		id:          q.nextID,
 		name:        name,
 		payload:     body,

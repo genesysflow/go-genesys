@@ -66,8 +66,8 @@ default: redis
 stores:
   redis:
     driver: redis
-    addr: ${REDIS_ADDR:localhost:6379}
-    password: ${REDIS_PASSWORD:}
+    addr: ${REDIS_ADDR:-localhost:6379}
+    password: ${REDIS_PASSWORD:-}
     db: 0
     prefix: "cache:"
 ```

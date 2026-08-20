@@ -85,6 +85,11 @@ func (q *RedisQueue) Push(job Job) error {
 
 // Later dispatches a job to become available after the given delay.
 func (q *RedisQueue) Later(delay time.Duration, job Job) error {
+	return q.PushOn("", delay, job)
+}
+
+// PushOn dispatches a job onto a named queue after the given delay.
+func (q *RedisQueue) PushOn(queueName string, delay time.Duration, job Job) error {
 	name, body, err := marshalJob(job)
 	if err != nil {
 		return err
@@ -93,7 +98,7 @@ func (q *RedisQueue) Later(delay time.Duration, job Job) error {
 	if err != nil {
 		return err
 	}
-	envelope := redisJob{ID: id, Queue: "default", Name: name, Payload: body, Attempts: 0}
+	envelope := redisJob{ID: id, Queue: normalizeQueue(queueName), Name: name, Payload: body, Attempts: 0}
 	return q.enqueue(envelope, delay)
 }
 

@@ -73,13 +73,21 @@ func (q *DatabaseQueue) Push(job Job) error {
 
 // Later dispatches a job to become available after the given delay.
 func (q *DatabaseQueue) Later(delay time.Duration, job Job) error {
+	return q.PushOn("", delay, job)
+}
+
+// PushOn dispatches a job onto a named queue after the given delay.
+func (q *DatabaseQueue) PushOn(queueName string, delay time.Duration, job Job) error {
+	if queueName == "" {
+		queueName = q.queue
+	}
 	name, body, err := marshalJob(job)
 	if err != nil {
 		return err
 	}
 	now := time.Now().Unix()
 	return q.jobs().Insert(map[string]any{
-		"queue":        q.queue,
+		"queue":        queueName,
 		"name":         name,
 		"payload":      string(body),
 		"attempts":     0,

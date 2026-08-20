@@ -43,7 +43,7 @@ myapp/
 │   ├── events/ listeners/ policies/ requests/
 │   └── providers/
 ├── bootstrap/app.go        # application wiring
-├── config/                 # YAML config with ${ENV:default} interpolation
+├── config/                 # YAML config with ${ENV:-default} interpolation
 ├── database/
 │   ├── migrations/
 │   └── seeders/

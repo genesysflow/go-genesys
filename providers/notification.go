@@ -46,6 +46,7 @@ func (p *NotificationServiceProvider) Boot(app contracts.Application) error {
 	app.InstanceType(manager)
 	app.BindValue("notifications", manager)
 	facadenotify.SetInstance(manager)
+	notifications.SetDefault(manager) // queued notifications deliver through this
 	return nil
 }
 

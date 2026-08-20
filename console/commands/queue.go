@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -48,6 +49,10 @@ func QueueWorkCommand(app contracts.Application) *cobra.Command {
 			}
 
 			worker := queue.NewWorker(driver)
+			if strings.Contains(queueName, ",") {
+				worker.Queues = strings.Split(queueName, ",")
+				queueName = ""
+			}
 			worker.Queue = queueName
 			worker.Sleep = sleep
 			worker.Tries = tries
@@ -76,7 +81,7 @@ func QueueWorkCommand(app contracts.Application) *cobra.Command {
 	}
 
 	cmd.Flags().String("connection", "", "Queue connection to use (default from config)")
-	cmd.Flags().String("queue", "", "Queue name to process")
+	cmd.Flags().String("queue", "", "Queue to process; a comma list (high,default) drains in priority order")
 	cmd.Flags().Duration("sleep", time.Second, "Sleep duration when the queue is empty")
 	cmd.Flags().Int("tries", 3, "Max attempts per job before it is marked failed")
 	cmd.Flags().Bool("once", false, "Process a single job and exit")

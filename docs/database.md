@@ -8,10 +8,10 @@ default: pgsql
 connections:
   pgsql:
     driver: pgsql
-    host: ${DB_HOST:localhost}
-    database: ${DB_DATABASE:myapp}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:}
+    host: ${DB_HOST:-localhost}
+    database: ${DB_DATABASE:-myapp}
+    username: ${DB_USERNAME:-postgres}
+    password: ${DB_PASSWORD:-}
   sqlite:
     driver: sqlite
     database: storage/database.sqlite
@@ -309,4 +309,65 @@ per row:
 database.Query[User]().Where("active", true).Chunk(500, func(users []User) error {
     return exportBatch(users)
 })
+```
+
+## Transactions
+
+`WithinTransaction` runs ORM operations all-or-nothing: pass the scope
+to any helper and its write joins the transaction. An error or panic
+rolls everything back; returning nil commits:
+
+```go
+err := database.WithinTransaction(func(tx *database.TxScope) error {
+    order := &Order{Total: 100}
+    if err := database.Create(order, tx); err != nil {
+        return err
+    }
+    if err := database.CreateFor(order, "Items", &Item{SKU: "A1"}, tx); err != nil {
+        return err
+    }
+    return database.AttachScoped(tx, order, "Tags", tag)
+})
+```
+
+Every read/write helper takes the optional trailing scope
+(`Query[T](tx)`, `Find`, `Create`, `Update`, `Save`, `Delete`,
+`Restore`, `ForceDelete`, `FirstOrCreate`, `UpdateOrCreate`, ...);
+pivot and lazy-load helpers use the `AttachScoped`/`LoadScoped` style
+variants. Without a scope, helpers use the default connection exactly
+as before.
+
+## FirstOrCreate / UpdateOrCreate
+
+```go
+user, err := database.FirstOrCreate(map[string]any{"email": "a@x.io"},
+    &User{Email: "a@x.io", Name: "Ada"})
+
+user, err = database.UpdateOrCreate(map[string]any{"email": "a@x.io"},
+    &User{Email: "a@x.io", Name: "New Name"}) // keeps id + created_at
+```
+
+Both are scope-aware; wrap them in `WithinTransaction` when concurrent
+writers matter (the lookup and write are separate statements).
+
+## MySQL / MariaDB
+
+The `mysql` and `mariadb` drivers build `tcp` DSNs with
+`parseTime=true` and use backtick quoting. Applications register the
+driver themselves, mirroring how PostgreSQL works with lib/pq:
+
+```go
+import _ "github.com/go-sql-driver/mysql"
+```
+
+```yaml
+# config/database.yaml
+connections:
+  mysql:
+    driver: mysql
+    host: ${DB_HOST:-localhost}
+    port: 3306
+    database: app
+    username: ${DB_USERNAME:-root}
+    password: ${DB_PASSWORD:-}
 ```

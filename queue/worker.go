@@ -13,6 +13,12 @@ type Worker struct {
 	// Queue is the queue name to process (driver default when empty).
 	Queue string
 
+	// Queues, when set, is a priority-ordered list of queues: each poll
+	// drains the first queue with a ready job before falling through to
+	// the next - Laravel's queue:work --queue=high,default. Overrides
+	// Queue.
+	Queues []string
+
 	// Sleep is how long to wait when the queue is empty (default 1s).
 	Sleep time.Duration
 
@@ -69,7 +75,7 @@ func (w *Worker) Run(ctx context.Context) error {
 // processed; job failures are handled (release or fail) and reported via
 // OnError, not returned.
 func (w *Worker) RunOnce() (bool, error) {
-	reserved, err := w.driver.Pop(w.Queue)
+	reserved, err := w.pop()
 	if err != nil {
 		return false, err
 	}
@@ -108,6 +114,20 @@ func (w *Worker) RunOnce() (bool, error) {
 	}
 
 	return true, w.driver.Delete(reserved)
+}
+
+// pop reserves the next job, honouring the priority list when set.
+func (w *Worker) pop() (*ReservedJob, error) {
+	if len(w.Queues) == 0 {
+		return w.driver.Pop(w.Queue)
+	}
+	for _, queueName := range w.Queues {
+		reserved, err := w.driver.Pop(queueName)
+		if err != nil || reserved != nil {
+			return reserved, err
+		}
+	}
+	return nil, nil
 }
 
 // Drain processes jobs until the queue is empty; useful in tests and for

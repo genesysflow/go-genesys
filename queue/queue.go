@@ -2,7 +2,10 @@
 // sync, memory, and database drivers.
 package queue
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Queue is the interface all queue connections implement.
 type Queue interface {
@@ -71,4 +74,26 @@ type FailedJobProvider interface {
 
 	// ForgetFailed removes a failed job without retrying it.
 	ForgetFailed(id int64) error
+}
+
+// NamedQueuePusher is implemented by drivers that support dispatching
+// onto named queues (memory, database, redis).
+type NamedQueuePusher interface {
+	PushOn(queue string, delay time.Duration, job Job) error
+}
+
+// PushOn dispatches a job onto a named queue - Laravel's onQueue:
+//
+//	queue.PushOn(q, "high", &SendAlert{})
+func PushOn(q Queue, queueName string, job Job) error {
+	return LaterOn(q, queueName, 0, job)
+}
+
+// LaterOn dispatches a delayed job onto a named queue.
+func LaterOn(q Queue, queueName string, delay time.Duration, job Job) error {
+	pusher, ok := q.(NamedQueuePusher)
+	if !ok {
+		return fmt.Errorf("queue: this driver does not support named queues")
+	}
+	return pusher.PushOn(queueName, delay, job)
 }
