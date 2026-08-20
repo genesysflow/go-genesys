@@ -342,6 +342,12 @@ func (b *Builder) ToSQL() (string, []any) {
 	return b.grammar.CompileSelect(b)
 }
 
+// Rows executes the query and returns the raw *sql.Rows for custom scanning.
+func (b *Builder) Rows() (*sql.Rows, error) {
+	sqlStr, bindings := b.ToSQL()
+	return b.executor.Query(sqlStr, bindings...)
+}
+
 // Get executes the query and returns all rows as maps.
 func (b *Builder) Get() ([]map[string]any, error) {
 	sqlStr, bindings := b.ToSQL()
