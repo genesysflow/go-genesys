@@ -25,7 +25,9 @@ Laravel-style docs, one topic per file.
 - [Task Scheduling](scheduling.md)
 - [Events](events.md)
 - [Mail](mail.md)
+- [Notifications](notifications.md)
 - [Localization](localization.md)
 - [HTTP Client](http-client.md)
 - [Collections](collections.md)
 - [Console](console.md) — commands and generators
+- [Testing](testing.md) — HTTP test DSL, fakes, fake data

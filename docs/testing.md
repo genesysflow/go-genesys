@@ -1,0 +1,98 @@
+# Testing
+
+Go-Genesys ships a Laravel-style HTTP test DSL and fakes for the queue,
+events, and mail, so feature tests read like the code they exercise.
+
+## HTTP tests
+
+`http.NewTestCase` drives requests through a kernel and asserts on the
+response:
+
+```go
+func TestUsersEndpoint(t *testing.T) {
+    kernel := setupApp(t)
+    tc := http.NewTestCase(t, kernel)
+
+    tc.Get("/users").
+        AssertOK().
+        AssertJsonPath("data.0.name", "Ada").
+        AssertJsonCount("data", 2)
+
+    tc.Post("/users", map[string]any{"name": "Carol"}).
+        AssertCreated().
+        AssertJsonPath("name", "Carol")
+
+    tc.Post("/users", map[string]any{}).
+        AssertValidationError("name")
+
+    tc.WithToken("secret").Get("/me").AssertOK()
+}
+```
+
+Available assertions: `AssertStatus/OK/Created/NoContent/BadRequest/
+Unauthorized/Forbidden/NotFound/Unprocessable`, `AssertRedirect`,
+`AssertHeader`, `AssertSee`/`AssertDontSee`, `AssertJson` (top-level
+subset), `AssertJsonPath` (dot paths with array indices),
+`AssertJsonCount`, and `AssertValidationError`. All are chainable.
+
+## Queue fakes
+
+`queue.NewFake` records dispatches without running jobs:
+
+```go
+fake := queue.NewFake()
+manager.Register("sync", fake) // or swap via the facade
+
+svc.RegisterUser(...)
+
+queue.AssertPushed[SendWelcomeEmail](t, fake, func(j *SendWelcomeEmail) bool {
+    return j.Email == "ada@example.com"
+})
+queue.AssertNotPushed[ChargeCard](t, fake)
+fake.AssertPushedCount(t, 1)
+```
+
+## Event fakes
+
+`dispatcher.Fake()` suppresses listeners and records what fired:
+
+```go
+dispatcher.Fake()
+
+svc.PlaceOrder(...)
+
+dispatcher.AssertDispatched(t, "order.placed")
+events.AssertDispatchedEvent[*OrderPlaced](t, dispatcher, func(e *OrderPlaced) bool {
+    return e.Total == 100
+})
+dispatcher.Unfake() // resume delivery
+```
+
+## Mail fakes
+
+The array mailer captures messages and asserts on them:
+
+```go
+mailer := mail.NewArrayMailer(mail.Config{FromAddress: "app@example.com"})
+
+svc.SendReceipt(...)
+
+mailer.AssertSentTo(t, "ada@example.com")
+mailer.AssertSent(t, func(m *mail.Message) bool {
+    return m.GetSubject() == "Receipt"
+})
+```
+
+## Fake data
+
+`support/faker` generates realistic values for factories and seeders,
+deterministic when seeded:
+
+```go
+fake := faker.NewSeeded(42)
+
+userFactory := database.NewFactory(func(i int) *User {
+    return &User{Name: fake.Name(), Email: fake.Email()}
+})
+users, _ := userFactory.Create(50)
+```

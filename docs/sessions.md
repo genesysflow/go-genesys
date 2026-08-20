@@ -62,3 +62,16 @@ sess.FlashInput(map[string]any{"email": ctx.Input("email")})
 email := sess.Old("email")
 if sess.HasOldInput() { ... }
 ```
+
+## Redis Driver
+
+```yaml
+# config/session.yaml
+driver: redis
+redis:
+  addr: ${REDIS_ADDR:localhost:6379}
+  prefix: "session:"
+```
+
+Sessions expire natively via Redis TTLs, and `Reset` only clears keys
+under the configured prefix.

@@ -7,20 +7,21 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **Service Container & Providers**: Dependency injection with a clean register/boot lifecycle
 - **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) with middleware pipeline, route groups, named routes, fallbacks, redirects, and middleware groups/aliases
 - **Query Builder**: Fluent SQL builder with per-driver grammar (`db.Table("users").Where(...).Get()`)
-- **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, automatic timestamps, pagination
+- **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, automatic timestamps, pagination, relationships with batched eager loading (`With("Posts.Tags")`), soft deletes, lifecycle hooks/observers, and dirty tracking with partial updates
 - **Route Model Binding**: `http.BindModel[User](ctx, "user")` with automatic 404s
 - **Form Requests**: `http.ValidateRequest[T](ctx)` with Laravel-shaped 422 responses
 - **Migrations & Schema Builder**: Programmatic schema with foreign keys, indexes, rollback/reset/fresh
 - **Seeders & Factories**: `db:seed`, `database.NewFactory[T]`
 - **Views**: `html/template`-based view layer with layouts, partials, and `ctx.View("users.index", data)`
-- **Authentication**: Session and token guards, ORM user provider, login/logout/attempt
+- **Authentication**: Session and token guards, ORM user provider, login/logout/attempt, remember-me cookies, password reset broker, and signed email verification
 - **Authorization**: Gate with `Define/Allows/Authorize` and before-hooks
-- **Sessions**: Memory, file, and database drivers; flash data and old input
-- **Cache**: Memory and file stores with `Remember`, `Increment`, `Add`, `Pull`, ...
-- **Queue**: Sync, memory, and database drivers; workers with retries/backoff and failed-job management
+- **Sessions**: Memory, file, database, and Redis drivers; flash data and old input
+- **Cache**: Memory, file, and Redis stores with `Remember`, `Increment`, `Add`, `Pull`, atomic locks (`cache.NewLock`), and a cache-backed `Throttle` rate limiter
+- **Queue**: Sync, memory, database, and Redis drivers; workers with retries/backoff, failed-job management, job chaining (`queue.Chain`), and batches with `Then/Catch/Finally`
 - **Task Scheduling**: Cron-style scheduler with `schedule:run` / `schedule:work`
 - **Events**: Dispatcher with typed generic listeners (`events.Listen[T]`)
 - **Mail**: Message builder with SMTP, log, and array (test) drivers
+- **Notifications**: Multi-channel notifications (mail + database) with on-demand routes and unread feeds
 - **Encryption**: AES-256-GCM `crypt` package keyed by `APP_KEY`, plus `key:generate`
 - **Signed URLs**: HMAC-signed links with optional expiry and a validation middleware
 - **HTTP Client**: Fluent outbound client with retries (`client.New().WithToken(...).Get(...)`)
@@ -32,6 +33,10 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **Logging**: Structured logging with multiple channels
 - **Console**: Rich CLI — `migrate`, `queue:work`, `schedule:work`, `route:list`, `about`, `db:seed`, `key:generate`, and a full set of `make:*` generators
 - **Facades**: Static accessors for every core service (`db`, `cache`, `queue`, `auth`, `mail`, ...)
+- **Testing**: HTTP test DSL (`http.NewTestCase`) with Laravel-style assertions, plus queue/event/mail fakes
+- **Maintenance Mode**: `genesys down`/`up` with secret bypass and 503 + Retry-After
+- **DB Observability**: `manager.Listen` fires a QueryEvent (SQL, bindings, duration) for every query
+- **Fake Data**: `support/faker` for factories and seeders (deterministic when seeded)
 
 ## Installation
 

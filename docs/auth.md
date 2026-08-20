@@ -105,3 +105,49 @@ if err := gate.Authorize(user, "update-post", post); err != nil {
 ```
 
 Generate policy scaffolds with `genesys make:policy Post`.
+
+## Remember Me
+
+`Remember`/`AttemptRemember` issue an HttpOnly `id|token` cookie backed
+by a `remember_token` column (the ORM provider implements this
+automatically). When the session is gone the guard logs the user back in
+from the cookie; `Logout` expires the cookie and cycles the token so
+stale cookies die everywhere:
+
+```go
+guard.AttemptRemember(ctx, map[string]any{
+    "email":    email,
+    "password": password,
+})
+```
+
+## Password Reset
+
+The broker issues single-use, hashed, throttled, expiring tokens over a
+`password_reset_tokens (email, token, created_at)` table:
+
+```go
+broker := auth.NewPasswordBroker(conn.Driver(), conn, "")
+
+token, err := broker.CreateToken(email)   // ErrResetThrottled when too soon
+// mail the link containing token ...
+
+err = broker.Consume(email, token, func() error {
+    hashed, _ := hash.Make(newPassword)
+    return users.UpdatePassword(email, hashed)
+}) // token survives when the callback fails; deleted on success
+```
+
+## Email Verification
+
+Temporary signed links bind a user id to a hash of their email:
+
+```go
+verifier := auth.NewEmailVerifier([]byte(env.Require("APP_KEY")))
+link, _ := verifier.VerificationURL("https://app.test/email/verify", user.ID, user.Email)
+
+// In the verify handler:
+id, err := verifier.Parse(fullRequestURL)     // signature + expiry
+user := findUser(id)
+err = verifier.Confirm(fullRequestURL, user.Email)
+```

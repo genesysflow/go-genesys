@@ -57,3 +57,55 @@ manager.Register("redis", myRedisStore) // any cache.Store implementation
 
 The file store persists entries as JSON, so values must round-trip through
 `encoding/json` (numbers come back as `float64`).
+
+## Redis Store
+
+```yaml
+# config/cache.yaml
+default: redis
+stores:
+  redis:
+    driver: redis
+    addr: ${REDIS_ADDR:localhost:6379}
+    password: ${REDIS_PASSWORD:}
+    db: 0
+    prefix: "cache:"
+```
+
+`Flush` only removes keys under the store's prefix, and
+`Increment`/`Decrement` are atomic (INCRBY).
+
+## Atomic Locks
+
+```go
+lock := cache.NewLock(store, "reports:generate", time.Minute)
+if acquired, _ := lock.Get(); acquired {
+    defer lock.Release()
+    generateReports()
+}
+
+// Or serialise a critical section, waiting up to 5s:
+cache.WithLock(store, "critical", time.Minute, 5*time.Second, func() error {
+    return doExclusiveWork()
+})
+```
+
+Locks acquire atomically (`Add`/SETNX), expire so a crashed holder can't
+wedge them, and only the owner can release.
+
+## Rate Limiting
+
+`middleware.Throttle` persists counters in a cache store, so limits
+survive restarts and are shared across instances on Redis:
+
+```go
+kernel.Use(middleware.Throttle(middleware.ThrottleConfig{
+    Store:       store,
+    Name:        "api",
+    MaxRequests: 60,
+    Window:      time.Minute,
+}))
+```
+
+Responses carry `X-RateLimit-Limit`/`X-RateLimit-Remaining`; rejected
+requests get 429 with `Retry-After`.

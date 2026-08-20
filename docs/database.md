@@ -146,3 +146,105 @@ app.Register(&providers.SeedServiceProvider{
 ```
 
 Run all seeders with `db:seed`, or a subset with `db:seed --seeder users`.
+
+## Relationships
+
+Relations are declared with a `rel` struct tag; keys follow Laravel's
+conventions unless overridden with `fk`/`ok`/`pivot`/`pfk`/`prk`:
+
+```go
+type User struct {
+    database.Model
+    Name  string  `db:"name"`
+    Posts []*Post `rel:"hasMany"`      // posts.user_id
+    Phone *Phone  `rel:"hasOne"`
+}
+
+type Post struct {
+    database.Model
+    UserID int64  `db:"user_id"`
+    Author *User  `rel:"belongsTo,fk:user_id"`
+    Tags   []*Tag `rel:"belongsToMany"` // pivot post_tag
+}
+```
+
+Eager load with `With` — one batched query per relation, no N+1, with
+nested paths — or lazily with `Load`/`LoadAll`:
+
+```go
+users, _ := database.Query[User]().With("Posts.Tags").Get()
+
+user, _ := database.Find[User](1)
+database.Load(user, "Posts", "Phone")
+```
+
+## Soft Deletes
+
+Embed `database.SoftDeletes` to switch a model to soft deletion:
+
+```go
+type Document struct {
+    database.Model
+    database.SoftDeletes
+    Title string `db:"title"`
+}
+
+database.Delete[Document](id)               // sets deleted_at
+database.All[Document]()                    // hides trashed rows
+database.Query[Document]().WithTrashed().Get()
+database.Query[Document]().OnlyTrashed().Get()
+database.Restore[Document](id)
+database.ForceDelete[Document](id)          // actually removes the row
+```
+
+Eager loads exclude trashed related rows automatically. Reusable query
+fragments compose with `Scope`:
+
+```go
+func Active(q *database.ModelQuery[User]) { q.Where("active", true) }
+users, _ := database.Query[User]().Scope(Active).Get()
+```
+
+## Model Events & Observers
+
+Models may implement lifecycle hooks; errors abort the operation and
+pre-hooks may mutate the model before it is written:
+
+```go
+func (u *User) Creating() error { u.Slug = slugify(u.Name); return nil }
+func (u *User) Saved() error    { return index.Update(u) }
+```
+
+External observers register per type:
+
+```go
+database.Observe(database.Observer[User]{
+    Created: func(u *User) error { return sendWelcome(u) },
+})
+```
+
+## Dirty Tracking
+
+Models snapshot their state when fetched or saved. `Update` writes only
+the changed columns — and skips the query entirely when nothing changed:
+
+```go
+user, _ := database.Find[User](1)
+user.Name = "Ada Lovelace"
+database.IsDirty(user)              // true
+database.GetDirty(user)             // map[name:Ada Lovelace]
+database.Update(user)               // UPDATE users SET name = ?, updated_at = ?
+```
+
+## Query Listener
+
+`Listen` fires for every query executed through the manager's
+connections — Laravel's `DB::listen`:
+
+```go
+manager.Listen(func(e database.QueryEvent) {
+    if e.Duration > 100*time.Millisecond {
+        log.Warn("slow query", "sql", e.SQL, "took", e.Duration)
+    }
+})
+```

@@ -6,6 +6,39 @@ All notable changes to Go-Genesys are documented here. The format follows
 ## [Unreleased]
 
 ### Added
+- **ORM relationships**: `rel` struct tags (hasOne/hasMany/belongsTo/
+  belongsToMany) with Laravel-convention keys, batched eager loading via
+  `With("Posts", "Posts.Tags")` (one query per relation, nested paths),
+  and lazy `Load`/`LoadAll`.
+- **Soft deletes**: `database.SoftDeletes` embed; queries hide trashed
+  rows by default with `WithTrashed`/`OnlyTrashed`/`Restore`/
+  `ForceDelete`; eager loads exclude trashed relations. Local query
+  scopes via `Scope(fns...)`.
+- **Model lifecycle**: Creating/Created/Updating/Updated/Saving/Saved/
+  Deleting/Deleted hooks and `database.Observe` observers; dirty
+  tracking (`IsDirty`/`GetDirty`/`GetOriginal`) with partial updates
+  that only write changed columns.
+- **Redis drivers** for cache (`RedisStore`), sessions (`RedisStorage`),
+  and queue (`RedisQueue` with delayed jobs and a failed list), tested
+  against miniredis.
+- **Cache locks** (`cache.NewLock`, `WithLock`) and a cache-backed named
+  `Throttle` middleware with X-RateLimit/Retry-After headers.
+- **Testing**: `http.NewTestCase` request/assertion DSL, `queue.NewFake`
+  with `AssertPushed[T]`, `dispatcher.Fake()` (Event::fake), and
+  ArrayMailer assertion helpers.
+- **Notifications** (`notifications`): mail + database channels,
+  on-demand routes, unread feeds, `facades/notify`.
+- **Auth**: password reset broker (hashed single-use tokens, throttling,
+  expiry), signed email verification links, and remember-me persistent
+  logins with token cycling on logout.
+- **Queue bus**: `queue.Chain` (sequential jobs) and `queue.NewBatch`
+  with `Then`/`Catch`/`Finally` callbacks and progress tracking.
+- **Maintenance mode**: `genesys down`/`up` + `middleware.Maintenance`
+  (503, Retry-After, secret bypass).
+- **DB query listener**: `manager.Listen` fires QueryEvents with SQL,
+  bindings, duration, and error for every query.
+- **Helpers**: `support.Dump`/`Dd`, `support.DataGet` with wildcards,
+  and the `support/faker` package for factories and seeders.
 - **Query builder** (`query` package): fluent Where/Join/GroupBy/Having/
   OrderBy, aggregates, Pluck/Value/Exists, Insert/Update/Delete/Increment,
   per-driver grammar (postgres `$n`, mysql backticks), `Paginate`/
