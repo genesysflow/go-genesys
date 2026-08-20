@@ -209,9 +209,14 @@ func (r *Router) Static(prefix, root string) {
 	r.fiber.Static(fullPath, root)
 }
 
-// Routes returns all registered routes.
+// Routes returns all registered routes, including routes registered on
+// nested groups.
 func (r *Router) Routes() []*Route {
-	return r.routes
+	routes := append([]*Route(nil), r.routes...)
+	for _, group := range r.groups {
+		routes = append(routes, group.Routes()...)
+	}
+	return routes
 }
 
 // NamedRoute returns a route by name.
