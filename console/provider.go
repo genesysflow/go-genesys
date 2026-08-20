@@ -74,6 +74,7 @@ func (p *ConsoleServiceProvider) Register(app contracts.Application) error {
 	p.kernel.AddCommand(commands.ScheduleRunCommand(app))
 	p.kernel.AddCommand(commands.ScheduleWorkCommand(app))
 	p.kernel.AddCommand(commands.ScheduleListCommand(app))
+	p.kernel.AddCommand(commands.DbSeedCommand(app))
 
 	// Bind kernel to container
 	app.InstanceType(p.kernel)
