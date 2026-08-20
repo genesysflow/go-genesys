@@ -1,8 +1,13 @@
 package providers
 
 import (
+	"fmt"
+
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/session"
+	"github.com/gofiber/fiber/v2"
 )
 
 // SessionServiceProvider registers session services.
@@ -43,6 +48,29 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 		if sameSite := cfg.GetString("session.same_site"); sameSite != "" {
 			sessionConfig.CookieSameSite = sameSite
 		}
+		if driver := cfg.GetString("session.driver"); driver != "" {
+			sessionConfig.Storage = driver
+		}
+		if files := cfg.GetString("session.files"); files != "" {
+			sessionConfig.Path = files
+		}
+		if table := cfg.GetString("session.table"); table != "" {
+			sessionConfig.Table = table
+		}
+	}
+
+	// The database driver needs a live connection, which is only available
+	// after the DatabaseServiceProvider boots; resolve it lazily.
+	if sessionConfig.Storage == "database" && sessionConfig.CustomStorage == nil {
+		table := sessionConfig.Table
+		sessionConfig.CustomStorage = session.NewLazyStorage(func() (fiber.Storage, error) {
+			dbManager, err := container.Resolve[*database.Manager](app)
+			if err != nil {
+				return nil, fmt.Errorf("session: database driver requires the DatabaseServiceProvider: %w", err)
+			}
+			conn := dbManager.Connection()
+			return session.NewDatabaseStorage(conn.Driver(), conn, table), nil
+		})
 	}
 
 	manager := session.NewManager(sessionConfig)

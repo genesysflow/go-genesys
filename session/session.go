@@ -2,6 +2,7 @@
 package session
 
 import (
+	"encoding/gob"
 	"sync"
 	"time"
 
@@ -9,13 +10,21 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/session"
 )
 
+func init() {
+	// Flash data and old input are stored as maps; register them so
+	// serializing storages (file, database) can encode session payloads.
+	gob.Register(map[string]any{})
+	gob.Register([]any{})
+}
+
 // Session wraps Fiber's session with Laravel-like API.
 type Session struct {
 	store     *session.Session
 	sess      *session.Store
 	id        string
 	data      map[string]any
-	flash     map[string]any
+	oldFlash  map[string]any // flashed on the previous request; visible now, gone after Save
+	newFlash  map[string]any // flashed on this request; visible now and next request
 	mu        sync.RWMutex
 	createdAt time.Time
 	dirty     bool
@@ -54,8 +63,21 @@ type Config struct {
 	// KeyLookup is the key lookup format (e.g., "cookie:session_id").
 	KeyLookup string
 
-	// Storage is the storage driver name.
+	// Storage is the storage driver name: memory, file, or database.
 	Storage string
+
+	// Path is the directory for the file storage driver
+	// (default "storage/sessions").
+	Path string
+
+	// Table is the table name for the database storage driver
+	// (default "sessions").
+	Table string
+
+	// CustomStorage overrides the driver selection with an explicit
+	// fiber.Storage implementation (used for the database driver, which
+	// needs a live connection).
+	CustomStorage fiber.Storage
 }
 
 // DefaultConfig returns the default session configuration.
@@ -89,7 +111,7 @@ func NewManager(config ...Config) *Manager {
 		cfg.KeyLookup = "cookie:" + cfg.CookieName
 	}
 
-	store := session.New(session.Config{
+	fiberConfig := session.Config{
 		Expiration:     cfg.Expiration,
 		CookiePath:     cfg.CookiePath,
 		CookieDomain:   cfg.CookieDomain,
@@ -97,7 +119,22 @@ func NewManager(config ...Config) *Manager {
 		CookieHTTPOnly: cfg.CookieHTTPOnly,
 		CookieSameSite: cfg.CookieSameSite,
 		KeyLookup:      cfg.KeyLookup,
-	})
+	}
+
+	if cfg.CustomStorage != nil {
+		fiberConfig.Storage = cfg.CustomStorage
+	} else if cfg.Storage == "file" {
+		path := cfg.Path
+		if path == "" {
+			path = "storage/sessions"
+		}
+		if storage, err := NewFileStorage(path); err == nil {
+			fiberConfig.Storage = storage
+		}
+	}
+	// "memory" (and unknown drivers) use Fiber's in-memory default.
+
+	store := session.New(fiberConfig)
 
 	return &Manager{
 		store:   store,
@@ -123,14 +160,15 @@ func (m *Manager) Get(c *fiber.Ctx) (*Session, error) {
 		sess:      m.store,
 		id:        sess.ID(),
 		data:      make(map[string]any),
-		flash:     make(map[string]any),
+		oldFlash:  make(map[string]any),
+		newFlash:  make(map[string]any),
 		createdAt: time.Now(),
 	}
 
-	// Load existing flash data
+	// Data flashed on the previous request is visible for this request only.
 	if flashData := sess.Get("_flash"); flashData != nil {
 		if fm, ok := flashData.(map[string]any); ok {
-			s.flash = fm
+			s.oldFlash = fm
 		}
 	}
 
@@ -168,13 +206,16 @@ func (s *Session) Regenerate() error {
 	return s.store.Regenerate()
 }
 
-// Get retrieves a value from the session.
+// Get retrieves a value from the session. Flash data (from this request or
+// the previous one) takes precedence over persistent data.
 func (s *Session) Get(key string) any {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Check flash first
-	if val, ok := s.flash[key]; ok {
+	if val, ok := s.newFlash[key]; ok {
+		return val
+	}
+	if val, ok := s.oldFlash[key]; ok {
 		return val
 	}
 
@@ -262,40 +303,78 @@ func (s *Session) Flush() error {
 	for _, key := range keys {
 		s.store.Delete(key)
 	}
-	s.flash = make(map[string]any)
+	s.oldFlash = make(map[string]any)
+	s.newFlash = make(map[string]any)
 	s.dirty = true
 	return nil
 }
 
-// Flash stores a value for the next request only.
+// Flash stores a value visible for the rest of this request and the next
+// request only.
 func (s *Session) Flash(key string, value any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.flash[key] = value
+	s.newFlash[key] = value
 	s.dirty = true
 	return nil
 }
 
-// Keep keeps specific flash data for another request.
+// Keep extends specific flash data from the previous request for one more
+// request.
 func (s *Session) Keep(keys ...string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	for _, key := range keys {
-		if val, ok := s.flash[key]; ok {
-			s.flash[key] = val
+		if val, ok := s.oldFlash[key]; ok {
+			s.newFlash[key] = val
 		}
 	}
 	s.dirty = true
 	return nil
 }
 
-// Reflash keeps all flash data for another request.
+// Reflash extends all flash data from the previous request for one more
+// request.
 func (s *Session) Reflash() error {
-	// Flash data is already in s.flash, nothing to do
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for key, val := range s.oldFlash {
+		if _, exists := s.newFlash[key]; !exists {
+			s.newFlash[key] = val
+		}
+	}
 	s.dirty = true
 	return nil
+}
+
+// FlashInput flashes request input for the next request (repopulating forms
+// after a validation redirect).
+func (s *Session) FlashInput(input map[string]any) error {
+	return s.Flash("_old_input", input)
+}
+
+// Old returns a previously flashed input value, or the default when absent.
+func (s *Session) Old(key string, defaultValue ...string) string {
+	if input, ok := s.Get("_old_input").(map[string]any); ok {
+		if value, ok := input[key]; ok {
+			if str, ok := value.(string); ok {
+				return str
+			}
+		}
+	}
+	if len(defaultValue) > 0 {
+		return defaultValue[0]
+	}
+	return ""
+}
+
+// HasOldInput reports whether any input was flashed on the previous request.
+func (s *Session) HasOldInput() bool {
+	_, ok := s.Get("_old_input").(map[string]any)
+	return ok
 }
 
 // All returns all session data.
@@ -315,15 +394,15 @@ func (s *Session) Save() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Save flash data for next request
-	if len(s.flash) > 0 {
-		s.store.Set("_flash", s.flash)
+	// Only data flashed this request survives into the next one; the
+	// previous request's flash data ages out here.
+	if len(s.newFlash) > 0 {
+		s.store.Set("_flash", s.newFlash)
 	} else {
 		s.store.Delete("_flash")
 	}
-
-	// Clear flash after saving (it was for this request)
-	s.flash = make(map[string]any)
+	s.oldFlash = make(map[string]any)
+	s.newFlash = make(map[string]any)
 
 	return s.store.Save()
 }
