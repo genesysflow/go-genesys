@@ -84,6 +84,12 @@ func (w *Worker) RunOnce() (bool, error) {
 		return true, nil
 	}
 
+	// Give queue-aware jobs (chains, batches) a handle back to the
+	// driver so they can dispatch their continuation.
+	if aware, ok := job.(QueueAware); ok {
+		aware.SetQueue(w.driver)
+	}
+
 	if jobErr := safeHandle(job); jobErr != nil {
 		w.report(fmt.Errorf("queue: job %s failed (attempt %d): %w", reserved.Name, reserved.Attempts, jobErr))
 		if reserved.Attempts >= w.triesFor(job) {
