@@ -96,12 +96,12 @@ func (q *ModelQuery[T]) applySoftDeleteScope() {
 // Query starts a typed query for a model:
 //
 //	adults, err := database.Query[User]().Where("age", ">=", 18).OrderBy("name").Get()
-func Query[T any]() *ModelQuery[T] {
+func Query[T any](scope ...*TxScope) *ModelQuery[T] {
 	meta, err := metaFor(reflect.TypeOf((*T)(nil)).Elem())
 	if err != nil {
 		return &ModelQuery[T]{err: err}
 	}
-	driver, executor := connectionFor[T]()
+	driver, executor := executorFor[T](scope)
 	return &ModelQuery[T]{
 		builder:  query.New(driver, executor).Table(meta.table),
 		driver:   driver,
@@ -368,24 +368,24 @@ func (q *ModelQuery[T]) Paginate(page, perPage int) (*ModelPaginator[T], error) 
 }
 
 // All returns every row of the model's table.
-func All[T any]() ([]T, error) {
-	return Query[T]().Get()
+func All[T any](scope ...*TxScope) ([]T, error) {
+	return Query[T](scope...).Get()
 }
 
 // Find returns the model with the given primary key or ErrNotFound.
-func Find[T any](id any) (*T, error) {
-	return Query[T]().Find(id)
+func Find[T any](id any, scope ...*TxScope) (*T, error) {
+	return Query[T](scope...).Find(id)
 }
 
 // FirstWhere returns the first model matching a simple where clause.
-func FirstWhere[T any](column string, args ...any) (*T, error) {
-	return Query[T]().Where(column, args...).First()
+func FirstWhere[T any](column string, value any, scope ...*TxScope) (*T, error) {
+	return Query[T](scope...).Where(column, value).First()
 }
 
 // Create inserts the model and sets its ID and timestamps in place.
 // It fires the Saving and Creating hooks before the insert and Created
 // and Saved after it.
-func Create[T any](model *T) error {
+func Create[T any](model *T, scope ...*TxScope) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
 		return err
@@ -400,7 +400,7 @@ func Create[T any](model *T) error {
 
 	touchTimestamps(meta, model, true)
 
-	driver, executor := connectionFor[T]()
+	driver, executor := executorFor[T](scope)
 	values := meta.values(reflect.ValueOf(model), true)
 
 	id, err := query.New(driver, executor).Table(meta.table).InsertGetID(values)
@@ -417,22 +417,22 @@ func Create[T any](model *T) error {
 }
 
 // Save inserts the model when its ID is zero, otherwise updates it.
-func Save[T any](model *T) error {
+func Save[T any](model *T, scope ...*TxScope) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
 		return err
 	}
 	if pkValue(meta, model) == 0 {
-		return Create(model)
+		return Create(model, scope...)
 	}
-	return Update(model)
+	return Update(model, scope...)
 }
 
 // Update persists the model's changes by primary key. When the model was
 // fetched through the ORM only the dirty columns are written; a clean
 // model skips the query entirely. It fires the Saving and Updating hooks
 // before the update and Updated and Saved after it.
-func Update[T any](model *T) error {
+func Update[T any](model *T, scope ...*TxScope) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
 		return err
@@ -463,7 +463,7 @@ func Update[T any](model *T) error {
 			FieldByIndex(meta.byCol["updated_at"].index).Interface()
 	}
 
-	driver, executor := connectionFor[T]()
+	driver, executor := executorFor[T](scope)
 	affected, err := query.New(driver, executor).Table(meta.table).Where("id", id).Update(values)
 	if err != nil {
 		return err
@@ -482,8 +482,8 @@ func Update[T any](model *T) error {
 // Delete removes the row with the given primary key.
 // For soft-deletable models this trashes the row; use ForceDelete to
 // remove it permanently.
-func Delete[T any](id any) error {
-	affected, err := Query[T]().Where("id", id).Delete()
+func Delete[T any](id any, scope ...*TxScope) error {
+	affected, err := Query[T](scope...).Where("id", id).Delete()
 	if err != nil {
 		return err
 	}
@@ -496,7 +496,7 @@ func Delete[T any](id any) error {
 // DeleteModel removes the given model's row by primary key, firing the
 // Deleting and Deleted hooks around the query. On soft-deletable models
 // the in-memory DeletedAt field is set to match.
-func DeleteModel[T any](model *T) error {
+func DeleteModel[T any](model *T, scope ...*TxScope) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
 		return err
@@ -505,7 +505,7 @@ func DeleteModel[T any](model *T) error {
 	if err := fireModelEvent(model, eventDeleting); err != nil {
 		return err
 	}
-	if err := Delete[T](pkValue(meta, model)); err != nil {
+	if err := Delete[T](pkValue(meta, model), scope...); err != nil {
 		return err
 	}
 	if meta.softDeletes {

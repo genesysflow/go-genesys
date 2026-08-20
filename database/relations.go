@@ -514,6 +514,11 @@ func Load[T any](model *T, paths ...string) error {
 	return LoadOn(driver, executor, model, paths...)
 }
 
+// LoadScoped is Load within a transaction scope.
+func LoadScoped[T any](tx *TxScope, model *T, paths ...string) error {
+	return LoadOn(tx.driver, tx.executor, model, paths...)
+}
+
 // LoadOn is Load against an explicit executor (e.g. a transaction).
 func LoadOn[T any](driver string, executor query.Executor, model *T, paths ...string) error {
 	slice := reflect.New(reflect.SliceOf(reflect.TypeOf(*model))).Elem()
@@ -530,4 +535,10 @@ func LoadAll[T any](models []T, paths ...string) error {
 	driver, executor := connectionFor[T]()
 	slice := reflect.ValueOf(&models).Elem()
 	return loadRelationsValue(driver, executor, slice, paths)
+}
+
+// LoadAllScoped is LoadAll within a transaction scope.
+func LoadAllScoped[T any](tx *TxScope, models []T, paths ...string) error {
+	slice := reflect.ValueOf(&models).Elem()
+	return loadRelationsValue(tx.driver, tx.executor, slice, paths)
 }

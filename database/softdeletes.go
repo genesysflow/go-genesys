@@ -58,8 +58,8 @@ func (q *ModelQuery[T]) Scope(scopes ...func(*ModelQuery[T])) *ModelQuery[T] {
 }
 
 // Restore un-trashes the row with the given primary key.
-func Restore[T any](id any) error {
-	affected, err := Query[T]().Where("id", id).Restore()
+func Restore[T any](id any, scope ...*TxScope) error {
+	affected, err := Query[T](scope...).Where("id", id).Restore()
 	if err != nil {
 		return err
 	}
@@ -71,8 +71,8 @@ func Restore[T any](id any) error {
 
 // ForceDelete permanently removes the row with the given primary key,
 // even for soft-deletable models.
-func ForceDelete[T any](id any) error {
-	affected, err := Query[T]().Where("id", id).ForceDelete()
+func ForceDelete[T any](id any, scope ...*TxScope) error {
+	affected, err := Query[T](scope...).Where("id", id).ForceDelete()
 	if err != nil {
 		return err
 	}

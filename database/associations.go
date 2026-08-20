@@ -70,7 +70,7 @@ func pivotState(driver string, executor query.Executor, rel *relation, parentKey
 	return attached, nil
 }
 
-func belongsToManyOn[T any](parent *T, relationName string) (*relation, any, string, query.Executor, error) {
+func belongsToManyOn[T any](parent *T, relationName string, scope []*TxScope) (*relation, any, string, query.Executor, error) {
 	rel, err := relationOn(reflect.TypeOf(parent).Elem(), relationName)
 	if err != nil {
 		return nil, nil, "", nil, err
@@ -82,7 +82,7 @@ func belongsToManyOn[T any](parent *T, relationName string) (*relation, any, str
 	if err != nil {
 		return nil, nil, "", nil, err
 	}
-	driver, executor := connectionFor[T]()
+	driver, executor := executorFor[T](scope)
 	return rel, parentKey, driver, executor, nil
 }
 
@@ -92,7 +92,13 @@ func belongsToManyOn[T any](parent *T, relationName string) (*relation, any, str
 //	database.Attach(post, "Tags", tagGo, tagWeb)
 //	database.Attach(post, "Tags", 3, 4)
 func Attach[T any](parent *T, relationName string, related ...any) error {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName)
+	return AttachScoped(nil, parent, relationName, related...)
+}
+
+// AttachScoped is Attach inside a transaction scope (nil scope uses the
+// default connection).
+func AttachScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) error {
+	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return err
 	}
@@ -119,7 +125,12 @@ func Attach[T any](parent *T, relationName string, related ...any) error {
 // Detach unlinks the given related models (or every link when none are
 // given) and returns how many pivot rows were removed.
 func Detach[T any](parent *T, relationName string, related ...any) (int64, error) {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName)
+	return DetachScoped(nil, parent, relationName, related...)
+}
+
+// DetachScoped is Detach inside a transaction scope.
+func DetachScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) (int64, error) {
+	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return 0, err
 	}
@@ -137,7 +148,12 @@ func Detach[T any](parent *T, relationName string, related ...any) (int64, error
 // Sync makes the pivot table contain exactly the given related models:
 // missing links are attached, surplus links detached.
 func Sync[T any](parent *T, relationName string, related ...any) error {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName)
+	return SyncScoped(nil, parent, relationName, related...)
+}
+
+// SyncScoped is Sync inside a transaction scope.
+func SyncScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) error {
+	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return err
 	}
@@ -178,7 +194,12 @@ func Sync[T any](parent *T, relationName string, related ...any) error {
 // Toggle attaches the given related models that are missing and
 // detaches the ones already linked.
 func Toggle[T any](parent *T, relationName string, related ...any) error {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName)
+	return ToggleScoped(nil, parent, relationName, related...)
+}
+
+// ToggleScoped is Toggle inside a transaction scope.
+func ToggleScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) error {
+	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return err
 	}
@@ -209,7 +230,7 @@ func Toggle[T any](parent *T, relationName string, related ...any) error {
 // its foreign key from the parent before inserting:
 //
 //	database.CreateFor(author, "Posts", &Article{Title: "New"})
-func CreateFor[T, R any](parent *T, relationName string, child *R) error {
+func CreateFor[T, R any](parent *T, relationName string, child *R, scope ...*TxScope) error {
 	rel, err := relationOn(reflect.TypeOf(parent).Elem(), relationName)
 	if err != nil {
 		return err
@@ -237,7 +258,7 @@ func CreateFor[T, R any](parent *T, relationName string, child *R) error {
 	if err := assignValue(reflect.ValueOf(child).Elem().FieldByIndex(fkField.index), parentKey); err != nil {
 		return err
 	}
-	return Create(child)
+	return Create(child, scope...)
 }
 
 // Associate points a belongsTo child at a parent by filling the child's
@@ -307,4 +328,13 @@ func Dissociate[T any](child *T, relationName string) error {
 	childValue.FieldByIndex(fkField.index).Set(reflect.Zero(childValue.FieldByIndex(fkField.index).Type()))
 	childValue.FieldByIndex(rel.fieldIndex).Set(reflect.Zero(childValue.FieldByIndex(rel.fieldIndex).Type()))
 	return nil
+}
+
+// scopeSlice adapts a nilable scope to the variadic form the internal
+// helpers use.
+func scopeSlice(tx *TxScope) []*TxScope {
+	if tx == nil {
+		return nil
+	}
+	return []*TxScope{tx}
 }

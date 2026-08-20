@@ -3,6 +3,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -104,4 +105,18 @@ func Url(path string) string {
 		return ""
 	}
 	return d.Url(path)
+}
+
+// TemporaryURL returns a presigned, expiring URL for a file on the
+// default disk. Only disks whose driver supports presigning (S3) can
+// mint them.
+func TemporaryURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+	disk := Disk()
+	provider, ok := disk.(interface {
+		TemporaryURL(ctx context.Context, path string, ttl time.Duration) (string, error)
+	})
+	if !ok {
+		return "", fmt.Errorf("storage: the default disk does not support temporary URLs")
+	}
+	return provider.TemporaryURL(ctx, path, ttl)
 }

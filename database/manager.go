@@ -22,7 +22,10 @@ type Config struct {
 
 // ConnectionConfig represents a single database connection configuration.
 type ConnectionConfig struct {
-	// Driver is the database driver (pgsql, sqlite).
+	// Driver is the database driver (pgsql, mysql/mariadb, sqlite).
+	// MySQL needs the driver registered by the application:
+	//
+	//	import _ "github.com/go-sql-driver/mysql"
 	Driver string `yaml:"driver" json:"driver"`
 
 	// Host is the database host.
@@ -318,6 +321,16 @@ func buildDSN(config ConnectionConfig) string {
 	case "sqlite", "sqlite3":
 		return config.Database
 
+	case "mysql", "mariadb":
+		if config.Port == 0 {
+			config.Port = 3306
+		}
+		// parseTime makes DATETIME/TIMESTAMP columns scan into time.Time.
+		return fmt.Sprintf(
+			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC",
+			config.Username, config.Password, config.Host, config.Port, config.Database,
+		)
+
 	default:
 		return ""
 	}
@@ -330,6 +343,8 @@ func mapDriver(driver string) string {
 		return "postgres"
 	case "sqlite", "sqlite3":
 		return "sqlite"
+	case "mysql", "mariadb":
+		return "mysql"
 	default:
 		return driver
 	}

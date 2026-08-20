@@ -14,6 +14,9 @@ type Grammar struct {
 // NewGrammar creates a grammar for the given driver name
 // (pgsql/postgres/postgresql, mysql, sqlite/sqlite3).
 func NewGrammar(driver string) *Grammar {
+	if driver == "mariadb" {
+		driver = "mysql" // MariaDB speaks the MySQL dialect
+	}
 	return &Grammar{driver: driver}
 }
 
