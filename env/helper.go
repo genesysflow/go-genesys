@@ -42,4 +42,3 @@ func (h *EnvHelper) Set(key, value string) error {
 func (h *EnvHelper) Require(key string) string {
 	return Require(key)
 }
-

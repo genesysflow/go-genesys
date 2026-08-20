@@ -383,9 +383,18 @@ func FirstWhere[T any](column string, args ...any) (*T, error) {
 }
 
 // Create inserts the model and sets its ID and timestamps in place.
+// It fires the Saving and Creating hooks before the insert and Created
+// and Saved after it.
 func Create[T any](model *T) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
+		return err
+	}
+
+	if err := fireModelEvent(model, eventSaving); err != nil {
+		return err
+	}
+	if err := fireModelEvent(model, eventCreating); err != nil {
 		return err
 	}
 
@@ -399,7 +408,12 @@ func Create[T any](model *T) error {
 		return err
 	}
 	setPK(meta, model, id)
-	return nil
+	SyncOriginal(model)
+
+	if err := fireModelEvent(model, eventCreated); err != nil {
+		return err
+	}
+	return fireModelEvent(model, eventSaved)
 }
 
 // Save inserts the model when its ID is zero, otherwise updates it.
@@ -414,7 +428,10 @@ func Save[T any](model *T) error {
 	return Update(model)
 }
 
-// Update persists all of the model's columns by primary key.
+// Update persists the model's changes by primary key. When the model was
+// fetched through the ORM only the dirty columns are written; a clean
+// model skips the query entirely. It fires the Saving and Updating hooks
+// before the update and Updated and Saved after it.
 func Update[T any](model *T) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
@@ -425,11 +442,28 @@ func Update[T any](model *T) error {
 		return fmt.Errorf("database: cannot update %s without an id", meta.table)
 	}
 
+	if err := fireModelEvent(model, eventSaving); err != nil {
+		return err
+	}
+	if err := fireModelEvent(model, eventUpdating); err != nil {
+		return err
+	}
+
+	// Work out what changed before touching updated_at, so an untouched
+	// model stays untouched.
+	values := GetDirty(model)
+	delete(values, "id")
+	if GetOriginal(model) != nil && len(values) == 0 {
+		return fireModelEvent(model, eventSaved)
+	}
+
 	touchTimestamps(meta, model, false)
+	if _, tracked := meta.byCol["updated_at"]; tracked {
+		values["updated_at"] = reflect.ValueOf(model).Elem().
+			FieldByIndex(meta.byCol["updated_at"].index).Interface()
+	}
 
 	driver, executor := connectionFor[T]()
-	values := meta.values(reflect.ValueOf(model), true)
-
 	affected, err := query.New(driver, executor).Table(meta.table).Where("id", id).Update(values)
 	if err != nil {
 		return err
@@ -437,7 +471,12 @@ func Update[T any](model *T) error {
 	if affected == 0 {
 		return ErrNotFound
 	}
-	return nil
+	SyncOriginal(model)
+
+	if err := fireModelEvent(model, eventUpdated); err != nil {
+		return err
+	}
+	return fireModelEvent(model, eventSaved)
 }
 
 // Delete removes the row with the given primary key.
@@ -454,11 +493,16 @@ func Delete[T any](id any) error {
 	return nil
 }
 
-// DeleteModel removes the given model's row by primary key. On
-// soft-deletable models the in-memory DeletedAt field is set to match.
+// DeleteModel removes the given model's row by primary key, firing the
+// Deleting and Deleted hooks around the query. On soft-deletable models
+// the in-memory DeletedAt field is set to match.
 func DeleteModel[T any](model *T) error {
 	meta, err := metaFor(reflect.TypeOf(model).Elem())
 	if err != nil {
+		return err
+	}
+
+	if err := fireModelEvent(model, eventDeleting); err != nil {
 		return err
 	}
 	if err := Delete[T](pkValue(meta, model)); err != nil {
@@ -468,7 +512,7 @@ func DeleteModel[T any](model *T) error {
 		now := time.Now().UTC().Truncate(time.Second)
 		markDeletedAt(meta, model, &now)
 	}
-	return nil
+	return fireModelEvent(model, eventDeleted)
 }
 
 func pkValue[T any](meta *modelMeta, model *T) int64 {

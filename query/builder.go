@@ -45,11 +45,11 @@ type where struct {
 }
 
 type join struct {
-	kind    string // INNER / LEFT / RIGHT / CROSS
-	table   string
-	first   string
+	kind     string // INNER / LEFT / RIGHT / CROSS
+	table    string
+	first    string
 	operator string
-	second  string
+	second   string
 }
 
 type order struct {

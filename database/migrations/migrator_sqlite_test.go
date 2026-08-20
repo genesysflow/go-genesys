@@ -39,9 +39,9 @@ func (m *createInvoicesTable) Down(b *schema.Builder) error { return b.Drop("inv
 
 type failingMigration struct{}
 
-func (m *failingMigration) Name() string                   { return "2026_01_03_000000_failing" }
-func (m *failingMigration) Up(b *schema.Builder) error     { return errors.New("boom") }
-func (m *failingMigration) Down(b *schema.Builder) error   { return nil }
+func (m *failingMigration) Name() string                 { return "2026_01_03_000000_failing" }
+func (m *failingMigration) Up(b *schema.Builder) error   { return errors.New("boom") }
+func (m *failingMigration) Down(b *schema.Builder) error { return nil }
 
 func newSqliteMigrator(t *testing.T, migrations_ []migrations.Migration) (*migrations.Migrator, *sql.DB) {
 	t.Helper()

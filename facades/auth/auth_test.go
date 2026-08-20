@@ -34,7 +34,7 @@ func TestFacadeGuardResolution(t *testing.T) {
 	auth.SetInstance(manager)
 	t.Cleanup(func() { auth.SetInstance(nil) })
 
-	assert.NotNil(t, auth.Guard())      // default = first registered ("web")
+	assert.NotNil(t, auth.Guard()) // default = first registered ("web")
 	assert.NotNil(t, auth.Guard("api"))
 	assert.Panics(t, func() { auth.Guard("missing") })
 	assert.NotNil(t, auth.GetInstance())

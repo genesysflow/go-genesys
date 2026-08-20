@@ -25,7 +25,21 @@ type Model struct {
 	ID        int64     `db:"id" json:"id"`
 	CreatedAt time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
+
+	// original holds the column values as last read from or written to
+	// the database, powering IsDirty/GetDirty and partial updates.
+	original map[string]any
 }
+
+// originalHolder is implemented by *Model and promoted to every model
+// that embeds it, giving the ORM a place to stash the pristine copy.
+type originalHolder interface {
+	getOriginal() map[string]any
+	setOriginal(map[string]any)
+}
+
+func (m *Model) getOriginal() map[string]any       { return m.original }
+func (m *Model) setOriginal(values map[string]any) { m.original = values }
 
 // SoftDeletes adds a deleted_at column to a model, switching the ORM to
 // soft deletion: Delete marks the row instead of removing it, and queries
@@ -235,6 +249,9 @@ func scanRowsIntoType(rows *sql.Rows, structType reflect.Type) (reflect.Value, e
 			if err := assignValue(item.FieldByIndex(field.index), values[i]); err != nil {
 				return results, fmt.Errorf("database: column %q: %w", column, err)
 			}
+		}
+		if holder, ok := item.Addr().Interface().(originalHolder); ok {
+			holder.setOriginal(meta.values(item, false))
 		}
 		results.Set(reflect.Append(results, item))
 	}

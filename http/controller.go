@@ -120,4 +120,3 @@ func (c *Controller) Paginate(ctx *Context, data any, page, perPage, total int) 
 		},
 	})
 }
-
