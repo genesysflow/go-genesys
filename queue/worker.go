@@ -27,6 +27,9 @@ type Worker struct {
 	// OnError, when set, is called with processing errors (job failures
 	// and infrastructure errors) so callers can log them.
 	OnError func(err error)
+
+	// middleware wraps every job's execution (see Use).
+	middleware []JobMiddleware
 }
 
 // NewWorker creates a worker for the given driver.
@@ -90,7 +93,7 @@ func (w *Worker) RunOnce() (bool, error) {
 		aware.SetQueue(w.driver)
 	}
 
-	if jobErr := safeHandle(job); jobErr != nil {
+	if jobErr := w.runJob(job); jobErr != nil {
 		w.report(fmt.Errorf("queue: job %s failed (attempt %d): %w", reserved.Name, reserved.Attempts, jobErr))
 		if reserved.Attempts >= w.triesFor(job) {
 			if err := w.driver.Fail(reserved, jobErr); err != nil {

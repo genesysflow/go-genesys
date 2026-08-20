@@ -10,6 +10,7 @@ type Listener func(event Event) error
 // Dispatcher manages event listeners and dispatching.
 type Dispatcher struct {
 	listeners map[string][]Listener
+	wildcards []Listener
 	mu        sync.RWMutex
 
 	// fake-mode state (see fake.go)
@@ -32,6 +33,15 @@ func (d *Dispatcher) Listen(eventName string, listener Listener) {
 	d.listeners[eventName] = append(d.listeners[eventName], listener)
 }
 
+// ListenAll registers a wildcard listener invoked for every dispatched
+// event, after the event's own listeners. Used by cross-cutting
+// consumers such as the broadcasting bridge.
+func (d *Dispatcher) ListenAll(listener Listener) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.wildcards = append(d.wildcards, listener)
+}
+
 // Dispatch dispatches an event to all registered listeners. While the
 // dispatcher is faked (see Fake) the event is recorded instead.
 func (d *Dispatcher) Dispatch(event Event) error {
@@ -40,9 +50,15 @@ func (d *Dispatcher) Dispatch(event Event) error {
 	}
 	d.mu.RLock()
 	listeners := d.listeners[event.Name()]
+	wildcards := d.wildcards
 	d.mu.RUnlock()
 
 	for _, listener := range listeners {
+		if err := listener(event); err != nil {
+			return err
+		}
+	}
+	for _, listener := range wildcards {
 		if err := listener(event); err != nil {
 			return err
 		}

@@ -117,15 +117,30 @@ func (b *Batch) Catch(fn func(*Batch, error)) *Batch { b.catch = fn; return b }
 // Finally registers a callback fired when all jobs settled, either way.
 func (b *Batch) Finally(fn func(*Batch)) *Batch { b.finally_ = fn; return b }
 
-// Dispatch wraps and pushes the jobs onto the queue.
+// Dispatch wraps and pushes the jobs onto the queue. When a batch
+// repository is configured (SetBatchRepository) the batch's counters
+// are persisted so other processes can track it via FindBatch.
 func (b *Batch) Dispatch(q Queue, jobs ...Job) error {
 	if len(jobs) == 0 {
 		return nil
 	}
 	b.mu.Lock()
+	firstDispatch := b.total == 0
 	b.total += len(jobs)
 	b.mu.Unlock()
 	batchRegistry.Store(b.ID, b)
+
+	if repo := currentBatchRepository(); repo != nil {
+		var err error
+		if firstDispatch {
+			err = repo.Insert(b.ID, len(jobs))
+		} else {
+			err = repo.Add(b.ID, len(jobs))
+		}
+		if err != nil {
+			return err
+		}
+	}
 
 	for _, job := range jobs {
 		_, body, err := marshalJob(job)
@@ -226,6 +241,11 @@ func (j *batchJob) Handle() error {
 }
 
 func (j *batchJob) report(jobErr error) {
+	// Persist progress for cross-process visibility; the row is kept
+	// after completion so FindBatch still answers.
+	if repo := currentBatchRepository(); repo != nil {
+		repo.Increment(j.BatchID, jobErr != nil)
+	}
 	if stored, ok := batchRegistry.Load(j.BatchID); ok {
 		stored.(*Batch).record(jobErr)
 	}
