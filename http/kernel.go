@@ -22,6 +22,7 @@ type Kernel struct {
 	router     *Router
 	middleware []MiddlewareFunc
 	logger     contracts.Logger
+	mwRegistry *middlewareRegistry
 }
 
 // KernelConfig defines configuration for the HTTP kernel.
