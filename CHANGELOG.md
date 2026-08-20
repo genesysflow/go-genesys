@@ -116,6 +116,16 @@ All notable changes to Go-Genesys are documented here. The format follows
 - **CI**: GitHub Actions workflow running vet and the race-enabled test
   suite.
 
+### Changed
+- `sqlc:generate` now shells out to the `sqlc` binary on PATH instead of
+  embedding the sqlc library, and passes flags through verbatim. Install
+  it with `go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest`. The
+  postgres test helper (`testutil.SetupPostgresContainer`) drives the
+  docker CLI directly instead of testcontainers-go. Together this
+  removes the embedded SQL parser, docker/containerd, grpc, wazero,
+  opentelemetry, and testcontainers dependency trees (~60 modules),
+  clearing the bulk of the dependency-audit findings.
+
 ### Fixed
 - Session flash data previously persisted forever; it now expires after
   one request as intended.

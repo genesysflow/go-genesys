@@ -18,7 +18,7 @@
 | `route:list` | Print all routes |
 | `about` | Application/environment summary |
 | `db:schema:dump` | Dump the schema to SQL |
-| `sqlc:generate` | Run sqlc codegen |
+| `sqlc:generate` | Run sqlc codegen (requires the `sqlc` binary on PATH) |
 
 ## Generators
 

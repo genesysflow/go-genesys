@@ -3,98 +3,121 @@ package testutil
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 )
 
-// PostgresContainer holds the container and cleanup function for tests.
+// PostgresContainer describes a disposable PostgreSQL container started
+// for integration tests. It is driven through the docker CLI directly,
+// so the framework carries no container-runtime library dependencies.
 type PostgresContainer struct {
-	Container testcontainers.Container
-	Host      string
-	Port      int
-	Database  string
-	Username  string
-	Password  string
+	// ID is the docker container id.
+	ID       string
+	Host     string
+	Port     int
+	Database string
+	Username string
+	Password string
 }
 
-// dockerAvailable reports whether a Docker daemon is reachable for
-// testcontainers. Provider discovery panics on some hosts (e.g. rootless
-// Docker lookups), so treat any panic as "not available".
-func dockerAvailable() (ok bool) {
-	defer func() {
-		if recover() != nil {
-			ok = false
-		}
-	}()
-	provider, err := testcontainers.NewDockerProvider()
-	if err != nil {
+// dockerAvailable reports whether a Docker daemon is reachable.
+func dockerAvailable() bool {
+	if _, err := exec.LookPath("docker"); err != nil {
 		return false
 	}
-	defer provider.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	return provider.Health(ctx) == nil
+	return exec.CommandContext(ctx, "docker", "info").Run() == nil
 }
 
-// SetupPostgresContainer creates a PostgreSQL container for integration testing.
-// It returns the container info and a cleanup function that should be deferred.
-// The test is skipped when no Docker daemon is available.
+// docker runs a docker CLI command and returns its trimmed stdout.
+func docker(ctx context.Context, args ...string) (string, error) {
+	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("docker %s: %w (%s)", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// SetupPostgresContainer creates a PostgreSQL container for integration
+// testing. It returns the container info and a cleanup function that
+// should be deferred. The test is skipped when no Docker daemon is
+// available.
 func SetupPostgresContainer(t *testing.T) (*PostgresContainer, func()) {
 	t.Helper()
 
 	if !dockerAvailable() {
-		t.Skip("skipping: Docker is not available for testcontainers")
+		t.Skip("skipping: Docker is not available")
 	}
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	t.Cleanup(cancel)
 
-	container, err := postgres.Run(ctx,
+	id, err := docker(ctx, "run", "-d", "--rm",
+		"-e", "POSTGRES_DB=testdb",
+		"-e", "POSTGRES_USER=testuser",
+		"-e", "POSTGRES_PASSWORD=testpass",
+		"-p", "127.0.0.1:0:5432",
 		"postgres:16-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("testuser"),
-		postgres.WithPassword("testpass"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(60*time.Second),
-		),
 	)
 	if err != nil {
 		t.Fatalf("failed to start postgres container: %v", err)
 	}
 
-	host, err := container.Host(ctx)
-	if err != nil {
-		container.Terminate(ctx)
-		t.Fatalf("failed to get container host: %v", err)
-	}
-
-	port, err := container.MappedPort(ctx, "5432")
-	if err != nil {
-		container.Terminate(ctx)
-		t.Fatalf("failed to get mapped port: %v", err)
-	}
-
-	pc := &PostgresContainer{
-		Container: container,
-		Host:      host,
-		Port:      port.Int(),
-		Database:  "testdb",
-		Username:  "testuser",
-		Password:  "testpass",
-	}
-
 	cleanup := func() {
-		if err := container.Terminate(ctx); err != nil {
-			t.Logf("failed to terminate container: %v", err)
+		removeCtx, removeCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer removeCancel()
+		if _, err := docker(removeCtx, "rm", "-f", id); err != nil {
+			t.Logf("failed to remove container: %v", err)
 		}
 	}
 
+	fail := func(format string, args ...any) {
+		cleanup()
+		t.Fatalf(format, args...)
+	}
+
+	// Resolve the host port docker mapped for 5432.
+	mapping, err := docker(ctx, "port", id, "5432/tcp")
+	if err != nil {
+		fail("failed to get mapped port: %v", err)
+	}
+	// First line looks like "127.0.0.1:49153".
+	firstLine := strings.SplitN(mapping, "\n", 2)[0]
+	host, portText, found := strings.Cut(firstLine, ":")
+	if !found {
+		fail("unexpected docker port output: %q", mapping)
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(portText))
+	if err != nil {
+		fail("unexpected docker port %q: %v", portText, err)
+	}
+
+	// Wait for postgres to accept connections.
+	ready := false
+	for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline); {
+		if _, err := docker(ctx, "exec", id, "pg_isready", "-U", "testuser", "-d", "testdb"); err == nil {
+			ready = true
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	if !ready {
+		fail("postgres container did not become ready in time")
+	}
+
+	pc := &PostgresContainer{
+		ID:       id,
+		Host:     host,
+		Port:     port,
+		Database: "testdb",
+		Username: "testuser",
+		Password: "testpass",
+	}
 	return pc, cleanup
 }
 
