@@ -86,6 +86,8 @@ func (p *ConsoleServiceProvider) Register(app contracts.Application) error {
 	p.kernel.AddCommand(commands.MakeRequestCommand(app))
 	p.kernel.AddCommand(commands.MakeCommandCommand(app))
 	p.kernel.AddCommand(commands.MakePolicyCommand(app))
+	p.kernel.AddCommand(commands.DownCommand(app))
+	p.kernel.AddCommand(commands.UpCommand(app))
 
 	// Bind kernel to container
 	app.InstanceType(p.kernel)

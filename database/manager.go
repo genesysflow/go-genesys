@@ -68,6 +68,10 @@ type Manager struct {
 	config      Config
 	connections map[string]*Connection
 	mu          sync.RWMutex
+
+	// query listeners (see listen.go)
+	listenMu       sync.RWMutex
+	queryListeners []func(QueryEvent)
 }
 
 // NewManager creates a new database manager.
@@ -151,10 +155,11 @@ func (m *Manager) makeConnection(name string) (*Connection, error) {
 	}
 
 	return &Connection{
-		name:   name,
-		driver: config.Driver,
-		db:     db,
-		prefix: config.Prefix,
+		name:    name,
+		driver:  config.Driver,
+		db:      db,
+		prefix:  config.Prefix,
+		manager: m,
 	}, nil
 }
 
@@ -333,11 +338,12 @@ func mapDriver(driver string) string {
 // Connection represents a database connection.
 // It wraps *sql.DB and implements the DBTX interface expected by SQLC.
 type Connection struct {
-	name   string
-	driver string
-	db     *sql.DB
-	prefix string
-	err    error
+	name    string
+	driver  string
+	db      *sql.DB
+	prefix  string
+	err     error
+	manager *Manager // for query listeners; nil on error connections
 }
 
 // Name returns the connection name.
@@ -366,7 +372,10 @@ func (c *Connection) Query(sqlQuery string, bindings ...any) (*sql.Rows, error) 
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.Query(sqlQuery, bindings...)
+	start := time.Now()
+	rows, err := c.db.Query(sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return rows, err
 }
 
 // QueryContext executes a raw query with context.
@@ -374,12 +383,18 @@ func (c *Connection) QueryContext(ctx context.Context, sqlQuery string, bindings
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.QueryContext(ctx, sqlQuery, bindings...)
+	start := time.Now()
+	rows, err := c.db.QueryContext(ctx, sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return rows, err
 }
 
 // QueryRow executes a query that returns at most one row.
 func (c *Connection) QueryRow(sqlQuery string, bindings ...any) *sql.Row {
-	return c.db.QueryRow(sqlQuery, bindings...)
+	start := time.Now()
+	row := c.db.QueryRow(sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, nil)
+	return row
 }
 
 // QueryRowContext executes a query that returns at most one row with context.
@@ -392,7 +407,10 @@ func (c *Connection) Exec(sqlQuery string, bindings ...any) (sql.Result, error) 
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.Exec(sqlQuery, bindings...)
+	start := time.Now()
+	result, err := c.db.Exec(sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return result, err
 }
 
 // ExecContext executes a raw statement with context.
@@ -400,7 +418,10 @@ func (c *Connection) ExecContext(ctx context.Context, sqlQuery string, bindings 
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.ExecContext(ctx, sqlQuery, bindings...)
+	start := time.Now()
+	result, err := c.db.ExecContext(ctx, sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return result, err
 }
 
 // Prepare prepares a statement.
