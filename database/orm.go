@@ -58,8 +58,11 @@ type driverExecutor interface {
 
 // ModelQuery is a typed query builder for a model.
 type ModelQuery[T any] struct {
-	builder *query.Builder
-	err     error
+	builder  *query.Builder
+	driver   string
+	executor query.Executor
+	withs    []string
+	err      error
 }
 
 // Query starts a typed query for a model:
@@ -71,7 +74,11 @@ func Query[T any]() *ModelQuery[T] {
 		return &ModelQuery[T]{err: err}
 	}
 	driver, executor := connectionFor[T]()
-	return &ModelQuery[T]{builder: query.New(driver, executor).Table(meta.table)}
+	return &ModelQuery[T]{
+		builder:  query.New(driver, executor).Table(meta.table),
+		driver:   driver,
+		executor: executor,
+	}
 }
 
 // QueryOn starts a typed query against an explicit executor (e.g. a transaction).
@@ -80,7 +87,29 @@ func QueryOn[T any](driver string, executor query.Executor) *ModelQuery[T] {
 	if err != nil {
 		return &ModelQuery[T]{err: err}
 	}
-	return &ModelQuery[T]{builder: query.New(driver, executor).Table(meta.table)}
+	return &ModelQuery[T]{
+		builder:  query.New(driver, executor).Table(meta.table),
+		driver:   driver,
+		executor: executor,
+	}
+}
+
+// With eager-loads the given relation paths alongside the query results,
+// one batched query per relation instead of one per row:
+//
+//	users, err := database.Query[User]().With("Posts", "Posts.Tags").Get()
+func (q *ModelQuery[T]) With(paths ...string) *ModelQuery[T] {
+	q.withs = append(q.withs, paths...)
+	return q
+}
+
+// loadWiths eager-loads the requested relations onto scanned results.
+func (q *ModelQuery[T]) loadWiths(results []T) error {
+	if len(q.withs) == 0 || len(results) == 0 {
+		return nil
+	}
+	slice := reflect.ValueOf(&results).Elem()
+	return loadRelationsValue(q.driver, q.executor, slice, q.withs)
 }
 
 // Builder exposes the underlying untyped query builder.
@@ -177,7 +206,14 @@ func (q *ModelQuery[T]) Get() ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	return scanRowsInto[T](rows)
+	results, err := scanRowsInto[T](rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := q.loadWiths(results); err != nil {
+		return nil, err
+	}
+	return results, nil
 }
 
 // First returns the first matching model or ErrNotFound.
@@ -267,6 +303,9 @@ func (q *ModelQuery[T]) Paginate(page, perPage int) (*ModelPaginator[T], error) 
 	}
 	data, err := scanRowsInto[T](rows)
 	if err != nil {
+		return nil, err
+	}
+	if err := q.loadWiths(data); err != nil {
 		return nil, err
 	}
 

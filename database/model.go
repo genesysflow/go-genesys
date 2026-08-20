@@ -104,6 +104,9 @@ func collectFields(t reflect.Type, parentIndex []int, meta *modelMeta) {
 		if tag == "-" {
 			continue
 		}
+		if field.Tag.Get("rel") != "" {
+			continue // relation fields are loaded separately, never columns
+		}
 		column := tag
 		if column == "" {
 			column = support.ToSnakeCase(field.Name)
@@ -169,19 +172,31 @@ func (m *modelMeta) values(v reflect.Value, skipPK bool) map[string]any {
 
 // scanRowsInto scans all rows into a slice of T using column metadata.
 func scanRowsInto[T any](rows *sql.Rows) ([]T, error) {
-	defer rows.Close()
-
-	meta, err := metaFor(reflect.TypeOf((*T)(nil)).Elem())
+	slice, err := scanRowsIntoType(rows, reflect.TypeOf((*T)(nil)).Elem())
 	if err != nil {
 		return nil, err
+	}
+	return slice.Interface().([]T), nil
+}
+
+// scanRowsIntoType is the reflection core of scanRowsInto: it scans all
+// rows into an addressable slice of the given struct type, letting the
+// relation loader work with types only known at runtime.
+func scanRowsIntoType(rows *sql.Rows, structType reflect.Type) (reflect.Value, error) {
+	defer rows.Close()
+
+	results := reflect.New(reflect.SliceOf(structType)).Elem()
+
+	meta, err := metaFor(structType)
+	if err != nil {
+		return results, err
 	}
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return nil, err
+		return results, err
 	}
 
-	var results []T
 	for rows.Next() {
 		values := make([]any, len(columns))
 		pointers := make([]any, len(columns))
@@ -189,21 +204,20 @@ func scanRowsInto[T any](rows *sql.Rows) ([]T, error) {
 			pointers[i] = &values[i]
 		}
 		if err := rows.Scan(pointers...); err != nil {
-			return nil, err
+			return results, err
 		}
 
-		var item T
-		v := reflect.ValueOf(&item).Elem()
+		item := reflect.New(structType).Elem()
 		for i, column := range columns {
 			field, ok := meta.byCol[column]
 			if !ok {
 				continue
 			}
-			if err := assignValue(v.FieldByIndex(field.index), values[i]); err != nil {
-				return nil, fmt.Errorf("database: column %q: %w", column, err)
+			if err := assignValue(item.FieldByIndex(field.index), values[i]); err != nil {
+				return results, fmt.Errorf("database: column %q: %w", column, err)
 			}
 		}
-		results = append(results, item)
+		results.Set(reflect.Append(results, item))
 	}
 	return results, rows.Err()
 }
