@@ -111,6 +111,15 @@ func (h *Handler) ShouldReport(err error) bool {
 
 // Render renders an error response.
 func (h *Handler) Render(ctx contracts.Context, err error) error {
+	// Validation errors render in Laravel's 422 shape with per-field messages.
+	var validationErr *ValidationError
+	if goerrors.As(err, &validationErr) {
+		return ctx.Status(validationErr.StatusCode()).JSONResponse(map[string]any{
+			"message": validationErr.Message,
+			"errors":  validationErr.Errors,
+		})
+	}
+
 	code := http.StatusInternalServerError
 	message := "Internal Server Error"
 
@@ -318,7 +327,7 @@ type ValidationError struct {
 // NewValidationError creates a new validation error.
 func NewValidationError(errors map[string][]string) *ValidationError {
 	return &ValidationError{
-		Message: "Validation failed",
+		Message: "The given data was invalid.",
 		Errors:  errors,
 	}
 }
