@@ -146,11 +146,12 @@ func (b *Builder) HasTable(table string) bool {
 
 // Blueprint defines a table structure.
 type Blueprint struct {
-	table    string
-	columns  []ColumnDefinition
-	indexes  []IndexDefinition
-	create   bool
-	commands []AlterCommand // For ALTER table operations
+	table       string
+	columns     []ColumnDefinition
+	indexes     []IndexDefinition
+	foreignKeys []ForeignKeyDefinition
+	create      bool
+	commands    []AlterCommand // For ALTER table operations
 }
 
 // NewBlueprint creates a new blueprint.
@@ -718,6 +719,8 @@ func (g *SQLiteGrammar) CompileCreate(bp *Blueprint) string {
 		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
 
+	parts = append(parts, compileForeignKeys(bp, g.WrapColumn)...)
+
 	return fmt.Sprintf("CREATE TABLE %s (\n  %s\n)", g.WrapTable(bp.table), strings.Join(parts, ",\n  "))
 }
 
@@ -898,6 +901,8 @@ func (g *PostgresGrammar) CompileCreate(bp *Blueprint) string {
 	if len(primaryKeys) > 1 {
 		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
+
+	parts = append(parts, compileForeignKeys(bp, g.WrapColumn)...)
 
 	return fmt.Sprintf("CREATE TABLE %s (\n  %s\n)", g.WrapTable(bp.table), strings.Join(parts, ",\n  "))
 }
