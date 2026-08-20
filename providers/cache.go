@@ -50,6 +50,18 @@ func (p *CacheServiceProvider) Boot(app contracts.Application) error {
 					if path, ok := details["path"].(string); ok {
 						storeCfg.Path = path
 					}
+					if addr, ok := details["addr"].(string); ok {
+						storeCfg.Addr = addr
+					}
+					if password, ok := details["password"].(string); ok {
+						storeCfg.Password = password
+					}
+					if db, ok := details["db"].(int); ok {
+						storeCfg.DB = db
+					}
+					if prefix, ok := details["prefix"].(string); ok {
+						storeCfg.Prefix = prefix
+					}
 				}
 				cfg.Stores[name] = storeCfg
 			}

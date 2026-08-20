@@ -60,6 +60,16 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 		}
 	}
 
+	// The redis driver connects from session.redis.* config.
+	if sessionConfig.Storage == "redis" && sessionConfig.CustomStorage == nil {
+		sessionConfig.CustomStorage = session.NewRedisStorage(session.RedisStorageConfig{
+			Addr:     cfg.GetString("session.redis.addr"),
+			Password: cfg.GetString("session.redis.password"),
+			DB:       cfg.GetInt("session.redis.db"),
+			Prefix:   cfg.GetString("session.redis.prefix"),
+		})
+	}
+
 	// The database driver needs a live connection, which is only available
 	// after the DatabaseServiceProvider boots; resolve it lazily.
 	if sessionConfig.Storage == "database" && sessionConfig.CustomStorage == nil {

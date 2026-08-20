@@ -91,6 +91,21 @@ func (p *QueueServiceProvider) Boot(app contracts.Application) error {
 				}
 				return queue.NewDatabaseQueue(conn.Driver(), conn, dbCfg), nil
 			})
+		case "redis":
+			redisCfg := queue.RedisConfig{}
+			if addr, ok := details["addr"].(string); ok {
+				redisCfg.Addr = addr
+			}
+			if password, ok := details["password"].(string); ok {
+				redisCfg.Password = password
+			}
+			if db, ok := details["db"].(int); ok {
+				redisCfg.DB = db
+			}
+			if prefix, ok := details["prefix"].(string); ok {
+				redisCfg.Prefix = prefix
+			}
+			p.manager.Register(name, queue.NewRedisQueue(redisCfg))
 		}
 	}
 

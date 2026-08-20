@@ -16,11 +16,23 @@ type Config struct {
 
 // StoreConfig configures a single cache store.
 type StoreConfig struct {
-	// Driver is the store driver: memory or file.
+	// Driver is the store driver: memory, file, or redis.
 	Driver string `yaml:"driver" json:"driver"`
 
 	// Path is the storage directory for the file driver.
 	Path string `yaml:"path" json:"path"`
+
+	// Addr is the Redis host:port for the redis driver.
+	Addr string `yaml:"addr" json:"addr"`
+
+	// Password is the Redis AUTH password.
+	Password string `yaml:"password" json:"password"`
+
+	// DB is the Redis database number.
+	DB int `yaml:"db" json:"db"`
+
+	// Prefix namespaces the redis driver's keys (default "cache:").
+	Prefix string `yaml:"prefix" json:"prefix"`
 }
 
 // Manager manages cache stores.
@@ -108,6 +120,13 @@ func (m *Manager) build(name string) (Store, error) {
 			path = "storage/cache"
 		}
 		return NewFileStore(path)
+	case "redis":
+		return NewRedisStore(RedisConfig{
+			Addr:     cfg.Addr,
+			Password: cfg.Password,
+			DB:       cfg.DB,
+			Prefix:   cfg.Prefix,
+		}), nil
 	default:
 		return nil, fmt.Errorf("cache driver [%s] is not supported", cfg.Driver)
 	}
