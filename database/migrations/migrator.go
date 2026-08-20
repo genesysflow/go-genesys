@@ -210,6 +210,12 @@ func (m *Migrator) Run() ([]string, error) {
 
 // Rollback rolls back the last batch of migrations.
 func (m *Migrator) Rollback() ([]string, error) {
+	// Ensure the tracking table exists so rollback/reset work on a fresh
+	// database (e.g. migrate:fresh before any migrate).
+	if err := m.createMigrationsTable(); err != nil {
+		return nil, err
+	}
+
 	batch, err := m.getLastBatch()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get last batch: %w", err)
@@ -274,6 +280,10 @@ func (m *Migrator) Reset() ([]string, error) {
 
 // Status returns the status of all migrations.
 func (m *Migrator) Status() ([]MigrationStatus, error) {
+	if err := m.createMigrationsTable(); err != nil {
+		return nil, err
+	}
+
 	ran, err := m.getRanMigrations()
 	if err != nil {
 		return nil, err
