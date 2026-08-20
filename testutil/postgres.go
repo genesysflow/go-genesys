@@ -22,10 +22,34 @@ type PostgresContainer struct {
 	Password  string
 }
 
+// dockerAvailable reports whether a Docker daemon is reachable for
+// testcontainers. Provider discovery panics on some hosts (e.g. rootless
+// Docker lookups), so treat any panic as "not available".
+func dockerAvailable() (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	provider, err := testcontainers.NewDockerProvider()
+	if err != nil {
+		return false
+	}
+	defer provider.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return provider.Health(ctx) == nil
+}
+
 // SetupPostgresContainer creates a PostgreSQL container for integration testing.
 // It returns the container info and a cleanup function that should be deferred.
+// The test is skipped when no Docker daemon is available.
 func SetupPostgresContainer(t *testing.T) (*PostgresContainer, func()) {
 	t.Helper()
+
+	if !dockerAvailable() {
+		t.Skip("skipping: Docker is not available for testcontainers")
+	}
 
 	ctx := context.Background()
 
