@@ -11,6 +11,11 @@ type Listener func(event Event) error
 type Dispatcher struct {
 	listeners map[string][]Listener
 	mu        sync.RWMutex
+
+	// fake-mode state (see fake.go)
+	fakeMu   sync.Mutex
+	faked    bool
+	recorded []Event
 }
 
 // NewDispatcher creates a new event dispatcher.
@@ -27,8 +32,12 @@ func (d *Dispatcher) Listen(eventName string, listener Listener) {
 	d.listeners[eventName] = append(d.listeners[eventName], listener)
 }
 
-// Dispatch dispatches an event to all registered listeners.
+// Dispatch dispatches an event to all registered listeners. While the
+// dispatcher is faked (see Fake) the event is recorded instead.
 func (d *Dispatcher) Dispatch(event Event) error {
+	if d.recordIfFaked(event) {
+		return nil
+	}
 	d.mu.RLock()
 	listeners := d.listeners[event.Name()]
 	d.mu.RUnlock()
