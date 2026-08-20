@@ -228,8 +228,7 @@ func TestConnectionIntegration(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -246,8 +245,7 @@ func TestConnectionCaching(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -264,8 +262,7 @@ func TestConnectionPing(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -280,8 +277,7 @@ func TestConnectionQuery(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -304,8 +300,7 @@ func TestConnectionExec(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -335,8 +330,7 @@ func TestManagerRaw(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -357,8 +351,7 @@ func TestTransactionCommit(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -393,8 +386,7 @@ func TestTransactionRollback(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -430,8 +422,7 @@ func TestBeginTransaction(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -468,8 +459,7 @@ func TestDisconnect(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -492,8 +482,7 @@ func TestReconnect(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()
@@ -514,8 +503,7 @@ func TestMultipleConnections(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	cfg := Config{
 		Default: "primary",
@@ -559,8 +547,7 @@ func TestCloseAll(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 
@@ -578,8 +565,7 @@ func TestConnectionDB(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 
-	pc, cleanup := testutil.SetupPostgresContainer(t)
-	defer cleanup()
+	pc := testutil.PostgresForTests(t)
 
 	manager := newTestDatabaseManager(pc)
 	defer manager.Close()

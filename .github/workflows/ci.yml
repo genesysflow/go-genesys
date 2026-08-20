@@ -8,6 +8,31 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    # Real PostgreSQL for the ORM/manager integration tests; the suite
+    # falls back to docker-on-demand or skips when this is absent.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: testdb
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d testdb"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      GENESYS_TEST_PG_HOST: 127.0.0.1
+      GENESYS_TEST_PG_PORT: "5432"
+      GENESYS_TEST_PG_DB: testdb
+      GENESYS_TEST_PG_USER: testuser
+      GENESYS_TEST_PG_PASSWORD: testpass
+
     steps:
       - uses: actions/checkout@v4
 
@@ -16,15 +41,36 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Format check
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt needed on:" && echo "$unformatted" && exit 1
+          fi
+
       - name: Build
         run: go build ./...
 
       - name: Vet
         run: go vet ./...
 
-      - name: Test
+      - name: Test (race, includes Postgres integration and the example app smoke test)
         run: go test -race -count=1 ./...
 
-      - name: Build example app
-        run: go build ./...
-        working-directory: example
+      - name: Benchmark smoke
+        run: go test -run XXX -bench . -benchtime=1x ./query/ ./database/
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

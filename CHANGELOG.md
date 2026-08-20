@@ -116,6 +116,22 @@ All notable changes to Go-Genesys are documented here. The format follows
 - **CI**: GitHub Actions workflow running vet and the race-enabled test
   suite.
 
+### Hardening
+- **Real-PostgreSQL integration tests**: the ORM end-to-end suite
+  (CRUD/RETURNING ids, dirty tracking, nested eager loading, WhereHas
+  through pivots, soft deletes, cursor pagination, chunking) and the
+  connection-manager tests now run against PostgreSQL 16 - via
+  `GENESYS_TEST_PG_*` env (a CI services container) or docker on
+  demand, skipping when neither is available.
+- **Benchmarks** for the hot paths (query compilation, row scanning,
+  eager loading, create, dirty checks, WhereHas), smoke-run in CI so
+  they cannot rot.
+- **Example-app smoke test**: boots the full example application
+  (providers, config, routes) and exercises live endpoints, catching
+  wiring regressions unit tests miss.
+- **CI**: gofmt check, PostgreSQL services container for the
+  integration tests, benchmark smoke step, and a govulncheck job.
+
 ### Changed
 - `sqlc:generate` now shells out to the `sqlc` binary on PATH instead of
   embedding the sqlc library, and passes flags through verbatim. Install

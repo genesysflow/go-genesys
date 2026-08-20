@@ -4,6 +4,7 @@ package testutil
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -129,4 +130,40 @@ func (pc *PostgresContainer) DSN() string {
 		" password=" + pc.Password +
 		" dbname=" + pc.Database +
 		" sslmode=disable"
+}
+
+// PostgresForTests returns PostgreSQL connection info for integration
+// tests: from GENESYS_TEST_PG_* environment variables when set (a CI
+// services container), otherwise from a docker container started on the
+// fly. The test is skipped when neither is available.
+func PostgresForTests(t *testing.T) *PostgresContainer {
+	t.Helper()
+
+	if host := os.Getenv("GENESYS_TEST_PG_HOST"); host != "" {
+		port := 5432
+		if raw := os.Getenv("GENESYS_TEST_PG_PORT"); raw != "" {
+			if parsed, err := strconv.Atoi(raw); err == nil {
+				port = parsed
+			}
+		}
+		pc := &PostgresContainer{
+			Host:     host,
+			Port:     port,
+			Database: envOr("GENESYS_TEST_PG_DB", "testdb"),
+			Username: envOr("GENESYS_TEST_PG_USER", "testuser"),
+			Password: envOr("GENESYS_TEST_PG_PASSWORD", "testpass"),
+		}
+		return pc
+	}
+
+	pc, cleanup := SetupPostgresContainer(t)
+	t.Cleanup(cleanup)
+	return pc
+}
+
+func envOr(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
