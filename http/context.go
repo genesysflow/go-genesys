@@ -203,7 +203,7 @@ func (c *Context) View(name string, data ...map[string]any) error {
 	if len(data) > 0 {
 		viewData = data[0]
 	}
-	html, err := manager.RenderString(name, viewData)
+	html, err := manager.RenderString(name, c.shareViewData(viewData))
 	if err != nil {
 		return err
 	}

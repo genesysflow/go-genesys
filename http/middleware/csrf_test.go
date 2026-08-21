@@ -238,3 +238,22 @@ func TestCSRFCookieInsecureOptsOut(t *testing.T) {
 	_, cookie := issueToken(t, k)
 	assert.False(t, cookie.Secure)
 }
+
+// The http package duplicates CSRFContextKey to share the token with
+// views without importing this package. If the key ever drifts, forms
+// silently render an empty token and every POST starts failing.
+func TestCSRFTokenReachesViewData(t *testing.T) {
+	require.Equal(t, "csrf_token", middleware.CSRFContextKey)
+
+	k := csrfKernel(t)
+	k.GET("/token-in-data", func(ctx *genhttp.Context) error {
+		token, _ := ctx.ViewData()["csrf_token"].(string)
+		require.NotEmpty(t, token, "csrf token should be shared with views")
+		assert.Equal(t, middleware.CSRFToken(ctx), token)
+		return ctx.String("ok")
+	}, middleware.CSRF(middleware.CSRFConfig{Secret: csrfSecret, CookieInsecure: true}))
+
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/token-in-data", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
