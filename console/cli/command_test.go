@@ -1,4 +1,4 @@
-package console_test
+package cli_test
 
 import (
 	"bytes"
@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/genesysflow/go-genesys/console"
+	"github.com/genesysflow/go-genesys/console/cli"
 	"github.com/genesysflow/go-genesys/foundation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,7 +14,7 @@ import (
 
 // run builds the command and executes it with the given argv, capturing
 // output.
-func run(t *testing.T, cmd *console.Command, in string, argv ...string) (string, error) {
+func run(t *testing.T, cmd *cli.Command, in string, argv ...string) (string, error) {
 	t.Helper()
 
 	app := foundation.New()
@@ -30,18 +31,18 @@ func run(t *testing.T, cmd *console.Command, in string, argv ...string) (string,
 }
 
 func TestCommandArgumentsAndOptions(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name:        "greet",
 		Description: "Greet someone",
-		Arguments: []console.Argument{
+		Arguments: []cli.Argument{
 			{Name: "name", Description: "Who to greet", Required: true},
 			{Name: "greeting", Description: "The greeting", Default: "Hello"},
 		},
-		Options: []console.Option{
+		Options: []cli.Option{
 			{Name: "shout", Description: "Upper-case the greeting"},
 			{Name: "times", Description: "How many times", Default: "1"},
 		},
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			line := c.Argument("greeting") + ", " + c.Argument("name")
 			if c.BoolOption("shout") {
 				line = strings.ToUpper(line)
@@ -65,10 +66,10 @@ func TestCommandArgumentsAndOptions(t *testing.T) {
 // A required argument that is missing is an error, not a zero value the
 // command silently acts on.
 func TestCommandRequiredArgument(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name:      "greet",
-		Arguments: []console.Argument{{Name: "name", Required: true}},
-		Handle: func(c *console.Context) error {
+		Arguments: []cli.Argument{{Name: "name", Required: true}},
+		Handle: func(c *cli.Context) error {
 			c.Line(c.Argument("name"))
 			return nil
 		},
@@ -79,9 +80,9 @@ func TestCommandRequiredArgument(t *testing.T) {
 }
 
 func TestCommandOutputHelpers(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "report",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			c.Info("all good")
 			c.Comment("a note")
 			c.Warn("careful")
@@ -100,9 +101,9 @@ func TestCommandOutputHelpers(t *testing.T) {
 }
 
 func TestCommandTable(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "listing",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			c.Table(
 				[]string{"Name", "Driver"},
 				[][]string{{"default", "postgres"}, {"cache", "redis"}},
@@ -125,9 +126,9 @@ func TestCommandTable(t *testing.T) {
 }
 
 func TestCommandAsk(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "setup",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			c.Line("name=" + c.Ask("Your name?"))
 			c.Line("host=" + c.Ask("Host?", "localhost"))
 			return nil
@@ -141,9 +142,9 @@ func TestCommandAsk(t *testing.T) {
 }
 
 func TestCommandConfirm(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "danger",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			if c.Confirm("Really?", false) {
 				c.Line("confirmed")
 				return nil
@@ -169,9 +170,9 @@ func TestCommandConfirm(t *testing.T) {
 // A destructive command in a non-interactive shell must not hang waiting
 // for input that will never come; --no-interaction takes the default.
 func TestCommandConfirmNonInteractive(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "danger",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			if c.Confirm("Really?", true) {
 				c.Line("confirmed")
 			} else {
@@ -187,9 +188,9 @@ func TestCommandConfirmNonInteractive(t *testing.T) {
 }
 
 func TestCommandChoice(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "pick",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			c.Line("picked=" + c.Choice("Driver?", []string{"postgres", "mysql", "sqlite"}, "sqlite"))
 			return nil
 		},
@@ -209,9 +210,9 @@ func TestCommandChoice(t *testing.T) {
 }
 
 func TestCommandProgressBar(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "import",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			items := []string{"a", "b", "c"}
 			return c.WithProgressBar(len(items), func(advance func()) error {
 				for range items {
@@ -232,17 +233,17 @@ func TestCommandCall(t *testing.T) {
 	app := foundation.New()
 	kernel := console.NewKernel(app)
 
-	inner := &console.Command{
+	inner := &cli.Command{
 		Name:      "inner",
-		Arguments: []console.Argument{{Name: "value", Required: true}},
-		Handle: func(c *console.Context) error {
+		Arguments: []cli.Argument{{Name: "value", Required: true}},
+		Handle: func(c *cli.Context) error {
 			c.Line("inner got " + c.Argument("value"))
 			return nil
 		},
 	}
-	outer := &console.Command{
+	outer := &cli.Command{
 		Name: "outer",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			return c.Call("inner", "from-outer")
 		},
 	}
@@ -260,9 +261,9 @@ func TestCommandCall(t *testing.T) {
 
 // The command reaches the application it was built for.
 func TestCommandApp(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "env",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			require.NotNil(t, c.App())
 			c.Line(c.App().Environment())
 			return nil
@@ -277,9 +278,9 @@ func TestCommandApp(t *testing.T) {
 // An error from Handle reaches the caller rather than being printed and
 // swallowed - the process exit code depends on it.
 func TestCommandHandleErrorPropagates(t *testing.T) {
-	cmd := &console.Command{
+	cmd := &cli.Command{
 		Name: "boom",
-		Handle: func(c *console.Context) error {
+		Handle: func(c *cli.Context) error {
 			return assert.AnError
 		},
 	}
