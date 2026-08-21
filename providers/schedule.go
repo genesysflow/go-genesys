@@ -1,6 +1,8 @@
 package providers
 
 import (
+	"github.com/genesysflow/go-genesys/cache"
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/schedule"
 )
@@ -24,6 +26,16 @@ func (p *ScheduleServiceProvider) Register(app contracts.Application) error {
 	p.app = app
 
 	scheduler := schedule.New()
+
+	// Events constrained with Environments() need to know where they are
+	// running, and OnOneServer() needs a store to coordinate through.
+	scheduler.SetEnvironment(app.Environment())
+	if manager, err := container.Resolve[*cache.Manager](app); err == nil {
+		if store, err := manager.Store(); err == nil {
+			scheduler.UseCache(store)
+		}
+	}
+
 	if p.Define != nil {
 		p.Define(scheduler)
 	}
