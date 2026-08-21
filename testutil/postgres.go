@@ -98,14 +98,20 @@ func SetupPostgresContainer(t *testing.T) (*PostgresContainer, func()) {
 		fail("unexpected docker port %q: %v", portText, err)
 	}
 
-	// Wait for postgres to accept connections.
+	// Wait for the FINAL server to accept TCP connections. The postgres
+	// image's entrypoint first runs a temporary, unix-socket-only server
+	// while it initializes, then restarts; pg_isready succeeds against
+	// that temporary server, letting tests connect from the host in the
+	// window where TCP is still refused ("connection reset by peer").
+	// A real query over TCP only succeeds once the final server is up.
 	ready := false
 	for deadline := time.Now().Add(60 * time.Second); time.Now().Before(deadline); {
-		if _, err := docker(ctx, "exec", id, "pg_isready", "-U", "testuser", "-d", "testdb"); err == nil {
+		if _, err := docker(ctx, "exec", "-e", "PGPASSWORD=testpass", id,
+			"psql", "-h", "127.0.0.1", "-U", "testuser", "-d", "testdb", "-c", "SELECT 1"); err == nil {
 			ready = true
 			break
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(250 * time.Millisecond)
 	}
 	if !ready {
 		fail("postgres container did not become ready in time")
