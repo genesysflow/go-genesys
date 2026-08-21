@@ -31,18 +31,18 @@ func EncryptCookies(encrypter *crypt.Encrypter, except ...string) http.Middlewar
 		type pair struct{ key, value string }
 		var rewrites []pair
 		var drops []string
-		reqHeader.VisitAllCookie(func(key, value []byte) {
+		for key, value := range reqHeader.Cookies() {
 			name := string(key)
 			if slices.Contains(except, name) {
-				return
+				continue
 			}
 			plain, err := encrypter.DecryptString(string(value))
 			if err != nil {
 				drops = append(drops, name)
-				return
+				continue
 			}
 			rewrites = append(rewrites, pair{key: name, value: plain})
-		})
+		}
 		for _, p := range rewrites {
 			reqHeader.SetCookie(p.key, p.value)
 		}
@@ -55,17 +55,17 @@ func EncryptCookies(encrypter *crypt.Encrypter, except ...string) http.Middlewar
 		// Encrypt outgoing cookies set by handlers and later middleware.
 		respHeader := &ctx.FiberCtx().Response().Header
 		var outgoing []*fasthttp.Cookie
-		respHeader.VisitAllCookie(func(key, value []byte) {
+		for key, value := range respHeader.Cookies() {
 			if slices.Contains(except, string(key)) {
-				return
+				continue
 			}
 			cookie := fasthttp.AcquireCookie()
 			if parseErr := cookie.ParseBytes(value); parseErr != nil {
 				fasthttp.ReleaseCookie(cookie)
-				return
+				continue
 			}
 			outgoing = append(outgoing, cookie)
-		})
+		}
 		for _, cookie := range outgoing {
 			ciphertext, encErr := encrypter.EncryptString(string(cookie.Value()))
 			if encErr == nil {

@@ -100,9 +100,9 @@ func (r *Request) Header(key string) string {
 // Headers returns all headers.
 func (r *Request) Headers() map[string]string {
 	headers := make(map[string]string)
-	r.ctx.Request().Header.VisitAll(func(key, value []byte) {
+	for key, value := range r.ctx.Request().Header.All() {
 		headers[string(key)] = string(value)
-	})
+	}
 	return headers
 }
 
@@ -191,9 +191,9 @@ func (r *Request) All() map[string]any {
 	data := make(map[string]any)
 
 	// Add query params
-	r.ctx.Request().URI().QueryArgs().VisitAll(func(key, value []byte) {
+	for key, value := range r.ctx.Request().URI().QueryArgs().All() {
 		data[string(key)] = string(value)
-	})
+	}
 
 	// Add form data
 	form, err := r.ctx.MultipartForm()
@@ -207,9 +207,9 @@ func (r *Request) All() map[string]any {
 		}
 	} else {
 		// Try regular form data
-		r.ctx.Request().PostArgs().VisitAll(func(key, value []byte) {
+		for key, value := range r.ctx.Request().PostArgs().All() {
 			data[string(key)] = string(value)
-		})
+		}
 	}
 
 	// Add route params
@@ -298,9 +298,9 @@ func (r *Request) Cookie(key string) string {
 // Cookies returns all cookies.
 func (r *Request) Cookies() map[string]string {
 	cookies := make(map[string]string)
-	r.ctx.Request().Header.VisitAllCookie(func(key, value []byte) {
+	for key, value := range r.ctx.Request().Header.Cookies() {
 		cookies[string(key)] = string(value)
-	})
+	}
 	return cookies
 }
 
