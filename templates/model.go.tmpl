@@ -1,0 +1,17 @@
+package models
+
+import (
+	"github.com/genesysflow/go-genesys/database"
+)
+
+// {{.Name}} is a database model.
+type {{.Name}} struct {
+	database.Model
+	// Add your fields here, e.g.:
+	// Name string `db:"name" json:"name"`
+}
+
+// TableName returns the database table for the model.
+func ({{.Name}}) TableName() string {
+	return "{{.TableName}}"
+}

@@ -273,12 +273,26 @@ func TestCORSRejectsUnlistedOrigin(t *testing.T) {
 	assert.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
 }
 
-// TestCORSNeverPairsWildcardWithCredentials: browsers reject "*" alongside
-// Allow-Credentials, so the middleware must echo the concrete origin instead.
-func TestCORSNeverPairsWildcardWithCredentials(t *testing.T) {
+// TestCORSRefusesWildcardWithCredentials: reflecting every origin with
+// Allow-Credentials would be a full same-origin-policy bypass, so the
+// combination is rejected loudly at construction time.
+func TestCORSRefusesWildcardWithCredentials(t *testing.T) {
+	assert.PanicsWithValue(t,
+		`middleware: CORS AllowOrigins "*" cannot be combined with AllowCredentials; list the origins explicitly`,
+		func() {
+			middleware.CORS(middleware.CORSConfig{
+				AllowOrigins:     "*",
+				AllowCredentials: true,
+			})
+		})
+}
+
+// TestCORSCredentialsWithExplicitOrigins: an allowlist plus credentials
+// is the supported way to serve credentialed cross-origin requests.
+func TestCORSCredentialsWithExplicitOrigins(t *testing.T) {
 	k := newKernel(t)
 	k.Use(middleware.CORS(middleware.CORSConfig{
-		AllowOrigins:     "*",
+		AllowOrigins:     "https://app.example.com",
 		AllowCredentials: true,
 	}))
 	k.GET("/", func(ctx *genhttp.Context) error { return ctx.String("ok") })
@@ -289,9 +303,6 @@ func TestCORSNeverPairsWildcardWithCredentials(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))
-	assert.NotEqual(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
 	assert.Equal(t, "https://app.example.com", resp.Header.Get("Access-Control-Allow-Origin"))
-	// The origin is echoed from the request even though "*" is configured, so
-	// the response is origin-dependent and must not be cached across origins.
 	assert.Contains(t, resp.Header.Get("Vary"), "Origin")
 }

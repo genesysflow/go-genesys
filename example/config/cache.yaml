@@ -1,0 +1,8 @@
+default: ${CACHE_STORE:-memory}
+
+stores:
+  memory:
+    driver: memory
+  file:
+    driver: file
+    path: storage/cache

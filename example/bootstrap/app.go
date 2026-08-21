@@ -5,12 +5,15 @@ import (
 
 	"github.com/genesysflow/go-genesys/console"
 	"github.com/genesysflow/go-genesys/database/migrations"
+	"github.com/genesysflow/go-genesys/database/seed"
 	appProviders "github.com/genesysflow/go-genesys/example/app/providers"
 	m "github.com/genesysflow/go-genesys/example/database/migrations"
+	"github.com/genesysflow/go-genesys/example/database/seeders"
 	"github.com/genesysflow/go-genesys/example/routes"
 	"github.com/genesysflow/go-genesys/foundation"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/providers"
+	"github.com/genesysflow/go-genesys/schedule"
 )
 
 // App creates and configures the application instance.
@@ -25,6 +28,26 @@ func App() *foundation.Application {
 	app.Register(&providers.SessionServiceProvider{})
 	app.Register(&providers.DatabaseServiceProvider{})
 	app.Register(&providers.FilesystemServiceProvider{})
+	app.Register(&providers.CacheServiceProvider{})
+	app.Register(&providers.QueueServiceProvider{})
+	app.Register(&providers.EventServiceProvider{})
+	app.Register(&providers.EncryptionServiceProvider{})
+	app.Register(&providers.ViewServiceProvider{})
+
+	// Scheduled tasks: run with `example schedule:work` (or schedule:run
+	// from system cron).
+	app.Register(&providers.ScheduleServiceProvider{
+		Define: func(s *schedule.Schedule) {
+			s.Call(func() error { return nil }).Hourly().Description("example heartbeat")
+		},
+	})
+
+	// Database seeders: run with `example db:seed`.
+	app.Register(&providers.SeedServiceProvider{
+		Define: func(r *seed.Runner) {
+			r.AddFunc("users", seeders.SeedUsers)
+		},
+	})
 
 	app.Register(&providers.MigrationServiceProvider{
 		BeforeAllMigrations: m.BeforeAllMigrations,

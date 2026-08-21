@@ -247,7 +247,8 @@ func TestRequestWithContext(t *testing.T) {
 	app := fiber.New()
 	app.Get("/test", func(c *fiber.Ctx) error {
 		req := NewRequest(c)
-		ctx := context.WithValue(context.Background(), "key", "value")
+		type ctxKey struct{}
+		ctx := context.WithValue(context.Background(), ctxKey{}, "value")
 		newReq := req.WithContext(ctx)
 		assert.NotNil(t, newReq)
 		return nil

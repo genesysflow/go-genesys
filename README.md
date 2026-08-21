@@ -4,28 +4,40 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 
 ## Features
 
-- **Service Container**: Dependency injection container for managing application services
-- **Service Providers**: Register and bootstrap application services with a clean lifecycle
-- **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) for blazing fast HTTP handling
-- **Middleware Pipeline**: Powerful middleware system with before/after hooks
-- **Database ORM**: Eloquent-style ORM with model support for easy database interaction
-- **Query Builder**: Fluent SQL query builder with grammar abstraction
-- **Schema Builder**: Define database schemas programmatically with migrations
-- **Migrations**: Database schema version control and migration management
-- **Configuration**: YAML-based config files with dot-notation access
-- **Environment**: `.env` file support with type-safe helpers
-- **Validation**: Struct-based validation with custom rules and error handling
-- **Security**: CSRF protection, bcrypt password hashing, security headers, and secure-by-default cookies
-- **Sessions**: Multiple session drivers (memory, file, database, redis)
-- **Cache**: Flexible caching layer with multiple drivers (memory, redis, file)
-- **Queue**: Background job processing with sync and async drivers
-- **Events**: Event dispatcher for decoupled application components
-- **Filesystem**: Unified filesystem abstraction (local, S3, and more)
-- **Logging**: Structured logging with multiple channels and formatters
-- **Error Handling**: Graceful panic recovery and detailed error reporting
-- **Console Kernel**: CLI application framework with custom commands
-- **Testing Helpers**: Built-in testing utilities for HTTP and database testing
-- **Facades**: Static-like accessors for core services (DB, Storage, etc.)
+- **Service Container & Providers**: Dependency injection with a clean register/boot lifecycle
+- **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) with middleware pipeline, route groups, subdomain routing (`Domain("{account}.example.com", ...)`), named routes, fallbacks, redirects, and middleware groups/aliases
+- **Query Builder**: Fluent SQL builder with per-driver grammar (`db.Table("users").Where(...).Get()`)
+- **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, transactions (`WithinTransaction` with scoped helpers), automatic timestamps, pagination (offset + cursor), relationships with batched eager loading (`With("Posts.Tags")`), existence queries (`WhereHas`/`DoesntHave`), pivot writes (`Attach`/`Detach`/`Sync`/`Toggle`), `CreateFor`/`Associate`, `FirstOrCreate`/`UpdateOrCreate`, soft deletes, lifecycle hooks/observers, dirty tracking with partial updates, and delete-safe `Chunk`/`Each`
+- **Route Model Binding**: `http.BindModel[User](ctx, "user")` with automatic 404s
+- **Form Requests**: `http.ValidateRequest[T](ctx)` with Laravel-shaped 422 responses
+- **Migrations & Schema Builder**: Programmatic schema with foreign keys, indexes, rollback/reset/fresh; PostgreSQL, MySQL/MariaDB, and SQLite drivers
+- **Seeders & Factories**: `db:seed`, `database.NewFactory[T]`
+- **Views**: `html/template`-based view layer with layouts, partials, components with slots (`{{component "alert" (dict ...)}}`), and `ctx.View("users.index", data)`
+- **Authentication**: Session and token guards, ORM user provider, login/logout/attempt, remember-me cookies, password reset broker, and signed email verification
+- **Authorization**: Gate with `Define/Allows/Authorize` and before-hooks
+- **Sessions**: Memory, file, database, and Redis drivers; flash data and old input
+- **Cache**: Memory, file, and Redis stores with `Remember`, `Increment`, `Add`, `Pull`, atomic locks (`cache.NewLock`), and a cache-backed `Throttle` rate limiter
+- **Queue**: Sync, memory, database, and Redis drivers; named queues with priority draining (`--queue=high,default`); workers with retries/backoff, failed-job management, job middleware (`WithoutOverlapping`, unique dispatch), chaining (`queue.Chain`), and batches with `Then/Catch/Finally` plus a cross-process `job_batches` repository
+- **Task Scheduling**: Cron-style scheduler with `schedule:run` / `schedule:work`
+- **Events**: Dispatcher with typed generic listeners (`events.Listen[T]`) and wildcard listeners
+- **Broadcasting**: WebSocket channels (public + authorized private) with an event-dispatcher bridge (`Broadcastable`)
+- **Mail**: Message builder with SMTP, log, and array (test) drivers
+- **Notifications**: Multi-channel notifications (mail + database) with on-demand routes, unread feeds, and queued delivery
+- **Encryption**: AES-256-GCM `crypt` package keyed by `APP_KEY`, plus `key:generate`
+- **Signed URLs**: HMAC-signed links with optional expiry and a validation middleware
+- **HTTP Client**: Fluent outbound client with retries (`client.New().WithToken(...).Get(...)`)
+- **Localization**: Per-locale YAML lang files, `Trans`/`TransChoice`, locale-pinned views (`translator.In("de")`), request-locale detection middleware, and translated validation messages
+- **Collections**: Generic fluent collections (`Map`, `Filter`, `GroupBy`, ...)
+- **Validation**: Struct-tag validation with custom rules and messages
+- **Security**: CSRF protection, bcrypt hashing, security headers, secure-by-default cookies
+- **Filesystem**: Unified storage abstraction (local, S3) with presigned temporary URLs
+- **Logging**: Structured logging with multiple channels
+- **Console**: Rich CLI — `migrate`, `queue:work`, `schedule:work`, `route:list`, `about`, `db:seed`, `key:generate`, and a full set of `make:*` generators
+- **Facades**: Static accessors for every core service (`db`, `cache`, `queue`, `auth`, `mail`, ...)
+- **Testing**: HTTP test DSL (`http.NewTestCase`) with Laravel-style assertions, plus queue/event/mail fakes
+- **Maintenance Mode**: `genesys down`/`up` with secret bypass and 503 + Retry-After
+- **DB Observability**: `manager.Listen` fires a QueryEvent (SQL, bindings, duration) for every query
+- **Fake Data**: `support/faker` for factories and seeders (deterministic when seeded)
 
 ## Installation
 
@@ -39,55 +51,78 @@ go get github.com/genesysflow/go-genesys
 package main
 
 import (
-    "github.com/genesysflow/go-genesys/foundation"
     "github.com/genesysflow/go-genesys/container"
+    "github.com/genesysflow/go-genesys/foundation"
     "github.com/genesysflow/go-genesys/http"
     "github.com/genesysflow/go-genesys/providers"
 )
 
 func main() {
-    // Create a new application instance
     app := foundation.New()
-    
-    // Register service providers
+
     app.Register(&providers.AppServiceProvider{})
     app.Register(&providers.RouteServiceProvider{})
-    
-    // Bootstrap the application
+
     app.Boot()
-    
-    // Get the HTTP kernel and run the server
+
     kernel := container.MustResolve[*http.Kernel](app, "http.kernel")
     kernel.Run(":3000")
 }
 ```
 
-## Application Lifecycle
+See [`example/`](example/) for a complete application and [`docs/`](docs/) for per-topic guides.
 
-Inspired by Laravel, Go-Genesys follows a well-defined lifecycle:
+## Database
 
-### Bootstrap Phase (once at startup)
+### Query Builder
 
-1. **Application Creation**: Create new application instance with container
-2. **Provider Registration**: Register all service providers (binds services to container)
-3. **Application Boot**: Boot all providers, load configuration
-4. **Server Start**: HTTP kernel starts listening for requests
+```go
+import "github.com/genesysflow/go-genesys/facades/db"
 
-### Request Phase (per request)
+// All rows as maps
+users, err := db.Table("users").Get()
 
-1. **Request Entry**: HTTP request enters the application
-2. **Middleware Stack**: Request passes through global and route middleware
-3. **Routing**: Router dispatches request to the appropriate handler
-4. **Controller**: Business logic is executed
-5. **Response**: Response travels back through middleware and is sent to the client
+// Fluent conditions
+rows, err := db.Table("users").
+    Where("age", ">", 18).
+    WhereIn("role", "admin", "editor").
+    OrderByDesc("created_at").
+    Limit(10).
+    Get()
 
-## Database & Migrations
+// Joins, aggregates, pagination
+count, err := db.Table("users").Where("active", true).Count()
+page, err := db.Table("users").OrderBy("id").Paginate(2, 15)
+```
 
-Go-Genesys provides a powerful database abstraction layer.
+### ORM
+
+```go
+type User struct {
+    database.Model             // ID, CreatedAt, UpdatedAt
+    Name  string `db:"name"  json:"name"`
+    Email string `db:"email" json:"email"`
+}
+
+// CRUD
+user := &User{Name: "Ada", Email: "ada@example.com"}
+err := database.Create(user)        // sets ID + timestamps
+found, err := database.Find[User](user.ID)
+all, err := database.All[User]()
+err = database.Delete[User](user.ID)
+
+// Typed queries
+adults, err := database.Query[User]().
+    Where("age", ">=", 18).
+    OrderBy("name").
+    Get()
+
+page, err := database.Query[User]().Latest().Paginate(1, 15)
+```
+
+Table names are inferred (`User` → `users`, `BlogPost` → `blog_posts`) and can be overridden with `TableName() string`.
 
 ### Migrations
-
-Define your database schema using Go code:
 
 ```go
 func (m *CreateUsersTable) Up(builder *schema.Builder) error {
@@ -95,194 +130,191 @@ func (m *CreateUsersTable) Up(builder *schema.Builder) error {
         table.ID()
         table.String("name", 255)
         table.String("email", 255).Unique()
+        table.ForeignID("team_id")
+        table.Foreign("team_id").CascadeOnDelete() // references teams.id
         table.Timestamps()
     })
 }
 ```
 
-### Models
-
-Define your models by embedding `database.Model`:
+### Seeders & Factories
 
 ```go
-type User struct {
-    database.Model
-    Name  string `json:"name" db:"name"`
-    Email string `json:"email" db:"email"`
+var userFactory = database.NewFactory(func(i int) *User {
+    return &User{Name: fmt.Sprintf("User %d", i)}
+})
+
+// In a seeder registered via SeedServiceProvider:
+users, err := userFactory.Create(10)
+```
+
+## HTTP
+
+### Routing
+
+```go
+router.GET("/users/:user", ShowUser).Name("users.show")
+
+router.Group("/admin", func(r *http.Router) {
+    r.GET("/dashboard", Dashboard)
+}, kernel.MiddlewareGroup("web")...)
+
+router.Redirect("/old", "/new", 301)
+router.Fallback(CustomNotFound)
+```
+
+### Form Requests & Resources
+
+```go
+type StoreUserRequest struct {
+    Name  string `json:"name" validate:"required,min=3"`
+    Email string `json:"email" validate:"required,email"`
+}
+
+func StoreUser(ctx *http.Context) error {
+    req, err := http.ValidateRequest[StoreUserRequest](ctx)
+    if err != nil {
+        return err // 422 {"message": ..., "errors": {"name": [...]}}
+    }
+    user := &User{Name: req.Name, Email: req.Email}
+    if err := database.Create(user); err != nil {
+        return err
+    }
+    return ctx.Status(201).JSONResponse(map[string]any{"data": user})
+}
+
+// Route model binding
+func ShowUser(ctx *http.Context) error {
+    user, err := http.BindModel[User](ctx, "user") // 404 when missing
+    if err != nil {
+        return err
+    }
+    return ctx.Resource(user) // {"data": {...}}
+}
+
+// Pagination envelope: {"data": [...], "meta": {...}}
+func ListUsers(ctx *http.Context) error {
+    page, err := database.Query[User]().Paginate(ctx.QueryInt("page", 1), 15)
+    if err != nil {
+        return err
+    }
+    return ctx.Paginated(page)
 }
 ```
 
-Retrieve records:
+### Views
 
 ```go
-// Get all users
-users, _ := database.All[User]()
-
-// Find by ID
-user, _ := database.Find[User](1)
-
-// Create a new record
-user := &User{Name: "John", Email: "john@example.com"}
-id, _ := database.Create(user)
-
-// Update a record
-database.Update(1, user)
-
-// Delete a record
-database.Delete[User](1)
+// resources/views/users/index.html renders as "users.index";
+// compose with {{template "layouts.app" .}}
+return ctx.View("users.index", map[string]any{"users": users})
 ```
 
-### Query Builder
-
-Fluent interface for building queries:
+## Authentication & Authorization
 
 ```go
-// Get all users as maps
-results, _ := db.Table("users").Get()
+provider := auth.NewORMUserProvider[User]()
+guard := auth.NewSessionGuard("web", provider)
 
-// Complex queries
-db.Table("users").
-    Where("age", ">", 18).
-    OrderBy("created_at", "desc").
-    Limit(10).
-    Get()
+kernel.POST("/login", func(ctx *http.Context) error {
+    user, err := guard.Attempt(ctx, map[string]any{
+        "email":    ctx.Input("email"),
+        "password": ctx.Input("password"),
+    })
+    if err != nil {
+        return errors.Unauthorized("Invalid credentials")
+    }
+    return ctx.Resource(user)
+})
 
-// Joins
-db.Table("users").
-    Join("posts", "users.id", "=", "posts.user_id").
-    Select("users.name", "posts.title").
-    Get()
+kernel.GET("/profile", Profile, auth.Middleware(guard))
 
-// Aggregates
-count, _ := db.Table("users").Count()
-avg, _ := db.Table("orders").Avg("total")
+// Gates
+gate.Define("update-post", func(user auth.Authenticatable, args ...any) bool {
+    return args[0].(*Post).AuthorID == user.GetAuthIdentifier()
+})
+if err := gate.Authorize(user, "update-post", post); err != nil {
+    return err // 403
+}
 ```
 
-## Additional Features
-
-### Cache
-
-Multiple cache drivers for flexible caching strategies:
+## Cache
 
 ```go
-// Get cache store
-store, _ := cacheManager.Store()
+import "github.com/genesysflow/go-genesys/facades/cache"
 
-// Store data in cache
-store.Put("key", value, 60*time.Minute)
-
-// Retrieve from cache
-value, err := store.Get("key")
-
-// Forget a key
-store.Forget("key")
-
-// Flush all cache
-store.Flush()
+cache.Put("key", value, time.Minute)
+value, err := cache.Get("key")
+users, err := cache.Remember("users:all", time.Minute, func() (any, error) {
+    return loadUsers()
+})
+n, err := cache.Increment("hits")
 ```
 
-### Queue
+Stores are configured in `config/cache.yaml` (memory and file drivers built in).
 
-Process background jobs asynchronously:
+## Queue
 
 ```go
-// Define a job
+// Define a job (exported fields are serialized)
 type SendEmailJob struct {
-    Email   string
-    Message string
+    Email string `json:"email"`
 }
 
 func (j *SendEmailJob) Handle() error {
-    return sendEmail(j.Email, j.Message)
+    return sendEmail(j.Email)
 }
 
-// Get queue connection and push a job
-queue, _ := queueManager.Connection()
-queue.Push(&SendEmailJob{
-    Email:   "user@example.com",
-    Message: "Welcome!",
+// Register once (required by workers), then dispatch
+queue.Register[SendEmailJob]()
+queuefacade.Dispatch(&SendEmailJob{Email: "user@example.com"})
+queuefacade.DispatchLater(5*time.Minute, &SendEmailJob{Email: "user@example.com"})
+```
+
+Run workers with `genesys queue:work`; inspect failures with `queue:failed` and retry with `queue:retry <id|all>`. The database driver stores jobs durably (`queue.CreateJobsTables` sets up the tables).
+
+## Scheduling
+
+```go
+app.Register(&providers.ScheduleServiceProvider{
+    Define: func(s *schedule.Schedule) {
+        s.Call(pruneSessions).Daily().Description("prune sessions")
+        s.Call(sendReports).Cron("0 8 * * 1-5")
+    },
 })
 ```
 
-### Events
+Drive it with `schedule:work` (foreground loop) or `schedule:run` from system cron.
 
-Decouple application components with events:
-
-```go
-// Define an event
-type UserRegistered struct {
-    User *User
-}
-
-func (e *UserRegistered) Name() string {
-    return "user.registered"
-}
-
-// Define a listener
-func SendWelcomeEmail(event events.Event) error {
-    // Type assert to get the specific event
-    userEvent := event.(*UserRegistered)
-    // Send welcome email using userEvent.User
-    return nil
-}
-
-// Create dispatcher and register listener
-dispatcher := events.NewDispatcher()
-dispatcher.Listen("user.registered", SendWelcomeEmail)
-
-// Dispatch event
-dispatcher.Dispatch(&UserRegistered{User: user})
-```
-
-### Filesystem
-
-Unified interface for file operations across different storage systems:
+## Events
 
 ```go
-// Get filesystem disk (default or named)
-disk := filesystemManager.Disk()
+type OrderShipped struct{ OrderID int }
 
-// Store files
-disk.Put("file.txt", []byte("content"))
+events.Listen(dispatcher, func(e *OrderShipped) error {
+    return notify(e.OrderID)
+})
 
-// S3 storage
-s3Disk := filesystemManager.Disk("s3")
-s3Disk.Put("bucket/file.txt", []byte("content"))
-
-// Read files
-content, _ := disk.Get("file.txt")
-
-// Check existence
-exists := disk.Exists("file.txt")
-
-// Delete files
-disk.Delete("file.txt")
+events.Emit(dispatcher, &OrderShipped{OrderID: 7})
 ```
 
-### Validation
-
-Powerful struct-based validation:
+## Mail
 
 ```go
-type CreateUserRequest struct {
-    Name  string `json:"name" validate:"required,min=3,max=255"`
-    Email string `json:"email" validate:"required,email"`
-    Age   int    `json:"age" validate:"required,min=18,max=100"`
-}
+message := mail.NewMessage().
+    To("user@example.com").
+    Subject("Welcome!").
+    HTML("<h1>Hello</h1>").
+    Text("Hello")
 
-// Validate
-validator := validation.New()
-result := validator.Validate(request)
-if result.Fails() {
-    // Handle validation errors
-    errors := result.Errors()
-    firstError := result.First()
-}
+err := mailfacade.Send(message)
 ```
 
-### Security
+Drivers: `smtp` (TLS/STARTTLS), `log` (development default), `array` (tests).
 
-#### CSRF protection
+## Security
+
+### CSRF protection
 
 Any application that authenticates with a cookie or session needs CSRF
 protection on state-changing routes. Register the middleware with a secret that
@@ -311,7 +343,7 @@ kernel.GET("/form", func(ctx *http.Context) error {
 Do not apply it to stateless, token-authenticated APIs — there is no ambient
 credential for an attacker to abuse, so it only adds friction.
 
-#### Password hashing
+### Password hashing
 
 Never store a plain digest of a password: SHA-256 and friends are built to be
 fast, which is exactly what an offline cracker wants. The `hash` package wraps
@@ -334,7 +366,20 @@ if hash.NeedsRehash(user.PasswordHash) {
 }
 ```
 
-#### Security headers
+### Encryption & signed URLs
+
+```go
+// AES-256-GCM keyed by APP_KEY (genesys key:generate)
+payload, err := crypt.EncryptString("secret")
+plain, err := crypt.DecryptString(payload)
+
+// Tamper-proof links with optional expiry
+signer := urlsign.New(key)
+link, err := signer.SignTemporary("https://app.test/unsubscribe?u=42", 24*time.Hour)
+kernel.GET("/unsubscribe", handler, middleware.ValidateSignature(key))
+```
+
+### Security headers
 
 ```go
 kernel.Use(middleware.Secure(middleware.SecureConfig{
@@ -348,7 +393,7 @@ HSTS is off by default and must be enabled deliberately: turning it on for a
 host that is not yet fully served over TLS locks clients out of it for the
 lifetime of the `max-age`.
 
-#### Running behind a proxy
+### Running behind a proxy
 
 `Request.IP()` reports the connecting address and ignores forwarding headers
 until you say which proxies to trust. Leave `TrustedProxies` empty when the
@@ -362,7 +407,7 @@ kernel := http.NewKernel(app, http.KernelConfig{
 })
 ```
 
-#### Secure-by-default settings
+### Secure-by-default settings
 
 These default to the safe value; the insecure setting is the one you opt into.
 
@@ -373,9 +418,7 @@ These default to the safe value; the insecure setting is the one you opt into.
 | `session.http_only` | `true` | Keeps the session cookie away from JavaScript. |
 | Local disk permissions | `0600` / `0700` | Override per-disk via `permissions` for a genuinely public disk. |
 
-## CLI Tool
-
-Go-Genesys includes a powerful CLI tool for scaffolding and development:
+## CLI
 
 ```bash
 # Install the CLI tool
@@ -384,209 +427,78 @@ go install github.com/genesysflow/go-genesys/cmd/genesys@latest
 # Create a new project
 genesys new myapp
 
-# Generate components
-genesys make:provider MyServiceProvider    # Generate a service provider
-genesys make:controller UserController     # Generate a controller
-genesys make:model User                    # Generate a model
-genesys make:middleware AuthMiddleware     # Generate middleware
-genesys make:migration create_users_table  # Generate a migration
+# Generators
+genesys make:controller UserController
+genesys make:model User
+genesys make:migration create_users_table
+genesys make:middleware AuthMiddleware
+genesys make:provider MyServiceProvider
+genesys make:job SendEmail
+genesys make:event OrderShipped
+genesys make:listener SendReceipt
+genesys make:seeder Users
+genesys make:request StoreUser
+genesys make:command SyncOrders
+genesys make:policy Post
 
-# Database migrations
-genesys migrate                  # Run pending migrations
-genesys migrate:rollback         # Rollback the last migration batch
-genesys migrate:status           # Check migration status
-genesys migrate:fresh            # Drop all tables and re-run migrations
-genesys migrate:reset            # Rollback all migrations
+# Database
+genesys migrate              # run pending migrations
+genesys migrate:rollback     # rollback the last batch
+genesys migrate:reset        # rollback everything
+genesys migrate:fresh        # reset + re-run
+genesys migrate:status
+genesys db:seed [--seeder users]
 
-# Development
-genesys serve                    # Start the development server
-genesys serve --port=8080        # Start server on custom port
-```
+# Runtime
+genesys serve [--port=8080]
+genesys queue:work [--queue=default --tries=3]
+genesys queue:failed / queue:retry <id|all>
+genesys schedule:work / schedule:run / schedule:list
 
-## Architecture
-
-### Service Container
-
-The service container is the core of Go-Genesys, managing dependency injection and service resolution:
-
-```go
-// Bind a service to the container (transient)
-app.Bind("myservice", func() *MyService {
-    return &MyServiceImpl{}
-})
-
-// Bind as singleton
-app.Singleton("myservice", func() *MyService {
-    return &MyServiceImpl{}
-})
-
-// Resolve a service
-service, _ := app.Make("myservice")
-```
-
-### Service Providers
-
-Service providers are the central place to register and bootstrap application services:
-
-```go
-type MyServiceProvider struct {
-    providers.Provider
-}
-
-func (p *MyServiceProvider) Register(app contracts.Application) {
-    // Bind services to the container
-    app.Bind(func() *MyService {
-        return NewMyService()
-    })
-}
-
-func (p *MyServiceProvider) Boot(app contracts.Application) {
-    // Bootstrap services after all providers are registered
-}
-```
-
-### HTTP Kernel
-
-The HTTP kernel handles the request lifecycle and middleware pipeline:
-
-```go
-kernel := http.NewKernel(app)
-
-// Add global middleware
-kernel.Use(middleware.Logger())
-kernel.Use(middleware.Recovery())
-
-// Start the server
-kernel.Run(":3000")
-```
-
-### Routing
-
-Define routes with a familiar, expressive syntax:
-
-```go
-// routes/web.go
-func RegisterWebRoutes(router contracts.Router) {
-    router.Get("/", controllers.HomeController)
-    
-    router.Group("/users", func(r contracts.Router) {
-        r.Get("/", controllers.GetUsers)
-        r.Get("/:id", controllers.GetUser)
-        r.Post("/", controllers.CreateUser)
-        r.Put("/:id", controllers.UpdateUser)
-        r.Delete("/:id", controllers.DeleteUser)
-    })
-    
-    // With middleware
-    router.Group("/admin", func(r contracts.Router) {
-        r.Get("/dashboard", controllers.AdminDashboard)
-    }).Middleware(middleware.Auth())
-}
-```
-
-## Project Structure
-
-A typical Go-Genesys application follows this structure:
-
-```
-myapp/
-├── app/
-│   ├── controllers/     # HTTP controllers
-│   ├── middleware/      # Custom middleware
-│   ├── models/          # Database models
-│   ├── providers/       # Service providers
-│   └── services/        # Business logic services
-├── bootstrap/
-│   └── app.go           # Application bootstrap
-├── config/              # Configuration files (YAML)
-│   ├── app.yaml
-│   ├── database.yaml
-│   ├── filesystem.yaml
-│   ├── logging.yaml
-│   └── session.yaml
-├── database/
-│   └── migrations/      # Database migrations
-├── routes/              # Route definitions
-│   ├── api.go
-│   ├── web.go
-│   └── routes.go
-├── storage/             # Application storage
-│   ├── cache/
-│   ├── logs/
-│   └── sessions/
-├── .env                 # Environment variables
-├── go.mod
-└── main.go              # Application entry point
-```
-
-## Testing
-
-Go-Genesys provides testing utilities for HTTP and database testing:
-
-```go
-func TestUserController(t *testing.T) {
-    // Create test request
-    req := http.Get("/users")
-    
-    // Make request (would be executed against test server)
-    // Note: Full integration testing requires additional setup
-    resp := req.WithHeader("Accept", "application/json")
-    
-    // The testing package provides utilities for making HTTP requests
-    // against your application during tests
-}
+# Utilities
+genesys key:generate [--show]
+genesys route:list
+genesys about
 ```
 
 ## Configuration
 
-Configuration files use YAML format and support environment-specific overrides:
+Configuration files use YAML with environment interpolation:
 
 ```yaml
 # config/app.yaml
 name: MyApp
 env: ${APP_ENV:local}
-debug: ${APP_DEBUG:true}
-url: ${APP_URL:http://localhost:3000}
+debug: ${APP_DEBUG:false}
 
 # config/database.yaml
-default: mysql
+default: pgsql
 connections:
-  mysql:
-    driver: mysql
+  pgsql:
+    driver: pgsql
     host: ${DB_HOST:localhost}
-    port: ${DB_PORT:3306}
     database: ${DB_DATABASE:myapp}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
 ```
 
-Access configuration values:
-
 ```go
-// Get config instance (typically from service container)
-config := app.Config()
-
-// Get config value
-appName := config.Get("app.name")
-
-// Get as specific types
-env := config.GetString("app.env")
+config := app.GetConfig()
+name := config.GetString("app.name")
 debug := config.GetBool("app.debug")
-port := config.GetInt("app.port")
 ```
 
 ## Documentation
 
-For detailed documentation, visit the [documentation site](https://github.com/genesysflow/go-genesys).
+Per-topic guides live in [`docs/`](docs/):
+routing, database, validation, cache, queue, auth, views, mail, scheduling, events, and more.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please feel free to submit a Pull Request. CI runs `go vet` and the full test suite with the race detector.
 
 ## License
 
 Go-Genesys is open-source software licensed under the [MIT license](LICENSE).
+
 ---
 
 Built with ❤️ for the Go community
-

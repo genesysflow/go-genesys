@@ -1,0 +1,24 @@
+package policies
+
+import (
+	"github.com/genesysflow/go-genesys/auth"
+)
+
+// Register{{.Name}}Policy defines the {{.LowerName}} abilities on the gate:
+//
+//	policies.Register{{.Name}}Policy(gate)
+func Register{{.Name}}Policy(gate *auth.Gate) {
+	gate.Define("view-{{.LowerName}}", func(user auth.Authenticatable, args ...any) bool {
+		// model := args[0].(*models.{{.Name}})
+		return true
+	})
+
+	gate.Define("update-{{.LowerName}}", func(user auth.Authenticatable, args ...any) bool {
+		// model := args[0].(*models.{{.Name}})
+		return false
+	})
+
+	gate.Define("delete-{{.LowerName}}", func(user auth.Authenticatable, args ...any) bool {
+		return false
+	})
+}

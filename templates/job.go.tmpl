@@ -1,0 +1,18 @@
+package jobs
+
+// {{.Name}} is a queueable job. Register it before starting workers:
+//
+//	queue.Register[{{.Name}}]()
+//
+// Dispatch it with:
+//
+//	queuefacade.Dispatch(&{{.Name}}{ /* fields */ })
+type {{.Name}} struct {
+	// Exported fields are serialized into the queue payload.
+}
+
+// Handle executes the job.
+func (j *{{.Name}}) Handle() error {
+	// Do the work here.
+	return nil
+}

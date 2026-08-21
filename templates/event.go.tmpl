@@ -1,0 +1,13 @@
+package events
+
+// {{.Name}} is an application event. Dispatch it with:
+//
+//	events.Emit(dispatcher, &{{.Name}}{ /* fields */ })
+type {{.Name}} struct {
+	// Add event payload fields here.
+}
+
+// Name returns the event name.
+func (e *{{.Name}}) Name() string {
+	return "{{.LowerName}}"
+}

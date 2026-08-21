@@ -6,7 +6,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/genesysflow/go-genesys/foundation"
 	"github.com/spf13/cobra"
 )
 
@@ -45,13 +44,10 @@ func runUpgrade() error {
 
 	fmt.Println("Upgrading Go-Genesys framework...")
 
-	// Use go get to update the dependency
-	version := foundation.Version
-	if !strings.HasPrefix(version, "v") {
-		version = "v" + version
-	}
-
-	getCmd := exec.Command("go", "get", "github.com/genesysflow/go-genesys@"+version)
+	// Fetch the latest release: pinning to the installed CLI's own
+	// foundation.Version would silently DOWNGRADE projects already on a
+	// newer framework than the CLI binary.
+	getCmd := exec.Command("go", "get", "github.com/genesysflow/go-genesys@latest")
 	getCmd.Stdout = os.Stdout
 	getCmd.Stderr = os.Stderr
 	if err := getCmd.Run(); err != nil {
@@ -67,6 +63,6 @@ func runUpgrade() error {
 		return fmt.Errorf("go mod tidy failed: %w", err)
 	}
 
-	fmt.Printf("\n✓ Upgraded to Go-Genesys %s\n", version)
+	fmt.Println("\n✓ Upgraded Go-Genesys to the latest release")
 	return nil
 }

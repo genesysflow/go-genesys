@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/genesysflow/go-genesys/contracts"
+	facadelog "github.com/genesysflow/go-genesys/facades/log"
 	"github.com/genesysflow/go-genesys/log"
 )
 
@@ -60,6 +61,7 @@ func (p *LogServiceProvider) Register(app contracts.Application) error {
 
 	app.InstanceType(logger)
 	app.BindValue("logger", logger)
+	facadelog.SetInstance(logger)
 
 	logManager := log.NewManager()
 	app.InstanceType(logManager)

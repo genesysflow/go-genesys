@@ -21,6 +21,9 @@ func Register(r *http.Router) {
 	// Load web routes
 	Web(r)
 
-	// Load API routes
+	// Load API routes (SQLC-based v1)
 	API(r)
+
+	// Load ORM-based routes (v2: ORM, form requests, pagination, views)
+	ORM(r)
 }

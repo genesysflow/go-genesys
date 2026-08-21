@@ -97,8 +97,9 @@ func (p *DatabaseServiceProvider) Boot(app contracts.Application) error {
 	app.Instance("database", manager)
 	app.InstanceType(manager) // Registers as *database.Manager
 
-	// Initialize the DB facade
+	// Initialize the DB facade and the package-level ORM helpers
 	db.SetInstance(manager)
+	database.SetDefault(manager)
 
 	return nil
 }

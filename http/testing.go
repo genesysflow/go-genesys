@@ -139,6 +139,7 @@ func (r *TestRequest) toHTTPRequest() *http.Request {
 type TestResponse struct {
 	resp *http.Response
 	body []byte
+	t    TestingT // set by TestCase, enabling the Assert* helpers
 }
 
 // newTestResponse creates a new test response.

@@ -1,0 +1,12 @@
+default: ${QUEUE_CONNECTION:-sync}
+
+connections:
+  sync:
+    driver: sync
+  memory:
+    driver: memory
+  database:
+    driver: database
+    table: jobs
+    failed_table: failed_jobs
+    queue: default

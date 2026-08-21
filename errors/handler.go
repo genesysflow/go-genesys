@@ -4,6 +4,7 @@ package errors
 import (
 	goerrors "errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"runtime/debug"
 
@@ -109,8 +110,31 @@ func (h *Handler) ShouldReport(err error) bool {
 	return true
 }
 
+// wantsJSON reports whether the client should receive a JSON error body.
+// API clients (Accept: application/json, AJAX) get JSON; browsers get HTML.
+func wantsJSON(ctx contracts.Context) bool {
+	req := ctx.Request()
+	if req == nil {
+		return true
+	}
+	if req.IsJSON() || req.IsAjax() {
+		return true
+	}
+	// No Accept preference at all: keep the JSON default for API-first apps.
+	return !req.Accepts("text/html")
+}
+
 // Render renders an error response.
 func (h *Handler) Render(ctx contracts.Context, err error) error {
+	// Validation errors render in Laravel's 422 shape with per-field messages.
+	var validationErr *ValidationError
+	if goerrors.As(err, &validationErr) {
+		return ctx.Status(validationErr.StatusCode()).JSONResponse(map[string]any{
+			"message": validationErr.Message,
+			"errors":  validationErr.Errors,
+		})
+	}
+
 	code := http.StatusInternalServerError
 	message := "Internal Server Error"
 
@@ -129,6 +153,10 @@ func (h *Handler) Render(ctx contracts.Context, err error) error {
 		message = fiberErr.Message
 	}
 
+	if !wantsJSON(ctx) {
+		return h.renderHTML(ctx, code, message, err)
+	}
+
 	// Build response
 	response := map[string]any{
 		"success": false,
@@ -145,6 +173,51 @@ func (h *Handler) Render(ctx contracts.Context, err error) error {
 	}
 
 	return ctx.Status(code).JSONResponse(response)
+}
+
+// renderHTML renders a browser-friendly error page. Debug mode adds the
+// underlying error and stack trace; production shows only the status.
+func (h *Handler) renderHTML(ctx contracts.Context, code int, message string, err error) error {
+	var debugSection string
+	if h.debug {
+		debugSection = fmt.Sprintf(
+			`<section class="debug"><h2>%s</h2><pre>%s</pre></section>`,
+			template.HTMLEscapeString(err.Error()),
+			template.HTMLEscapeString(stackFor(err)),
+		)
+	}
+
+	page := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>%d — %s</title>
+<style>
+body{font-family:ui-sans-serif,system-ui,sans-serif;background:#f8fafc;color:#1e293b;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}
+main{max-width:56rem;padding:2rem;width:100%%}
+.status{display:flex;align-items:center;gap:1rem;justify-content:center}
+.code{font-size:2rem;font-weight:700;color:#64748b;border-right:1px solid #cbd5e1;padding-right:1rem}
+.message{font-size:1.25rem;color:#334155}
+.debug{margin-top:2rem;background:#0f172a;color:#e2e8f0;border-radius:.5rem;padding:1.5rem;overflow-x:auto}
+.debug h2{margin:0 0 1rem;font-size:1rem;color:#f87171}
+.debug pre{margin:0;font-size:.8rem;line-height:1.5;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<main>
+<div class="status"><span class="code">%d</span><span class="message">%s</span></div>
+%s
+</main>
+</body>
+</html>`,
+		code, template.HTMLEscapeString(message),
+		code, template.HTMLEscapeString(message),
+		debugSection,
+	)
+
+	ctx.Status(code)
+	return ctx.HTML(page)
 }
 
 // stackFor returns the stack captured when the error was raised, falling back
@@ -318,7 +391,7 @@ type ValidationError struct {
 // NewValidationError creates a new validation error.
 func NewValidationError(errors map[string][]string) *ValidationError {
 	return &ValidationError{
-		Message: "Validation failed",
+		Message: "The given data was invalid.",
 		Errors:  errors,
 	}
 }

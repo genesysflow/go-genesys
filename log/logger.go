@@ -6,14 +6,25 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/rs/zerolog"
 )
 
+// contextKey is a private type for context keys the logger reads, so
+// they cannot collide with keys from other packages.
+type contextKey struct{ name string }
+
+// RequestIDKey is the context key WithContext inspects for a request
+// id; set it with context.WithValue(ctx, log.RequestIDKey, id). The
+// bare string key "request_id" is also honoured for compatibility.
+var RequestIDKey = contextKey{"request_id"}
+
 // Logger is the default logger implementation using zerolog.
 type Logger struct {
+	mu     sync.RWMutex
 	logger zerolog.Logger
 	level  contracts.LogLevel
 	fields map[string]any
@@ -34,7 +45,10 @@ func New(writers ...io.Writer) *Logger {
 	}
 
 	return &Logger{
-		logger: zerolog.New(writer).With().Timestamp().Logger(),
+		// The zerolog level must match the reported default: zerolog's
+		// zero value passes everything, which would leak debug records
+		// from a logger whose Level() says Info.
+		logger: zerolog.New(writer).Level(zerolog.InfoLevel).With().Timestamp().Logger(),
 		level:  contracts.LogLevelInfo,
 		fields: make(map[string]any),
 	}
@@ -50,7 +64,7 @@ func NewJSON(writers ...io.Writer) *Logger {
 	}
 
 	return &Logger{
-		logger: zerolog.New(writer).With().Timestamp().Logger(),
+		logger: zerolog.New(writer).Level(zerolog.InfoLevel).With().Timestamp().Logger(),
 		level:  contracts.LogLevelInfo,
 		fields: make(map[string]any),
 	}
@@ -97,7 +111,10 @@ func (l *Logger) Panic(msg string, fields ...any) {
 
 // log is the internal logging method.
 func (l *Logger) log(level zerolog.Level, msg string, fields ...any) {
-	event := l.logger.WithLevel(level)
+	l.mu.RLock()
+	logger := l.logger
+	l.mu.RUnlock()
+	event := logger.WithLevel(level)
 
 	// Add stored fields
 	for k, v := range l.fields {
@@ -106,7 +123,11 @@ func (l *Logger) log(level zerolog.Level, msg string, fields ...any) {
 
 	// Add context values if present
 	if l.ctx != nil {
-		if reqID := l.ctx.Value("request_id"); reqID != nil {
+		reqID := l.ctx.Value(RequestIDKey)
+		if reqID == nil {
+			reqID = l.ctx.Value("request_id") // legacy string key
+		}
+		if reqID != nil {
 			event = event.Interface("request_id", reqID)
 		}
 	}
@@ -123,22 +144,13 @@ func (l *Logger) log(level zerolog.Level, msg string, fields ...any) {
 
 // WithField returns a logger with a field attached.
 func (l *Logger) WithField(key string, value any) contracts.Logger {
-	newFields := make(map[string]any, len(l.fields)+1)
-	for k, v := range l.fields {
-		newFields[k] = v
-	}
-	newFields[key] = value
-
-	return &Logger{
-		logger: l.logger,
-		level:  l.level,
-		fields: newFields,
-		ctx:    l.ctx,
-	}
+	return l.WithFields(map[string]any{key: value})
 }
 
 // WithFields returns a logger with multiple fields attached.
 func (l *Logger) WithFields(fields map[string]any) contracts.Logger {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	newFields := make(map[string]any, len(l.fields)+len(fields))
 	for k, v := range l.fields {
 		newFields[k] = v
@@ -157,6 +169,8 @@ func (l *Logger) WithFields(fields map[string]any) contracts.Logger {
 
 // WithContext returns a logger with context attached.
 func (l *Logger) WithContext(ctx context.Context) contracts.Logger {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	return &Logger{
 		logger: l.logger,
 		level:  l.level,
@@ -172,17 +186,23 @@ func (l *Logger) WithError(err error) contracts.Logger {
 
 // Level returns the current log level.
 func (l *Logger) Level() contracts.LogLevel {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 	return l.level
 }
 
 // SetLevel sets the log level.
 func (l *Logger) SetLevel(level contracts.LogLevel) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.level = level
 	l.logger = l.logger.Level(toZerologLevel(level))
 }
 
 // SetOutput sets the output writer.
 func (l *Logger) SetOutput(w io.Writer) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
 	l.logger = l.logger.Output(w)
 }
 
@@ -208,8 +228,16 @@ func toZerologLevel(level contracts.LogLevel) zerolog.Level {
 
 // LogManager manages multiple log channels.
 type LogManager struct {
+	mu       sync.RWMutex
 	channels map[string]contracts.Logger
 	default_ string
+}
+
+// defaultLogger returns the current default channel under the read lock.
+func (m *LogManager) defaultLogger() contracts.Logger {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.channels[m.default_]
 }
 
 // NewManager creates a new LogManager.
@@ -227,6 +255,8 @@ func NewManager() *LogManager {
 
 // Channel returns a specific log channel.
 func (m *LogManager) Channel(name string) contracts.Logger {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if ch, ok := m.channels[name]; ok {
 		return ch
 	}
@@ -240,16 +270,20 @@ func (m *LogManager) Stack(channels ...string) contracts.Logger {
 	if len(channels) > 0 {
 		return m.Channel(channels[0])
 	}
-	return m.channels[m.default_]
+	return m.defaultLogger()
 }
 
 // AddChannel adds a channel to the manager.
 func (m *LogManager) AddChannel(name string, logger contracts.Logger) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.channels[name] = logger
 }
 
 // SetDefault sets the default channel.
 func (m *LogManager) SetDefault(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if _, ok := m.channels[name]; ok {
 		m.default_ = name
 	}
@@ -257,60 +291,60 @@ func (m *LogManager) SetDefault(name string) {
 
 // Debug logs a debug message to the default channel.
 func (m *LogManager) Debug(msg string, fields ...any) {
-	m.channels[m.default_].Debug(msg, fields...)
+	m.defaultLogger().Debug(msg, fields...)
 }
 
 // Info logs an info message to the default channel.
 func (m *LogManager) Info(msg string, fields ...any) {
-	m.channels[m.default_].Info(msg, fields...)
+	m.defaultLogger().Info(msg, fields...)
 }
 
 // Warn logs a warning message to the default channel.
 func (m *LogManager) Warn(msg string, fields ...any) {
-	m.channels[m.default_].Warn(msg, fields...)
+	m.defaultLogger().Warn(msg, fields...)
 }
 
 // Error logs an error message to the default channel.
 func (m *LogManager) Error(msg string, fields ...any) {
-	m.channels[m.default_].Error(msg, fields...)
+	m.defaultLogger().Error(msg, fields...)
 }
 
 // Fatal logs a fatal message to the default channel.
 func (m *LogManager) Fatal(msg string, fields ...any) {
-	m.channels[m.default_].Fatal(msg, fields...)
+	m.defaultLogger().Fatal(msg, fields...)
 }
 
 // Panic logs a panic message to the default channel.
 func (m *LogManager) Panic(msg string, fields ...any) {
-	m.channels[m.default_].Panic(msg, fields...)
+	m.defaultLogger().Panic(msg, fields...)
 }
 
 // WithField returns a logger with a field attached.
 func (m *LogManager) WithField(key string, value any) contracts.Logger {
-	return m.channels[m.default_].WithField(key, value)
+	return m.defaultLogger().WithField(key, value)
 }
 
 // WithFields returns a logger with multiple fields attached.
 func (m *LogManager) WithFields(fields map[string]any) contracts.Logger {
-	return m.channels[m.default_].WithFields(fields)
+	return m.defaultLogger().WithFields(fields)
 }
 
 // WithContext returns a logger with context attached.
 func (m *LogManager) WithContext(ctx context.Context) contracts.Logger {
-	return m.channels[m.default_].WithContext(ctx)
+	return m.defaultLogger().WithContext(ctx)
 }
 
 // WithError returns a logger with an error attached.
 func (m *LogManager) WithError(err error) contracts.Logger {
-	return m.channels[m.default_].WithError(err)
+	return m.defaultLogger().WithError(err)
 }
 
 // Level returns the current log level.
 func (m *LogManager) Level() contracts.LogLevel {
-	return m.channels[m.default_].Level()
+	return m.defaultLogger().Level()
 }
 
 // SetLevel sets the log level.
 func (m *LogManager) SetLevel(level contracts.LogLevel) {
-	m.channels[m.default_].SetLevel(level)
+	m.defaultLogger().SetLevel(level)
 }

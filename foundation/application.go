@@ -69,8 +69,11 @@ func New(basePath ...string) *Application {
 	// Register the application itself
 	app.registerBaseBindings()
 
-	// Load environment
+	// Load environment, then configuration: providers read config in
+	// their Register phase, so it must be available before any of them
+	// runs (Laravel loads configuration before provider registration).
 	app.loadEnvironment()
+	app.loadConfig()
 
 	// Set environment from ENV variable.
 	//
@@ -105,6 +108,16 @@ func (app *Application) registerBaseBindings() {
 	container.ProvideValue[contracts.Logger](app.Container, app.logger)
 }
 
+// loadConfig loads the config/ directory when it exists. Errors are
+// surfaced by Boot, which loads again; here the aim is only to have
+// values available for provider Register calls.
+func (app *Application) loadConfig() {
+	configPath := app.ConfigPath()
+	if _, err := os.Stat(configPath); err == nil {
+		_ = app.config.Load(configPath)
+	}
+}
+
 // loadEnvironment loads environment variables from .env files.
 func (app *Application) loadEnvironment() {
 	// Load .env file if it exists
@@ -127,9 +140,12 @@ func (app *Application) BasePath() string {
 	return app.basePath
 }
 
-// SetBasePath sets the base path of the application.
+// SetBasePath sets the base path of the application and reloads the
+// environment and configuration from the new location.
 func (app *Application) SetBasePath(path string) contracts.Application {
 	app.basePath = path
+	app.loadEnvironment()
+	app.loadConfig()
 	return app
 }
 
@@ -216,18 +232,22 @@ func (app *Application) Register(provider contracts.ServiceProvider) error {
 		return nil
 	}
 
-	// Add to registry
-	app.providers.Register(provider)
-
-	// Check if this is a deferrable provider
+	// Check if this is a deferrable provider. Deferred providers must
+	// NOT join the boot-all registry: their Register has not run, so
+	// Boot() calling their Boot would hand them a half-initialized
+	// state (and mark them booted, defeating the deferral entirely).
+	// They join the lifecycle when Make first resolves one of their
+	// services.
 	if deferrable, ok := provider.(contracts.DeferrableProvider); ok && deferrable.IsDeferred() {
 		// Register for deferred loading
 		for _, service := range provider.Provides() {
 			app.providers.AddDeferred(service, provider)
 		}
-		app.providers.MarkRegistered(providerName)
 		return nil
 	}
+
+	// Add to registry
+	app.providers.Register(provider)
 
 	// Call the provider's Register method
 	if err := provider.Register(app); err != nil {
@@ -366,6 +386,7 @@ func (app *Application) TerminateWithContext(ctx context.Context) error {
 	// Shutdown the container
 	// Note: samber/do may return marshaling errors during shutdown which are harmless
 	err := app.ShutdownWithContext(ctx)
+	//lint:ignore SA4023 samber/do reports a non-nil aggregate on every shutdown; we filter the harmless case below
 	if err != nil {
 		// Ignore JSON marshaling errors from samber/do - they don't affect shutdown
 		if strings.Contains(err.Error(), "marshaling error") {

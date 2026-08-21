@@ -1,6 +1,10 @@
 package http
 
 import (
+	"fmt"
+	"net/url"
+	"strings"
+
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/gofiber/fiber/v2"
 )
@@ -209,9 +213,14 @@ func (r *Router) Static(prefix, root string) {
 	r.fiber.Static(fullPath, root)
 }
 
-// Routes returns all registered routes.
+// Routes returns all registered routes, including routes registered on
+// nested groups.
 func (r *Router) Routes() []*Route {
-	return r.routes
+	routes := append([]*Route(nil), r.routes...)
+	for _, group := range r.groups {
+		routes = append(routes, group.Routes()...)
+	}
+	return routes
 }
 
 // NamedRoute returns a route by name.
@@ -237,11 +246,34 @@ func (r *Router) URL(name string, params ...map[string]any) string {
 	return path
 }
 
-// replaceParam replaces a route parameter with a value.
+// replaceParam replaces a :key route parameter with the value,
+// URL-escaping it. ":id" only matches the whole parameter name, so it
+// never corrupts ":idx".
 func replaceParam(path, key string, value any) string {
-	// Simple string replacement
-	// A full implementation would use regex
-	return path
+	placeholder := ":" + key
+	encoded := url.PathEscape(fmt.Sprint(value))
+
+	var sb strings.Builder
+	for i := 0; i < len(path); {
+		if strings.HasPrefix(path[i:], placeholder) {
+			end := i + len(placeholder)
+			if end == len(path) || !isParamNameChar(path[end]) {
+				sb.WriteString(encoded)
+				i = end
+				continue
+			}
+		}
+		sb.WriteByte(path[i])
+		i++
+	}
+	return sb.String()
+}
+
+func isParamNameChar(c byte) bool {
+	return c == '_' ||
+		(c >= 'a' && c <= 'z') ||
+		(c >= 'A' && c <= 'Z') ||
+		(c >= '0' && c <= '9')
 }
 
 // Route represents a single route.

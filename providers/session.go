@@ -1,8 +1,14 @@
 package providers
 
 import (
+	"fmt"
+
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/database"
+	facadesession "github.com/genesysflow/go-genesys/facades/session"
 	"github.com/genesysflow/go-genesys/session"
+	"github.com/gofiber/fiber/v2"
 )
 
 // SessionServiceProvider registers session services.
@@ -43,12 +49,46 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 		if sameSite := cfg.GetString("session.same_site"); sameSite != "" {
 			sessionConfig.CookieSameSite = sameSite
 		}
+		if driver := cfg.GetString("session.driver"); driver != "" {
+			sessionConfig.Storage = driver
+		}
+		if files := cfg.GetString("session.files"); files != "" {
+			sessionConfig.Path = files
+		}
+		if table := cfg.GetString("session.table"); table != "" {
+			sessionConfig.Table = table
+		}
+	}
+
+	// The redis driver connects from session.redis.* config.
+	if sessionConfig.Storage == "redis" && sessionConfig.CustomStorage == nil {
+		sessionConfig.CustomStorage = session.NewRedisStorage(session.RedisStorageConfig{
+			Addr:     cfg.GetString("session.redis.addr"),
+			Password: cfg.GetString("session.redis.password"),
+			DB:       cfg.GetInt("session.redis.db"),
+			Prefix:   cfg.GetString("session.redis.prefix"),
+		})
+	}
+
+	// The database driver needs a live connection, which is only available
+	// after the DatabaseServiceProvider boots; resolve it lazily.
+	if sessionConfig.Storage == "database" && sessionConfig.CustomStorage == nil {
+		table := sessionConfig.Table
+		sessionConfig.CustomStorage = session.NewLazyStorage(func() (fiber.Storage, error) {
+			dbManager, err := container.Resolve[*database.Manager](app)
+			if err != nil {
+				return nil, fmt.Errorf("session: database driver requires the DatabaseServiceProvider: %w", err)
+			}
+			conn := dbManager.Connection()
+			return session.NewDatabaseStorage(conn.Driver(), conn, table), nil
+		})
 	}
 
 	manager := session.NewManager(sessionConfig)
 	app.InstanceType(manager)
 	app.BindValue("session", manager)
 	app.BindValue("session.manager", manager)
+	facadesession.SetInstance(manager)
 
 	return nil
 }

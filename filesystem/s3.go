@@ -28,10 +28,11 @@ type S3ClientInterface interface {
 
 // S3 is the S3 filesystem driver.
 type S3 struct {
-	client S3ClientInterface
-	bucket string
-	url    string
-	region string
+	client    S3ClientInterface
+	presigner *s3.PresignClient // nil when constructed with a custom client
+	bucket    string
+	url       string
+	region    string
 }
 
 // NewS3 creates a new S3 filesystem instance.
@@ -66,11 +67,31 @@ func NewS3(config map[string]any) (*S3, error) {
 	})
 
 	return &S3{
-		client: client,
-		bucket: bucket,
-		url:    url,
-		region: region,
+		client:    client,
+		presigner: s3.NewPresignClient(client),
+		bucket:    bucket,
+		url:       url,
+		region:    region,
 	}, nil
+}
+
+// TemporaryURL returns a presigned GET URL for the object, valid for
+// the given duration - Laravel's Storage::temporaryURL. The signature
+// is computed locally; no request is made to S3:
+//
+//	url, err := disk.TemporaryURL(ctx, "invoices/42.pdf", 15*time.Minute)
+func (s *S3) TemporaryURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+	if s.presigner == nil {
+		return "", fmt.Errorf("filesystem: presigning unavailable on this S3 client")
+	}
+	request, err := s.presigner.PresignGetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(s.bucket),
+		Key:    aws.String(path),
+	}, s3.WithPresignExpires(ttl))
+	if err != nil {
+		return "", err
+	}
+	return request.URL, nil
 }
 
 func (s *S3) Exists(ctx context.Context, path string) bool {

@@ -4,8 +4,12 @@ package database
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/genesysflow/go-genesys/contracts"
@@ -22,7 +26,10 @@ type Config struct {
 
 // ConnectionConfig represents a single database connection configuration.
 type ConnectionConfig struct {
-	// Driver is the database driver (pgsql, sqlite).
+	// Driver is the database driver (pgsql, mysql/mariadb, sqlite).
+	// MySQL needs the driver registered by the application:
+	//
+	//	import _ "github.com/go-sql-driver/mysql"
 	Driver string `yaml:"driver" json:"driver"`
 
 	// Host is the database host.
@@ -60,6 +67,14 @@ type ConnectionConfig struct {
 
 	// ForeignKeyConstraints enables foreign key constraints (SQLite).
 	ForeignKeyConstraints bool `yaml:"foreign_key_constraints" json:"foreign_key_constraints"`
+
+	// ReadHosts, when set, routes read queries (Query/QueryRow) to
+	// replica pools on these hosts, round-robin, while writes and
+	// transactions stay on Host - Laravel's read/write connections.
+	// Reads inside a transaction always hit the primary, so
+	// read-your-own-write consistency holds wherever it matters.
+	// Entries may be "host" or "host:port".
+	ReadHosts []string `yaml:"read_hosts" json:"read_hosts"`
 }
 
 // Manager is the database manager that handles multiple connections.
@@ -68,6 +83,10 @@ type Manager struct {
 	config      Config
 	connections map[string]*Connection
 	mu          sync.RWMutex
+
+	// query listeners (see listen.go)
+	listenMu       sync.RWMutex
+	queryListeners []func(QueryEvent)
 }
 
 // NewManager creates a new database manager.
@@ -96,19 +115,42 @@ func (m *Manager) Connection(name ...string) contracts.Connection {
 	// Create new connection
 	conn, err := m.makeConnection(connName)
 	if err != nil {
-		// Return connection with error state
+		// Return connection with error state. The failing DB handle makes
+		// every method - including QueryRow, which cannot return an error -
+		// surface the connection error instead of dereferencing a nil DB.
 		return &Connection{
 			name: connName,
 			err:  err,
+			db:   sql.OpenDB(failingConnector{err: err}),
 		}
 	}
 
+	// Re-check under the write lock: a concurrent first call may have
+	// opened the same connection. Keep the stored one and close ours so
+	// the losing pool doesn't leak for the process lifetime.
 	m.mu.Lock()
+	if existing, ok := m.connections[connName]; ok {
+		m.mu.Unlock()
+		conn.db.Close()
+		return existing
+	}
 	m.connections[connName] = conn
 	m.mu.Unlock()
 
 	return conn
 }
+
+// failingConnector is a database/sql connector whose every connection
+// attempt reports the original connection error; error-state
+// Connections carry one so no code path sees a nil *sql.DB.
+type failingConnector struct{ err error }
+
+func (c failingConnector) Connect(context.Context) (driver.Conn, error) { return nil, c.err }
+func (c failingConnector) Driver() driver.Driver                        { return failingDriver(c) }
+
+type failingDriver struct{ err error }
+
+func (d failingDriver) Open(string) (driver.Conn, error) { return nil, d.err }
 
 // makeConnection creates a new database connection.
 func (m *Manager) makeConnection(name string) (*Connection, error) {
@@ -150,21 +192,49 @@ func (m *Manager) makeConnection(name string) (*Connection, error) {
 		_, _ = db.Exec("PRAGMA foreign_keys = ON")
 	}
 
-	return &Connection{
-		name:   name,
-		driver: config.Driver,
-		db:     db,
-		prefix: config.Prefix,
-	}, nil
+	conn := &Connection{
+		name:    name,
+		driver:  config.Driver,
+		db:      db,
+		prefix:  config.Prefix,
+		manager: m,
+	}
+
+	// Open one replica pool per read host.
+	for _, host := range config.ReadHosts {
+		readConfig := config
+		readConfig.Host = host
+		if h, p, err := net.SplitHostPort(host); err == nil {
+			readConfig.Host = h
+			if port, err := strconv.Atoi(p); err == nil {
+				readConfig.Port = port
+			}
+		}
+		readDB, err := sql.Open(driverName, buildDSN(readConfig))
+		if err != nil {
+			db.Close()
+			for _, r := range conn.readDBs {
+				r.Close()
+			}
+			return nil, fmt.Errorf("failed to open read replica %q: %w", host, err)
+		}
+		if config.MaxOpenConns > 0 {
+			readDB.SetMaxOpenConns(config.MaxOpenConns)
+		}
+		if config.MaxIdleConns > 0 {
+			readDB.SetMaxIdleConns(config.MaxIdleConns)
+		}
+		conn.readDBs = append(conn.readDBs, readDB)
+	}
+
+	return conn, nil
 }
 
 // Raw executes a raw SQL query.
 func (m *Manager) Raw(sqlQuery string, bindings ...any) (*sql.Rows, error) {
-	conn := m.Connection()
-	if conn == nil {
-		return nil, fmt.Errorf("no database connection available")
-	}
-	return conn.Query(sqlQuery, bindings...)
+	// Connection() never returns nil; a failed connection carries its
+	// error and surfaces it from Query.
+	return m.Connection().Query(sqlQuery, bindings...)
 }
 
 // Select executes a raw select query.
@@ -174,11 +244,7 @@ func (m *Manager) Select(sqlQuery string, bindings ...any) (*sql.Rows, error) {
 
 // Insert executes a raw insert query.
 func (m *Manager) Insert(sqlQuery string, bindings ...any) (sql.Result, error) {
-	conn := m.Connection()
-	if conn == nil {
-		return nil, fmt.Errorf("no database connection available")
-	}
-	return conn.Exec(sqlQuery, bindings...)
+	return m.Connection().Exec(sqlQuery, bindings...)
 }
 
 // Update executes a raw update query.
@@ -198,20 +264,12 @@ func (m *Manager) Statement(sqlQuery string, bindings ...any) (sql.Result, error
 
 // Transaction runs a callback in a database transaction.
 func (m *Manager) Transaction(fn func(tx contracts.Transaction) error) error {
-	conn := m.Connection()
-	if conn == nil {
-		return fmt.Errorf("no database connection available")
-	}
-	return conn.Transaction(fn)
+	return m.Connection().Transaction(fn)
 }
 
 // BeginTransaction starts a new database transaction.
 func (m *Manager) BeginTransaction() (contracts.Transaction, error) {
-	conn := m.Connection()
-	if conn == nil {
-		return nil, fmt.Errorf("no database connection available")
-	}
-	return conn.BeginTransaction()
+	return m.Connection().BeginTransaction()
 }
 
 // GetDefaultConnection returns the default connection name.
@@ -313,6 +371,19 @@ func buildDSN(config ConnectionConfig) string {
 	case "sqlite", "sqlite3":
 		return config.Database
 
+	case "mysql", "mariadb":
+		if config.Port == 0 {
+			config.Port = 3306
+		}
+		// parseTime makes DATETIME/TIMESTAMP columns scan into time.Time.
+		// clientFoundRows makes UPDATE report matched rows rather than
+		// changed rows, so an update writing identical values is not
+		// mistaken for a missing row (the ORM maps 0 to ErrNotFound).
+		return fmt.Sprintf(
+			"%s:%s@tcp(%s:%d)/%s?parseTime=true&charset=utf8mb4&loc=UTC&clientFoundRows=true",
+			config.Username, config.Password, config.Host, config.Port, config.Database,
+		)
+
 	default:
 		return ""
 	}
@@ -325,6 +396,8 @@ func mapDriver(driver string) string {
 		return "postgres"
 	case "sqlite", "sqlite3":
 		return "sqlite"
+	case "mysql", "mariadb":
+		return "mysql"
 	default:
 		return driver
 	}
@@ -333,11 +406,28 @@ func mapDriver(driver string) string {
 // Connection represents a database connection.
 // It wraps *sql.DB and implements the DBTX interface expected by SQLC.
 type Connection struct {
-	name   string
-	driver string
-	db     *sql.DB
-	prefix string
-	err    error
+	name    string
+	driver  string
+	db      *sql.DB
+	prefix  string
+	err     error
+	manager *Manager // for query listeners; nil on error connections
+
+	// Read/write splitting (see ConnectionConfig.ReadHosts): reads
+	// round-robin over the replica pools, writes and transactions stay
+	// on the primary db.
+	readDBs   []*sql.DB
+	readIndex atomic.Uint64
+}
+
+// readDB picks the handle for a read query: a replica pool when
+// configured, the primary otherwise.
+func (c *Connection) readDB() *sql.DB {
+	if len(c.readDBs) == 0 {
+		return c.db
+	}
+	n := c.readIndex.Add(1)
+	return c.readDBs[int(n)%len(c.readDBs)]
 }
 
 // Name returns the connection name.
@@ -366,7 +456,10 @@ func (c *Connection) Query(sqlQuery string, bindings ...any) (*sql.Rows, error) 
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.Query(sqlQuery, bindings...)
+	start := time.Now()
+	rows, err := c.readDB().Query(sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return rows, err
 }
 
 // QueryContext executes a raw query with context.
@@ -374,17 +467,23 @@ func (c *Connection) QueryContext(ctx context.Context, sqlQuery string, bindings
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.QueryContext(ctx, sqlQuery, bindings...)
+	start := time.Now()
+	rows, err := c.readDB().QueryContext(ctx, sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return rows, err
 }
 
 // QueryRow executes a query that returns at most one row.
 func (c *Connection) QueryRow(sqlQuery string, bindings ...any) *sql.Row {
-	return c.db.QueryRow(sqlQuery, bindings...)
+	start := time.Now()
+	row := c.readDB().QueryRow(sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, nil)
+	return row
 }
 
 // QueryRowContext executes a query that returns at most one row with context.
 func (c *Connection) QueryRowContext(ctx context.Context, sqlQuery string, bindings ...any) *sql.Row {
-	return c.db.QueryRowContext(ctx, sqlQuery, bindings...)
+	return c.readDB().QueryRowContext(ctx, sqlQuery, bindings...)
 }
 
 // Exec executes a raw statement.
@@ -392,7 +491,10 @@ func (c *Connection) Exec(sqlQuery string, bindings ...any) (sql.Result, error) 
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.Exec(sqlQuery, bindings...)
+	start := time.Now()
+	result, err := c.db.Exec(sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return result, err
 }
 
 // ExecContext executes a raw statement with context.
@@ -400,7 +502,10 @@ func (c *Connection) ExecContext(ctx context.Context, sqlQuery string, bindings 
 	if c.err != nil {
 		return nil, c.err
 	}
-	return c.db.ExecContext(ctx, sqlQuery, bindings...)
+	start := time.Now()
+	result, err := c.db.ExecContext(ctx, sqlQuery, bindings...)
+	c.fireQueryEvent(sqlQuery, bindings, start, err)
+	return result, err
 }
 
 // Prepare prepares a statement.
@@ -465,10 +570,13 @@ func (c *Connection) Transaction(fn func(tx contracts.Transaction) error) error 
 	return tx.Commit()
 }
 
-// Close closes the connection.
+// Close closes the connection, including any read replica pools.
 func (c *Connection) Close() error {
 	if c.err != nil {
 		return c.err
+	}
+	for _, readDB := range c.readDBs {
+		_ = readDB.Close()
 	}
 	return c.db.Close()
 }

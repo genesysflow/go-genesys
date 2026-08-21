@@ -18,7 +18,8 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
+          check-latest: true
           cache: true
 
       - name: Download dependencies
@@ -48,7 +49,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U test -d testdb"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -60,17 +61,21 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
+          check-latest: true
           cache: true
 
       - name: Download dependencies
         run: go mod download
 
       - name: Run integration tests
-        run: go test ./... -v -race
+        run: go test ./... -race
         env:
-          TEST_POSTGRES_HOST: localhost
-          TEST_POSTGRES_PORT: 5432
-          TEST_POSTGRES_USER: test
-          TEST_POSTGRES_PASSWORD: test
-          TEST_POSTGRES_DB: testdb
+          # The framework's test harness reads GENESYS_TEST_PG_*; tests
+          # using PostgresForTests hit this service container instead of
+          # starting docker containers of their own.
+          GENESYS_TEST_PG_HOST: 127.0.0.1
+          GENESYS_TEST_PG_PORT: "5432"
+          GENESYS_TEST_PG_DB: testdb
+          GENESYS_TEST_PG_USER: test
+          GENESYS_TEST_PG_PASSWORD: test

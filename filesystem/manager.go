@@ -1,8 +1,10 @@
 package filesystem
 
 import (
+	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/genesysflow/go-genesys/contracts"
 )
@@ -117,4 +119,21 @@ func (m *Manager) getConfig(name string) map[string]any {
 	}
 
 	return nil
+}
+
+// TemporaryURLProvider is implemented by disks that can mint expiring
+// links to private files (the S3 driver).
+type TemporaryURLProvider interface {
+	TemporaryURL(ctx context.Context, path string, ttl time.Duration) (string, error)
+}
+
+// TemporaryURL returns a presigned URL for a file on the given disk,
+// or an error when the disk's driver cannot mint temporary links.
+func (m *Manager) TemporaryURL(ctx context.Context, disk, path string, ttl time.Duration) (string, error) {
+	fs := m.Disk(disk)
+	provider, ok := fs.(TemporaryURLProvider)
+	if !ok {
+		return "", fmt.Errorf("filesystem: disk %q does not support temporary URLs", disk)
+	}
+	return provider.TemporaryURL(ctx, path, ttl)
 }

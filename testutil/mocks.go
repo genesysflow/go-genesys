@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"sync"
 
@@ -477,7 +478,9 @@ func (m *MockApplication) Make(name string) (any, error) {
 		}
 		return binding, nil
 	}
-	return nil, nil
+	// Match the real container: a missing binding is an error, so tests
+	// exercise the same failure branch production code sees.
+	return nil, fmt.Errorf("testutil: service %q is not bound in the mock application", name)
 }
 
 // MustMake resolves a service by name, panicking on error.
