@@ -34,6 +34,8 @@ func TestProviderRegistersCommands(t *testing.T) {
 	for _, name := range []string{
 		"migrate", "queue:work", "route:list", "about",
 		"cache:clear", "cache:forget", "storage:link", "config:show",
+		"migrate:refresh", "db:wipe", "db:show", "db:table",
+		"schedule:test", "event:list",
 	} {
 		assert.True(t, registered[name], "command %q should be registered", name)
 	}

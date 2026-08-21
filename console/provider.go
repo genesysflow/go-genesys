@@ -93,6 +93,12 @@ func (p *ConsoleServiceProvider) Register(app contracts.Application) error {
 	p.kernel.AddCommand(commands.CacheForgetCommand(app).Cobra(app))
 	p.kernel.AddCommand(commands.StorageLinkCommand(app).Cobra(app))
 	p.kernel.AddCommand(commands.ConfigShowCommand(app).Cobra(app))
+	p.kernel.AddCommand(commands.MigrateRefreshCommand(app).Cobra(app))
+	p.kernel.AddCommand(commands.DbWipeCommand(app).Cobra(app))
+	p.kernel.AddCommand(commands.DbShowCommand(app).Cobra(app))
+	p.kernel.AddCommand(commands.DbTableCommand(app).Cobra(app))
+	p.kernel.AddCommand(commands.ScheduleTestCommand(app).Cobra(app))
+	p.kernel.AddCommand(commands.EventListCommand(app).Cobra(app))
 
 	// Bind kernel to container
 	app.InstanceType(p.kernel)

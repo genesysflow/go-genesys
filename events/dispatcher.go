@@ -79,3 +79,23 @@ func (d *Dispatcher) Forget(eventName string) {
 	defer d.mu.Unlock()
 	delete(d.listeners, eventName)
 }
+
+// ListenerCounts returns the number of listeners registered per event
+// name, for `event:list` and for tests that assert wiring.
+func (d *Dispatcher) ListenerCounts() map[string]int {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	counts := make(map[string]int, len(d.listeners))
+	for name, listeners := range d.listeners {
+		counts[name] = len(listeners)
+	}
+	return counts
+}
+
+// WildcardCount returns the number of listeners receiving every event.
+func (d *Dispatcher) WildcardCount() int {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return len(d.wildcards)
+}
