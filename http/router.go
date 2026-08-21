@@ -71,7 +71,13 @@ func (r *Router) wrapRouteHandler(route *Route, handler HandlerFunc, middleware 
 		}
 
 		// Execute middleware chain
-		return r.executeMiddleware(ctx, allMiddleware, handler)
+		err := r.executeMiddleware(ctx, allMiddleware, handler)
+		if err != nil {
+			if handled, presentErr := presentValidationFailure(ctx, err); handled {
+				return presentErr
+			}
+		}
+		return err
 	}
 }
 

@@ -245,3 +245,29 @@ func (c *Context) Errors() *support.MessageBag {
 	messages, _ := sess.Get(sessionErrorsKey).(map[string][]string)
 	return support.NewMessageBag(messages)
 }
+
+// presentValidationFailure renders a validation failure the way the
+// client can use it. Browsers get Laravel's redirect back to the form
+// with the messages and their input flashed; API clients, and browsers
+// with no session to flash into, fall through to the 422 JSON envelope.
+//
+// This runs inside the middleware chain rather than in the top-level
+// error handler because session middleware wraps the chain from the
+// outside: flashing after it has already saved would drop the errors.
+func presentValidationFailure(ctx *Context, err error) (bool, error) {
+	var validationErr *errors.ValidationError
+	if !stderrors.As(err, &validationErr) {
+		return false, nil
+	}
+
+	req := ctx.request
+	if req.IsJSON() || req.IsAjax() || !req.Accepts("text/html") {
+		return false, nil
+	}
+
+	if ctx.Session() == nil {
+		return false, nil
+	}
+
+	return true, ctx.Back().WithErrors(validationErr).WithInput().Send()
+}

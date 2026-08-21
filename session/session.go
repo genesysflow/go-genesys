@@ -187,12 +187,18 @@ func (m *Manager) Middleware() fiber.Handler {
 		c.Locals("session", sess)
 
 		// Continue to next handler
-		if err := c.Next(); err != nil {
-			return err
+		handlerErr := c.Next()
+
+		// The session is saved whatever the handler returned. A handler
+		// that fails still needs what it wrote to survive: a validation
+		// failure flashes its errors and old input on the way out, and
+		// dropping them here would land the user on a form with an empty
+		// error bag.
+		if saveErr := sess.Save(); saveErr != nil && handlerErr == nil {
+			return saveErr
 		}
 
-		// Save session
-		return sess.Save()
+		return handlerErr
 	}
 }
 
