@@ -14,6 +14,8 @@ package database
 //	admin, err := userFactory.CreateOne(func(u *User) { u.Admin = true })
 type Factory[T any] struct {
 	definition func(i int) *T
+	states     []func(*T)
+	sequences  []func(*T)
 	sequence   int
 }
 
@@ -23,15 +25,67 @@ func NewFactory[T any](definition func(i int) *T) *Factory[T] {
 	return &Factory[T]{definition: definition}
 }
 
-// Make builds count instances without persisting them.
+// State returns a factory that applies one more variation on top of this
+// one, Laravel's factory states:
+//
+//	inactiveUsers := userFactory.State(func(u *User) { u.Active = false })
+//
+// The receiver is left alone, so states can be layered without one test's
+// variation leaking into another's.
+func (f *Factory[T]) State(state func(*T)) *Factory[T] {
+	clone := f.clone()
+	clone.states = append(clone.states, state)
+	return clone
+}
+
+// Sequence returns a factory that cycles the given variations across the
+// models it makes, so a test gets a spread of rows without a loop:
+//
+//	userFactory.Sequence(
+//	    func(u *User) { u.Plan = "free" },
+//	    func(u *User) { u.Plan = "pro" },
+//	).Create(10)
+func (f *Factory[T]) Sequence(states ...func(*T)) *Factory[T] {
+	clone := f.clone()
+	clone.sequences = append(clone.sequences, states...)
+	return clone
+}
+
+// clone copies the factory's configuration, sharing nothing mutable.
+func (f *Factory[T]) clone() *Factory[T] {
+	states := make([]func(*T), len(f.states))
+	copy(states, f.states)
+
+	sequences := make([]func(*T), len(f.sequences))
+	copy(sequences, f.sequences)
+
+	return &Factory[T]{
+		definition: f.definition,
+		states:     states,
+		sequences:  sequences,
+		sequence:   f.sequence,
+	}
+}
+
+// Make builds count instances without persisting them. States apply
+// first, then the sequence, then the call site's overrides - the most
+// specific statement wins.
 func (f *Factory[T]) Make(count int, overrides ...func(*T)) []*T {
 	out := make([]*T, count)
 	for i := 0; i < count; i++ {
 		f.sequence++
 		model := f.definition(f.sequence)
+
+		for _, state := range f.states {
+			state(model)
+		}
+		if len(f.sequences) > 0 {
+			f.sequences[i%len(f.sequences)](model)
+		}
 		for _, override := range overrides {
 			override(model)
 		}
+
 		out[i] = model
 	}
 	return out
