@@ -256,3 +256,7 @@ func MakePolicyCommand(app contracts.Application) *cli.Command {
 		template: "policy.go.tmpl", dir: "app/policies", suffix: "Policy",
 	})
 }
+
+// osStat is os.Stat, named so the scaffolding commands can share one
+// existence check.
+var osStat = os.Stat

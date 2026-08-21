@@ -113,6 +113,7 @@ func (p *ConsoleServiceProvider) Register(app contracts.Application) error {
 	p.kernel.AddCommand(commands.MakeTestCommand(app).Cobra(app))
 	p.kernel.AddCommand(commands.MakeViewCommand(app).Cobra(app))
 	p.kernel.AddCommand(commands.MakeComponentCommand(app).Cobra(app))
+	p.kernel.AddCommand(commands.MakeAuthCommand(app).Cobra(app))
 
 	// Bind kernel to container
 	app.InstanceType(p.kernel)

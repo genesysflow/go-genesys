@@ -39,7 +39,7 @@ func TestProviderRegistersCommands(t *testing.T) {
 		"make:mail", "make:notification", "make:factory", "make:resource",
 		"make:rule", "make:observer", "make:cast", "make:scope",
 		"make:channel", "make:exception", "make:enum", "make:test",
-		"make:view", "make:component",
+		"make:view", "make:component", "make:auth",
 	} {
 		assert.True(t, registered[name], "command %q should be registered", name)
 	}
