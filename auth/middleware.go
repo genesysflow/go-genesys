@@ -14,6 +14,12 @@ func Middleware(guard Guard, options ...MiddlewareOptions) http.MiddlewareFunc {
 	}
 	return func(ctx *http.Context, next func() error) error {
 		if guard.Check(ctx) {
+			// Resolve the user once per request so handlers can reach it
+			// with ctx.User() instead of hitting the session or token
+			// store again.
+			if user := guard.User(ctx); user != nil {
+				ctx.SetUser(user)
+			}
 			return next()
 		}
 		if opts.RedirectTo != "" && !ctx.IsJSON() && !ctx.IsAjax() {

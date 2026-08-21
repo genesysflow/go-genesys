@@ -40,13 +40,29 @@ func NewRouter(app contracts.Application, fiberApp *fiber.App) *Router {
 
 // wrapHandler wraps a HandlerFunc to a Fiber handler.
 func (r *Router) wrapHandler(handler HandlerFunc, middleware ...MiddlewareFunc) fiber.Handler {
+	return r.wrapRouteHandler(nil, handler, middleware...)
+}
+
+// wrapRouteHandler wraps a HandlerFunc to a Fiber handler, recording the
+// route that matched so handlers can reach it via ctx.Route(). route may
+// be nil for handlers registered outside the route table (fallbacks).
+func (r *Router) wrapRouteHandler(route *Route, handler HandlerFunc, middleware ...MiddlewareFunc) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		ctx := NewContext(c, r.app)
 
+		// Route middleware is read at request time, not registration
+		// time: Route.Middleware() is chained after the route is
+		// registered, and appending there can reallocate the slice.
+		routeMiddleware := middleware
+		if route != nil {
+			ctx.setRoute(route)
+			routeMiddleware = route.middleware
+		}
+
 		// Collect all middleware (group middleware + route middleware)
-		allMiddleware := make([]MiddlewareFunc, 0, len(r.middleware)+len(middleware))
+		allMiddleware := make([]MiddlewareFunc, 0, len(r.middleware)+len(routeMiddleware))
 		allMiddleware = append(allMiddleware, r.middleware...)
-		allMiddleware = append(allMiddleware, middleware...)
+		allMiddleware = append(allMiddleware, routeMiddleware...)
 
 		// If we're in a group, add parent middleware
 		if r.parent != nil {
@@ -164,7 +180,7 @@ func (r *Router) addRoute(method, path string, handler HandlerFunc, middleware .
 	r.routes = append(r.routes, route)
 
 	// Register with Fiber
-	wrappedHandler := r.wrapHandler(handler, middleware...)
+	wrappedHandler := r.wrapRouteHandler(route, handler, middleware...)
 	switch method {
 	case "GET":
 		r.fiber.Get(fullPath, wrappedHandler)
