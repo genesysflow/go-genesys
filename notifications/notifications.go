@@ -21,7 +21,9 @@ package notifications
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/genesysflow/go-genesys/mail"
@@ -88,6 +90,14 @@ type Manager struct {
 	driver   string
 	executor query.Executor
 	table    string
+
+	// broadcast and webhook channel dependencies (optional)
+	broadcaster Broadcaster
+	httpClient  *http.Client
+
+	// channels registered with Extend
+	custom map[string]ChannelFunc
+	mu     sync.RWMutex
 }
 
 // Option configures a Manager.
@@ -136,8 +146,17 @@ func (m *Manager) sendOn(channel string, notifiable Notifiable, notification Not
 		return m.sendMail(notifiable, notification)
 	case "database":
 		return m.sendDatabase(notifiable, notification)
+	case "broadcast":
+		return m.sendBroadcast(notifiable, notification)
+	case "webhook":
+		return m.sendWebhook(notifiable, notification)
 	default:
-		return fmt.Errorf("unknown channel (register mail or database)")
+		if fn, ok := m.customChannel(channel); ok {
+			return fn(notifiable, notification)
+		}
+		// A channel nobody handles means a notification nobody receives,
+		// which is worse than one that fails loudly.
+		return fmt.Errorf("unknown channel (built in: mail, database, broadcast, webhook; register others with Extend)")
 	}
 }
 
