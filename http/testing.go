@@ -256,3 +256,14 @@ func (r *TestResponse) IsClientError() bool {
 func (r *TestResponse) IsServerError() bool {
 	return r.resp.StatusCode >= 500
 }
+
+// hasCookie reports whether the request already carries a cookie, so a
+// test case's jar never overrides one set explicitly.
+func (r *TestRequest) hasCookie(name string) bool {
+	for _, cookie := range r.cookies {
+		if cookie.Name == name {
+			return true
+		}
+	}
+	return false
+}

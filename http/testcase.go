@@ -23,6 +23,14 @@ type TestCase struct {
 	t       TestingT
 	kernel  *Kernel
 	headers map[string]string
+
+	// user is injected into every request by ActingAs.
+	user     any
+	injected bool
+
+	// cookies is the jar carried between requests, so a session survives
+	// a redirect the way a browser's would.
+	cookies map[string]string
 }
 
 // NewTestCase creates a test case bound to a kernel.
@@ -48,12 +56,21 @@ func (tc *TestCase) Do(request *TestRequest) *TestResponse {
 			request.headers[key] = value
 		}
 	}
+	for name, value := range tc.cookies {
+		if !request.hasCookie(name) {
+			request.WithCookie(name, value)
+		}
+	}
+
 	resp, err := tc.kernel.Fiber().Test(request.toHTTPRequest(), -1)
 	if err != nil {
 		tc.t.Helper()
 		tc.t.Errorf("http test: request %s %s failed: %v", request.method, request.path, err)
 		return &TestResponse{t: tc.t}
 	}
+
+	tc.rememberCookies(resp)
+
 	response := newTestResponse(resp)
 	response.t = tc.t
 	return response
