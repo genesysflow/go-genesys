@@ -30,12 +30,26 @@ type Config struct {
 
 // Manager loads and renders templates.
 type Manager struct {
-	path   string
-	reload bool
-	shared map[string]any
-	funcs  template.FuncMap
-	tmpl   *template.Template
-	mu     sync.RWMutex
+	path      string
+	reload    bool
+	shared    map[string]any
+	funcs     template.FuncMap
+	tmpl      *template.Template
+	composers []composer
+	mu        sync.RWMutex
+
+	// Helper wiring, set by the service providers.
+	urls       URLGenerator
+	baseURL    string
+	config     ConfigResolver
+	translator TranslatorFunc
+}
+
+// composer fills in data for the views matching a pattern before they
+// render, Laravel's view composers.
+type composer struct {
+	pattern string
+	fn      func(data map[string]any)
 }
 
 // NewManager creates a view manager for the given configuration.
@@ -47,12 +61,70 @@ func NewManager(config ...Config) *Manager {
 	if cfg.Path == "" {
 		cfg.Path = "resources/views"
 	}
-	return &Manager{
+	m := &Manager{
 		path:   cfg.Path,
 		reload: cfg.Reload,
 		shared: make(map[string]any),
 		funcs:  defaultFuncs(),
 	}
+	for name, fn := range m.helperFuncs() {
+		m.funcs[name] = fn
+	}
+
+	return m
+}
+
+// Composer registers a function that fills in data for every view whose
+// name matches the pattern, Laravel's view composers:
+//
+//	manager.Composer("partials.*", func(data map[string]any) {
+//	    data["unread"] = unreadCount()
+//	})
+//
+// A trailing `*` matches any suffix, and "*" matches every view.
+// Composers run in registration order, before the handler's own data is
+// layered on top - so a composer supplies defaults and never overrides
+// what the handler passed.
+func (m *Manager) Composer(pattern string, fn func(data map[string]any)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.composers = append(m.composers, composer{pattern: pattern, fn: fn})
+}
+
+// composedData runs the composers matching name over a fresh map.
+func (m *Manager) composedData(name string) map[string]any {
+	m.mu.RLock()
+	matching := make([]func(map[string]any), 0, len(m.composers))
+	for _, c := range m.composers {
+		if matchViewName(c.pattern, name) {
+			matching = append(matching, c.fn)
+		}
+	}
+	m.mu.RUnlock()
+
+	if len(matching) == 0 {
+		return nil
+	}
+
+	// A fresh map per render: a shared one would carry one request's
+	// values into the next.
+	data := make(map[string]any)
+	for _, fn := range matching {
+		fn(data)
+	}
+	return data
+}
+
+// matchViewName matches a view name against a composer pattern, where a
+// trailing `*` stands for any suffix.
+func matchViewName(pattern, name string) bool {
+	if pattern == "*" || pattern == name {
+		return true
+	}
+	if prefix, found := strings.CutSuffix(pattern, "*"); found {
+		return strings.HasPrefix(name, prefix)
+	}
+	return false
 }
 
 // defaultFuncs are helpers available in every template.
@@ -223,12 +295,17 @@ func (m *Manager) Render(w io.Writer, name string, data map[string]any) error {
 		return fmt.Errorf("view: view [%s] not found in %s", name, m.path)
 	}
 
+	composed := m.composedData(name)
+
 	m.mu.RLock()
-	merged := make(map[string]any, len(m.shared)+len(data))
+	merged := make(map[string]any, len(m.shared)+len(composed)+len(data))
 	for k, v := range m.shared {
 		merged[k] = v
 	}
 	m.mu.RUnlock()
+	for k, v := range composed {
+		merged[k] = v
+	}
 	for k, v := range data {
 		merged[k] = v
 	}
