@@ -71,9 +71,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Scan with the latest stable Go: govulncheck reports stdlib
+      # vulnerabilities against the toolchain in use, and only the
+      # newest patch release carries every stdlib fix.
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: stable
           check-latest: true
           cache: true
 
