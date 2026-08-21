@@ -104,11 +104,3 @@ func MakeCommandCommand(app contracts.Application) *cobra.Command {
 		template: "command.go.tmpl", dir: "app/console",
 	})
 }
-
-// MakePolicyCommand creates the make:policy command.
-func MakePolicyCommand(app contracts.Application) *cobra.Command {
-	return makeGeneratorCommand(app, generatorSpec{
-		use: "make:policy <name>", short: "Create a new authorization policy",
-		template: "policy.go.tmpl", dir: "app/policies",
-	})
-}

@@ -4,21 +4,39 @@ import (
 	"github.com/genesysflow/go-genesys/auth"
 )
 
-// Register{{.Name}}Policy defines the {{.LowerName}} abilities on the gate:
+// {{.Name}} authorizes actions on its model. Each method is an ability:
+// Update answers "update", ViewAny answers "view-any".
 //
-//	policies.Register{{.Name}}Policy(gate)
-func Register{{.Name}}Policy(gate *auth.Gate) {
-	gate.Define("view-{{.LowerName}}", func(user auth.Authenticatable, args ...any) bool {
-		// model := args[0].(*models.{{.Name}})
-		return true
-	})
+// Register it once at boot, then ask the gate:
+//
+//	auth.RegisterPolicy[models.Model](gate, &policies.{{.Name}}{})
+//	ctx.Authorize("update", model)
+type {{.Name}} struct{}
 
-	gate.Define("update-{{.LowerName}}", func(user auth.Authenticatable, args ...any) bool {
-		// model := args[0].(*models.{{.Name}})
-		return false
-	})
+// model is a placeholder: point the policy at your own model type.
+type model struct{ OwnerID int64 }
 
-	gate.Define("delete-{{.LowerName}}", func(user auth.Authenticatable, args ...any) bool {
-		return false
-	})
+// ViewAny answers "view-any", which has no instance to act on.
+func (p *{{.Name}}) ViewAny(user auth.Authenticatable) bool {
+	return user != nil
+}
+
+// View answers "view".
+func (p *{{.Name}}) View(user auth.Authenticatable, m *model) bool {
+	return user != nil
+}
+
+// Create answers "create".
+func (p *{{.Name}}) Create(user auth.Authenticatable) bool {
+	return user != nil
+}
+
+// Update answers "update".
+func (p *{{.Name}}) Update(user auth.Authenticatable, m *model) bool {
+	return user != nil && m.OwnerID == user.GetAuthIdentifier()
+}
+
+// Delete answers "delete".
+func (p *{{.Name}}) Delete(user auth.Authenticatable, m *model) bool {
+	return user != nil && m.OwnerID == user.GetAuthIdentifier()
 }

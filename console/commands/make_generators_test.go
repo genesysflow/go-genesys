@@ -45,6 +45,7 @@ func TestMakeGenerators(t *testing.T) {
 		{commands.MakeChannelCommand, "Order", "app/broadcasting/order_channel.go", []string{"package broadcasting", "OrderChannel"}},
 		{commands.MakeExceptionCommand, "PaymentFailed", "app/exceptions/payment_failed_exception.go", []string{"package exceptions", "PaymentFailedException"}},
 		{commands.MakeEnumCommand, "OrderStatus", "app/enums/order_status.go", []string{"package enums", "OrderStatus"}},
+		{commands.MakePolicyCommand, "Post", "app/policies/post_policy.go", []string{"package policies", "PostPolicy"}},
 	}
 
 	for _, testCase := range cases {
@@ -163,6 +164,7 @@ func TestGeneratedStubsCompile(t *testing.T) {
 		"broadcasting":  commands.MakeChannelCommand,
 		"exceptions":    commands.MakeExceptionCommand,
 		"enums":         commands.MakeEnumCommand,
+		"policies":      commands.MakePolicyCommand,
 		"tests":         commands.MakeTestCommand,
 	}
 

@@ -48,6 +48,7 @@ func (c *Context) shareViewData(data map[string]any) map[string]any {
 		"old":     OldInput{sess: sess},
 		"session": sess,
 		"user":    c.User(),
+		"gate":    c.Gate(),
 	}
 	if token, ok := c.Get(csrfContextKey).(string); ok {
 		merged[csrfContextKey] = token

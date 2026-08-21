@@ -70,7 +70,6 @@ func TestMakeGeneratorCommands(t *testing.T) {
 		{runGen(MakeSeederCommand(app), "Users"), "database/seeders/users_seeder.go", "func UsersSeeder"},
 		{runGen(MakeRequestCommand(app), "StoreUser"), "app/requests/store_user_request.go", "type StoreUserRequest struct"},
 		{runGen(MakeCommandCommand(app), "SyncOrders"), "app/console/sync_orders.go", "func SyncOrdersCommand"},
-		{runGen(MakePolicyCommand(app), "Post"), "app/policies/post.go", "func RegisterPostPolicy"},
 	}
 
 	for _, tc := range cases {

@@ -248,3 +248,11 @@ func viewPath(name string) (string, error) {
 
 	return filepath.Join(append(segments[:len(segments)-1:len(segments)-1], segments[len(segments)-1]+".html")...), nil
 }
+
+// MakePolicyCommand creates the make:policy command.
+func MakePolicyCommand(app contracts.Application) *cli.Command {
+	return makeFileCommand(app, fileGenerator{
+		name: "make:policy", description: "Create a new authorization policy",
+		template: "policy.go.tmpl", dir: "app/policies", suffix: "Policy",
+	})
+}
