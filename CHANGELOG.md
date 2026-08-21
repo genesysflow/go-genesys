@@ -5,6 +5,70 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Added - round 6: console, authorization, and the surrounding tooling
+
+- **Console command base**: `console.Command` declares arguments and
+  options; the handler talks to the user through a context carrying
+  output helpers (`Line`/`Info`/`Warn`/`Error`/`Table`/`WithProgressBar`),
+  prompts (`Ask`/`Secret`/`Confirm`/`Choice`), and `Call` for invoking
+  another command. Output goes through the command's streams, so commands
+  are testable; colour is suppressed off-terminal and under `NO_COLOR`;
+  prompts honour `--no-interaction`, so a command in cron never blocks on
+  input that will not arrive; `Secret` disables terminal echo.
+- **New commands**: `migrate:refresh`, `db:wipe` (refuses production
+  without `--force`), `db:show`, `db:table`, `cache:clear`,
+  `cache:forget`, `storage:link`, `config:show` (credentials masked
+  unless `--show-secrets`), `schedule:test`, `event:list`.
+- **Fourteen `make:` generators** - mail, notification, factory,
+  resource, rule, observer, cast, scope, channel, exception, enum, test,
+  view, component - plus `make:auth`, which scaffolds the login,
+  registration and password-reset flows. Every generated Go stub is
+  compiled against the framework in a test, not just parsed.
+- **Policies**: `auth.RegisterPolicy[Post](gate, &PostPolicy{})` binds a
+  policy struct to a model type; the gate answers by model, kebab-casing
+  method names so `ViewAny` answers `"view-any"`. Registration rejects a
+  bool-returning method with the wrong arguments, since that typo would
+  otherwise deny silently forever.
+- **Request authorization**: `ctx.Can`/`Cannot`/`Authorize` and
+  `auth.GateMiddleware`, plus the `auth.Can[T]`/`auth.CanAny[T]` route
+  middleware. With no gate bound the request fails closed. Views receive
+  the gate as `.gate`.
+- **Personal access tokens**: a Sanctum-shaped table, repository and
+  guard. Only the SHA-256 of the secret is stored, compared in constant
+  time; abilities, expiry, `RevokeAll` and `PruneExpired` included, with
+  `auth.RequireAbility` for guarding a route.
+- **Scheduler**: more frequencies, `Timezone`/`In`, `When`/`Skip`/
+  `Between`/`UnlessBetween`/`Environments`, `Exec` for shell commands
+  (with output capture), `Job` for queue dispatch, before/after/success/
+  failure hooks, and `OnOneServer` backed by a shared cache lock.
+- **Mailables**: `mail.Mailable` (Envelope/Content/Attachments) with
+  `mail.Send`, `mail.SendWith`, and `mail.To(...).Send(mailable)`.
+- **Notification channels**: broadcast and webhook (a Slack or Teams
+  incoming webhook is a URL to POST to), `Manager.Extend` for channels of
+  your own, and `notifications.NewFake` with assertions.
+- **Model layer**: `morphTo` with a morph registry, `ToMap`/`ToMapSlice`
+  honouring Hidden/Visible/Appends, `Fresh`/`Refresh`/`Replicate`/`Is`,
+  and factory `State`/`Sequence`.
+- **Testing**: `TestCase.ActingAs`/`ActingAsGuest`, a cookie jar so a
+  session survives a redirect, `AssertJsonMissing`/`AssertHeaderMissing`/
+  `AssertCookie`/`AssertLocationContains`, and `testutil/dbtest` database
+  assertions.
+- **Support**: a fluent `Str.Of` chain and two dozen string helpers,
+  slice/map helpers (MapSlice, Filter, Reduce, Unique, Chunk, GroupBy,
+  KeyBy, Only, Except, Partition, ...), `Num` formatting, and
+  `support.Pipe`.
+- **Dev panel**: `devtools` records requests and queries in a ring buffer
+  and serves them at `/_genesys`. It refuses to mount in production, does
+  not record itself, and withholds query bindings unless asked.
+
+### Fixed - round 6
+
+- **`Response.RedirectRoute`** cannot resolve route names (it holds no
+  router) and is documented as deprecated in favour of
+  `ctx.RedirectToRoute`.
+- **`make:policy`** generated `gate.Define` calls rather than a policy,
+  and did not suffix the type name.
+
 ### Added - round 5: the web request lifecycle
 
 - **Request ergonomics**: `ctx.User()`/`SetUser()`/`HasUser()` with the

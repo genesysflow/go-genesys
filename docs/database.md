@@ -371,3 +371,76 @@ connections:
     username: ${DB_USERNAME:-root}
     password: ${DB_PASSWORD:-}
 ```
+
+## Polymorphic inverse (morphTo)
+
+The inverse of `morphMany`: the row names its own parent type, so the
+field is an `any` and the type column decides what fills it.
+
+```go
+type Comment struct {
+    database.Model
+    Body            string `db:"body"`
+    CommentableType string `db:"commentable_type"`
+    CommentableID   int64  `db:"commentable_id"`
+    Commentable     any    `db:"-" rel:"morphTo,as:commentable"`
+}
+```
+
+Go cannot turn a stored string into a struct type, so every type a
+`morphTo` can point at is registered once at boot:
+
+```go
+database.RegisterMorph[models.Post]()              // keyed by table name
+database.RegisterMorphAs[models.Video]("video")    // or an explicit alias
+```
+
+Eager loading batches one query per distinct type. An unregistered type
+or a deleted parent leaves the relation nil rather than failing the whole
+load.
+
+## Serializing a model
+
+Struct tags are fixed at compile time, so a model with anything to hide
+is rendered through `ToMap`:
+
+```go
+func (u *User) Hidden() []string { return []string{"password"} }
+func (u *User) Appends() map[string]any {
+    return map[string]any{"full_name": u.First + " " + u.Last}
+}
+
+return ctx.Resource(database.ToMap(user))
+return ctx.Resource(database.ToMapSlice(users))
+```
+
+`Visible()` is the allow-list form: anything not named is dropped.
+
+## Model helpers
+
+```go
+stored, err := database.Fresh(user)   // re-read, leaving user alone
+err = database.Refresh(user)          // re-read in place
+copy := database.Replicate(user, "email")  // unsaved copy, without email
+same := database.Is(user, other)      // same type, same key
+```
+
+`Refresh` on a row that has since been deleted is an error, not a
+silently stale model.
+
+## Factory states
+
+```go
+var Users = database.NewFactory(func(i int) *models.User { ... })
+
+inactive := Users.State(func(u *models.User) { u.Active = false })
+mixed    := Users.Sequence(
+    func(u *models.User) { u.Plan = "free" },
+    func(u *models.User) { u.Plan = "pro" },
+)
+
+rows, err := mixed.Create(10)   // alternating plans
+```
+
+Both return a new factory, so one test's variation never leaks into
+another's. Overrides passed at the call site win over states.

@@ -16,7 +16,7 @@ Laravel-style docs, one topic per file.
 - [Database](database.md) — query builder, ORM, migrations, seeders, factories
 
 ## Security
-- [Authentication & Authorization](auth.md) — guards, gates, policies
+- [Authentication & Authorization](auth.md) — guards, gates, policies, API tokens
 - [Encryption & Signed URLs](encryption.md)
 
 ## Digging Deeper
@@ -32,3 +32,4 @@ Laravel-style docs, one topic per file.
 - [Collections](collections.md)
 - [Console](console.md) — commands and generators
 - [Testing](testing.md) — HTTP test DSL, fakes, fake data
+- [Dev Tools](devtools.md) — the request and query panel

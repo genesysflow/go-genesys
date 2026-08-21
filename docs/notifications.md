@@ -91,3 +91,50 @@ manager.SendQueued(q, user, &InvoicePaid{Amount: 100})
 
 Workers deliver through the manager installed by the
 NotificationServiceProvider (`notifications.SetDefault`).
+
+## Channels
+
+Built in: `mail`, `database`, `broadcast`, `webhook`.
+
+```go
+func (n *DeployFinished) Via(notifiable notifications.Notifiable) []string {
+    return []string{"broadcast", "webhook"}
+}
+
+func (n *DeployFinished) ToBroadcast(notifiable notifications.Notifiable) notifications.BroadcastMessage {
+    return notifications.BroadcastMessage{Event: "deploy.finished", Payload: map[string]any{"version": n.Version}}
+}
+
+// A Slack or Teams incoming webhook is just a URL to POST to.
+func (n *DeployFinished) ToWebhook(notifiable notifications.Notifiable) notifications.WebhookMessage {
+    return notifications.WebhookMessage{Payload: map[string]any{"text": "Deployed " + n.Version}}
+}
+```
+
+The channel address comes from the notifiable's route
+(`RouteNotificationFor("webhook")`) unless the message names its own. A
+webhook answering with a non-2xx status fails the send rather than
+reporting a delivery that did not happen, and the post is bounded by a
+timeout so a hung endpoint cannot wedge the sender.
+
+Channels of your own:
+
+```go
+manager.Extend("sms", func(n notifications.Notifiable, notification notifications.Notification) error {
+    return twilio.Send(n.RouteNotificationFor("sms").(string), ...)
+})
+```
+
+An unhandled channel is an error: a notification nobody receives is worse
+than one that fails loudly.
+
+## Testing
+
+```go
+fake := notifications.NewFake()
+
+fake.AssertSentCount(t, 1)
+fake.AssertSentTo(t, "ada@example.com")
+notifications.AssertSent[InvoicePaid](t, fake, func(n *InvoicePaid) bool { return n.Amount == 100 })
+notifications.AssertNotSent[PasswordChanged](t, fake)
+```

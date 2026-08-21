@@ -15,29 +15,29 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **Seeders & Factories**: `db:seed`, `database.NewFactory[T]`
 - **Views**: `html/template`-based view layer with layouts, partials, components with slots (`{{component "alert" (dict ...)}}`), view composers, request helpers (`route`, `url`, `asset`, `csrf_field`, `method_field`, `trans`, `config`), and an auto-shared `errors`/`old`/`user` bag for `ctx.View("users.index", data)`
 - **Authentication**: Session and token guards, ORM user provider, login/logout/attempt, remember-me cookies, password reset broker, and signed email verification
-- **Authorization**: Gate with `Define/Allows/Authorize` and before-hooks
+- **Authorization**: Gate with `Define/Allows/Authorize`, before-hooks, and policy structs bound to model types (`auth.RegisterPolicy[Post]`), plus `ctx.Authorize`, `can` route middleware and API tokens (Sanctum-shaped personal access tokens with abilities, expiry and revocation)
 - **Sessions**: Memory, file, database, and Redis drivers; flash data and old input
 - **Cache**: Memory, file, and Redis stores with `Remember`, `Increment`, `Add`, `Pull`, atomic locks (`cache.NewLock`), and a cache-backed `Throttle` rate limiter
 - **Queue**: Sync, memory, database, and Redis drivers; named queues with priority draining (`--queue=high,default`); workers with retries/backoff, failed-job management, job middleware (`WithoutOverlapping`, unique dispatch), chaining (`queue.Chain`), and batches with `Then/Catch/Finally` plus a cross-process `job_batches` repository
-- **Task Scheduling**: Cron-style scheduler with `schedule:run` / `schedule:work`
+- **Task Scheduling**: Cron-style scheduler with `schedule:run` / `schedule:work`, timezones, conditions, shell commands and queued jobs, output capture, and `OnOneServer` for multi-instance deployments
 - **Events**: Dispatcher with typed generic listeners (`events.Listen[T]`) and wildcard listeners
 - **Broadcasting**: WebSocket channels (public + authorized private) with an event-dispatcher bridge (`Broadcastable`)
-- **Mail**: Message builder with SMTP, log, and array (test) drivers
-- **Notifications**: Multi-channel notifications (mail + database) with on-demand routes, unread feeds, and queued delivery
+- **Mail**: Mailable objects (Envelope/Content/Attachments) and a message builder, with SMTP, log, and array (test) drivers
+- **Notifications**: Multi-channel notifications (mail, database, broadcast, webhook, plus your own) with on-demand routes, unread feeds, queued delivery, and a recording fake
 - **Encryption**: AES-256-GCM `crypt` package keyed by `APP_KEY`, plus `key:generate`
 - **Signed URLs**: HMAC-signed links with optional expiry and a validation middleware
 - **HTTP Client**: Fluent outbound client with retries (`client.New().WithToken(...).Get(...)`)
 - **Localization**: Per-locale YAML lang files, `Trans`/`TransChoice`, locale-pinned views (`translator.In("de")`), request-locale detection middleware, and translated validation messages
-- **Collections**: Generic fluent collections (`Map`, `Filter`, `GroupBy`, ...)
+- **Collections**: Generic fluent collections (`Map`, `Filter`, `GroupBy`, ...), slice/map helpers, `Str.Of` string chains, `Num` formatting, and `support.Pipe`
 - **Validation**: Struct-tag validation with custom rules and messages, database-backed `unique`/`exists`, plus `confirmed`, `prohibited`, and the conditional `required_*` rules
 - **Security**: CSRF protection, bcrypt hashing, security headers, secure-by-default cookies
 - **Filesystem**: Unified storage abstraction (local, S3) with presigned temporary URLs
 - **Logging**: Structured logging with multiple channels
-- **Console**: Rich CLI — `migrate`, `queue:work`, `schedule:work`, `route:list`, `about`, `db:seed`, `key:generate`, and a full set of `make:*` generators
+- **Console**: Rich CLI — `migrate`, `queue:work`, `schedule:work`, `route:list`, `about`, `db:seed`, `db:show`, `cache:clear`, `storage:link`, `config:show`, `key:generate`, twenty-plus `make:*` generators and `make:auth` scaffolding, all built on a command base with prompts, tables and progress bars
 - **Facades**: Static accessors for every core service (`db`, `cache`, `queue`, `auth`, `mail`, ...)
-- **Testing**: HTTP test DSL (`http.NewTestCase`) with Laravel-style assertions, plus queue/event/mail fakes
+- **Testing**: HTTP test DSL (`http.NewTestCase`) with `ActingAs`, a cookie jar and Laravel-style assertions, database assertions (`testutil/dbtest`), plus queue/event/mail/notification fakes
 - **Maintenance Mode**: `genesys down`/`up` with secret bypass and 503 + Retry-After
-- **DB Observability**: `manager.Listen` fires a QueryEvent (SQL, bindings, duration) for every query
+- **DB Observability**: `manager.Listen` fires a QueryEvent (SQL, bindings, duration) for every query, and the `devtools` panel renders requests and queries during development
 - **Fake Data**: `support/faker` for factories and seeders (deterministic when seeded)
 
 ## Installation

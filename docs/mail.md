@@ -72,3 +72,41 @@ message := mail.NewMessage().
 
 `ViewText` renders a plain-text body the same way; render errors are
 deferred and surface from `Send`.
+
+## Mailables
+
+An email as an object, rather than a message built at the call site:
+
+```go
+type OrderShipped struct{ Order *models.Order }
+
+func (m *OrderShipped) Envelope() mail.Envelope {
+    return mail.Envelope{
+        From:    "shop@example.com",
+        Subject: "Your order has shipped",
+    }
+}
+
+func (m *OrderShipped) Content() mail.Content {
+    return mail.Content{
+        View: "emails.shipped",
+        Data: map[string]any{"order": m.Order},
+    }
+}
+
+// Optional:
+func (m *OrderShipped) Attachments() []mail.Attachment {
+    return []mail.Attachment{{Filename: "invoice.pdf", Content: pdf, ContentType: "application/pdf"}}
+}
+```
+
+Sending:
+
+```go
+mail.Send(mailer, &OrderShipped{Order: order})                       // body supplied directly
+mail.SendWith(mailer, views, &OrderShipped{Order: order})            // renders Content.View
+mail.To(mailer, user.Email).Using(views).Send(&OrderShipped{...})    // recipient at send time
+```
+
+A mailable naming a view with no renderer, or whose view fails to render,
+reports the error rather than delivering a blank email.

@@ -96,3 +96,51 @@ userFactory := database.NewFactory(func(i int) *User {
 })
 users, _ := userFactory.Create(50)
 ```
+
+## Authenticating a test
+
+```go
+tc := http.NewTestCase(t, kernel)
+
+tc.ActingAs(&models.User{ID: 1}).Get("/dashboard").AssertOK()
+tc.ActingAsGuest().Get("/dashboard").AssertRedirect("/login")
+```
+
+## Sessions across requests
+
+The test case keeps a cookie jar, so a session survives a redirect the
+way a browser's would:
+
+```go
+tc.Post("/login", map[string]string{"email": "...", "password": "..."}).AssertRedirect("/")
+tc.Get("/dashboard").AssertOK()   // same session
+
+tc.FlushCookies()                 // isolate what follows
+```
+
+## Database assertions
+
+```go
+import "github.com/genesysflow/go-genesys/testutil/dbtest"
+
+dbtest.AssertDatabaseHas(t, "users", map[string]any{"email": "ada@example.com"})
+dbtest.AssertDatabaseMissing(t, "users", map[string]any{"email": "gone@example.com"})
+dbtest.AssertDatabaseCount(t, "users", 3)
+dbtest.AssertSoftDeleted(t, "posts", map[string]any{"id": post.ID})
+dbtest.AssertNotSoftDeleted(t, "posts", map[string]any{"id": post.ID})
+```
+
+A missing table or connection is reported rather than read as "no
+matching row", which would turn a setup mistake into a passing assertion.
+
+## More response assertions
+
+```go
+tc.Get("/me").
+    AssertOK().
+    AssertJsonPath("data.email", "ada@example.com").
+    AssertJsonMissing("data.password").
+    AssertHeaderMissing("X-Debug").
+    AssertCookie("genesys_session", tc.Cookie("genesys_session")).
+    AssertLocationContains("/users/")
+```
