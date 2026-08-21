@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"path/filepath"
+
 	"github.com/genesysflow/go-genesys/foundation"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
@@ -13,6 +15,9 @@ func GlobalMiddleware(app *foundation.Application) []http.MiddlewareFunc {
 		middleware.Logger(app.GetLogger()),
 		middleware.Recover(app.GetLogger()),
 		middleware.CORS(),
+		middleware.Maintenance(middleware.MaintenanceConfig{
+			Path: filepath.Join(app.BasePath(), middleware.DefaultDownFilePath),
+		}),
 	}
 }
 
