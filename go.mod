@@ -1,6 +1,8 @@
 module github.com/genesysflow/go-genesys
 
-go 1.24.0
+// 1.24.7 is the security floor: earlier 1.24 patches carry known
+// stdlib vulnerabilities (govulncheck fails on them).
+go 1.24.7
 
 require (
 	github.com/alicebob/miniredis/v2 v2.38.0
