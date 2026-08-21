@@ -185,7 +185,7 @@ func TestQueueCommands(t *testing.T) {
 	work := QueueWorkCommand(app)
 	work.SetArgs([]string{"--stop-when-empty"})
 	require.NoError(t, work.Execute())
-	assert.Equal(t, 0, memory.Size(""))
+	assertMemorySize(t, memory, "", 0)
 
 	// queue:failed on an empty failed list succeeds.
 	require.NoError(t, QueueFailedCommand(app).Execute())
@@ -262,6 +262,15 @@ func TestQueueWorkPriorityListIsTrimmed(t *testing.T) {
 	work.SetArgs([]string{"--queue", "high, default", "--stop-when-empty"})
 	require.NoError(t, work.Execute())
 
-	assert.Equal(t, 0, memory.Size("high"))
-	assert.Equal(t, 0, memory.Size("default"))
+	assertMemorySize(t, memory, "high", 0)
+	assertMemorySize(t, memory, "default", 0)
+}
+
+// assertMemorySize checks a queue's size, failing on a driver error
+// rather than reading it as an empty queue.
+func assertMemorySize(t *testing.T, q *queue.MemoryQueue, name string, expected int64) {
+	t.Helper()
+	size, err := q.Size(name)
+	require.NoError(t, err)
+	assert.Equal(t, expected, size)
 }

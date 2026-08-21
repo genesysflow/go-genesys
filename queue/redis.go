@@ -344,11 +344,23 @@ func (q *RedisQueue) findFailed(id int64) (string, *FailedJob, error) {
 
 // Size returns the number of ready, delayed, and reserved jobs on a
 // queue.
-func (q *RedisQueue) Size(queue string) int {
-	ready, _ := q.client.LLen(q.ctx, q.listKey(queue)).Result()
-	delayed, _ := q.client.ZCard(q.ctx, q.delayedKey(queue)).Result()
-	reserved, _ := q.client.ZCard(q.ctx, q.reservedKey(queue)).Result()
-	return int(ready + delayed + reserved)
+// A redis error is reported rather than swallowed: a monitor that reads
+// an unreachable queue as empty is worse than one that says it cannot
+// tell.
+func (q *RedisQueue) Size(queue string) (int64, error) {
+	ready, err := q.client.LLen(q.ctx, q.listKey(queue)).Result()
+	if err != nil {
+		return 0, err
+	}
+	delayed, err := q.client.ZCard(q.ctx, q.delayedKey(queue)).Result()
+	if err != nil {
+		return 0, err
+	}
+	reserved, err := q.client.ZCard(q.ctx, q.reservedKey(queue)).Result()
+	if err != nil {
+		return 0, err
+	}
+	return ready + delayed + reserved, nil
 }
 
 // Close closes the underlying client.

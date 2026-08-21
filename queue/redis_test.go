@@ -42,7 +42,7 @@ func TestRedisQueuePushPopDelete(t *testing.T) {
 
 	require.NoError(t, q.Push(&redisTestJob{Word: "one"}))
 	require.NoError(t, q.Push(&redisTestJob{Word: "two"}))
-	assert.Equal(t, 2, q.Size(""))
+	assert.Equal(t, 2, queueSize(t, q, ""))
 
 	job, err := q.Pop("")
 	require.NoError(t, err)
@@ -68,7 +68,7 @@ func TestRedisQueueDelayedJobs(t *testing.T) {
 	// The due-check compares against wall-clock time, so use a real
 	// (tiny) delay rather than miniredis's fake clock.
 	require.NoError(t, q.Later(50*time.Millisecond, &redisTestJob{Word: "later"}))
-	assert.Equal(t, 1, q.Size(""), "delayed jobs count toward size")
+	assert.Equal(t, 1, queueSize(t, q, ""), "delayed jobs count toward size")
 
 	job, err := q.Pop("")
 	require.NoError(t, err)
@@ -119,7 +119,7 @@ func TestRedisQueueFailedLifecycle(t *testing.T) {
 	failed, err = q.ListFailed()
 	require.NoError(t, err)
 	assert.Empty(t, failed)
-	assert.Equal(t, 1, q.Size(""))
+	assert.Equal(t, 1, queueSize(t, q, ""))
 
 	// Forget drops without retrying.
 	job2, err := q.Pop("")
@@ -142,5 +142,5 @@ func TestRedisQueueWithWorker(t *testing.T) {
 	worker := queue.NewWorker(q)
 	require.NoError(t, worker.Drain())
 	assert.Equal(t, []string{"a", "b"}, redisJobRuns)
-	assert.Equal(t, 0, q.Size(""))
+	assert.Equal(t, 0, queueSize(t, q, ""))
 }

@@ -61,6 +61,19 @@ All notable changes to Go-Genesys are documented here. The format follows
   and serves them at `/_genesys`. It refuses to mount in production, does
   not record itself, and withholds query bindings unless asked.
 
+- **Queue operations**: `queue:monitor` reports queue sizes and flags a
+  backlog above `--max`; `queue:restart` leaves a signal that workers
+  watching for it honour between jobs, so a deploy replaces workers
+  without killing a job mid-flight.
+
+### Changed - round 6
+
+- **`Queue.Size` returns `(int64, error)`** on every driver. The memory
+  and redis drivers returned a bare `int`, swallowing errors - a monitor
+  reading an unreachable queue as empty is worse than one that says it
+  cannot tell - and the inconsistency made a common `SizeProvider`
+  interface impossible.
+
 ### Fixed - round 6
 
 - **`Response.RedirectRoute`** cannot resolve route names (it holds no

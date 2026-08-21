@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/genesysflow/go-genesys/cache"
 )
 
 // Worker processes jobs popped from a queue driver.
@@ -45,6 +47,10 @@ type Worker struct {
 
 	// middleware wraps every job's execution (see Use).
 	middleware []JobMiddleware
+
+	// restart signalling (see WatchRestart).
+	restartStore cache.Store
+	startedAt    time.Time
 }
 
 // NewWorker creates a worker for the given driver.
@@ -59,11 +65,21 @@ func NewWorker(driver Driver) *Worker {
 
 // Run processes jobs until the context is cancelled.
 func (w *Worker) Run(ctx context.Context) error {
+	if w.startedAt.IsZero() {
+		w.startedAt = time.Now()
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+
+		// Checked between jobs, so a restart never interrupts work in
+		// flight.
+		if w.shouldRestart() {
+			return ErrRestartRequested
 		}
 
 		processed, err := w.RunOnce()

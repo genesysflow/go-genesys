@@ -27,6 +27,8 @@
 | `storage:link [--force]` | Link `public/storage` to `storage/app/public` |
 | `schedule:test <task>` | Run one scheduled task immediately |
 | `event:list` | Show registered event listeners |
+| `queue:monitor <queues> [--max]` | Report queue sizes and backlogs |
+| `queue:restart` | Ask workers to restart after their current job |
 | `down` / `up` | Maintenance mode |
 
 Laravel's `config:cache`, `route:cache`, `view:cache` and `optimize` have
