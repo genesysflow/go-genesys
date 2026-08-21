@@ -580,3 +580,39 @@ func (e *ValidationErrors) Error() string {
 	}
 	return strings.Join(msgs, "; ")
 }
+
+// WithOverrides returns a validator that layers per-call messages and
+// attribute names over this one's, leaving the receiver untouched.
+//
+// Form requests carry their own Messages()/Attributes(); applying those
+// to the shared container-resolved validator would both race with
+// concurrent requests and leak one endpoint's wording into every other.
+// The clone shares the underlying *validator.Validate, so custom rules
+// registered on the original still apply.
+func (v *Validator) WithOverrides(messages, attributes map[string]string) *Validator {
+	if len(messages) == 0 && len(attributes) == 0 {
+		return v
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	return &Validator{
+		validate:       v.validate,
+		customMessages: mergedStrings(v.customMessages, messages),
+		attributeNames: mergedStrings(v.attributeNames, attributes),
+		translator:     v.translator,
+	}
+}
+
+// mergedStrings returns base overlaid with overrides.
+func mergedStrings(base, overrides map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(overrides))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	return merged
+}

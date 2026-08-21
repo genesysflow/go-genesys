@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"mime/multipart"
 	"strconv"
@@ -179,11 +180,59 @@ func (r *Request) Input(key string, defaultValue ...string) string {
 		return value
 	}
 
+	// Check a JSON body: for an API request it holds all the input there
+	// is, so skipping it would report every field as absent.
+	if value, ok := r.jsonBody()[key]; ok {
+		if str := stringifyInput(value); str != "" {
+			return str
+		}
+	}
+
 	// Default value
 	if len(defaultValue) > 0 {
 		return defaultValue[0]
 	}
 	return ""
+}
+
+// jsonBody decodes a JSON object body into a map. It returns nil for any
+// other content type, an empty body, or a body that is not an object (a
+// bare array or scalar is a payload, not named input).
+func (r *Request) jsonBody() map[string]any {
+	if !r.IsJSON() {
+		return nil
+	}
+
+	body := r.ctx.Body()
+	if len(body) == 0 {
+		return nil
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(body, &decoded); err != nil {
+		return nil
+	}
+	return decoded
+}
+
+// stringifyInput renders a decoded JSON value as request input. Nested
+// objects and arrays have no single string form, so they report empty and
+// callers reach them through All().
+func stringifyInput(value any) string {
+	switch typed := value.(type) {
+	case nil:
+		return ""
+	case string:
+		return typed
+	case bool:
+		return strconv.FormatBool(typed)
+	case float64:
+		return strconv.FormatFloat(typed, 'f', -1, 64)
+	case json.Number:
+		return typed.String()
+	default:
+		return ""
+	}
 }
 
 // All returns all input data.
@@ -210,6 +259,11 @@ func (r *Request) All() map[string]any {
 		for key, value := range r.ctx.Request().PostArgs().All() {
 			data[string(key)] = string(value)
 		}
+	}
+
+	// Add a JSON body, which for an API request is the whole of the input.
+	for key, value := range r.jsonBody() {
+		data[key] = value
 	}
 
 	// Add route params

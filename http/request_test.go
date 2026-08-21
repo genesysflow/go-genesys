@@ -2,12 +2,15 @@ package http
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewRequest(t *testing.T) {
@@ -282,4 +285,68 @@ func TestRequestIsSecure(t *testing.T) {
 
 	httpReq := httptest.NewRequest("GET", "/test", nil)
 	_, _ = app.Test(httpReq)
+}
+
+// $request->all() includes the JSON payload: a JSON API request whose
+// body was the whole point otherwise reports no input at all.
+func TestRequestAllIncludesJSONBody(t *testing.T) {
+	app := newTestApp()
+	router := NewRouter(&mockApplication{}, app)
+
+	router.POST("/echo", func(ctx *Context) error {
+		return ctx.JSONResponse(ctx.All())
+	})
+
+	req := httptest.NewRequest("POST", "/echo?page=2", strings.NewReader(`{"name":"Ada","tags":["a","b"],"age":36}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	assert.Equal(t, "Ada", payload["name"])
+	assert.Equal(t, float64(36), payload["age"])
+	assert.Equal(t, []any{"a", "b"}, payload["tags"])
+	// Query parameters still come through.
+	assert.Equal(t, "2", payload["page"])
+}
+
+// A JSON body that is not an object (an array, a bare string) is not
+// input; All() must not choke on it.
+func TestRequestAllIgnoresNonObjectJSONBody(t *testing.T) {
+	app := newTestApp()
+	router := NewRouter(&mockApplication{}, app)
+
+	router.POST("/echo", func(ctx *Context) error {
+		return ctx.JSONResponse(ctx.All())
+	})
+
+	req := httptest.NewRequest("POST", "/echo?page=2", strings.NewReader(`[1,2,3]`))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+
+	var payload map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&payload))
+	assert.Equal(t, map[string]any{"page": "2"}, payload)
+}
+
+// Input() reads JSON body values too.
+func TestRequestInputReadsJSONBody(t *testing.T) {
+	app := newTestApp()
+	router := NewRouter(&mockApplication{}, app)
+
+	router.POST("/echo", func(ctx *Context) error {
+		return ctx.String(ctx.Input("name") + "|" + ctx.Input("missing", "fallback"))
+	})
+
+	req := httptest.NewRequest("POST", "/echo", strings.NewReader(`{"name":"Ada"}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := app.Test(req)
+	require.NoError(t, err)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, "Ada|fallback", string(body))
 }
