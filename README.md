@@ -9,10 +9,11 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **Query Builder**: Fluent SQL builder with per-driver grammar (`db.Table("users").Where(...).Get()`)
 - **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, transactions (`WithinTransaction` with scoped helpers), automatic timestamps, pagination (offset + cursor), relationships with batched eager loading (`With("Posts.Tags")`), existence queries (`WhereHas`/`DoesntHave`), pivot writes (`Attach`/`Detach`/`Sync`/`Toggle`), `CreateFor`/`Associate`, `FirstOrCreate`/`UpdateOrCreate`, soft deletes, lifecycle hooks/observers, dirty tracking with partial updates, and delete-safe `Chunk`/`Each`
 - **Route Model Binding**: `http.BindModel[User](ctx, "user")` with automatic 404s
-- **Form Requests**: `http.ValidateRequest[T](ctx)` with Laravel-shaped 422 responses
+- **Request Context**: `ctx.User()`, `ctx.Session()`, `ctx.Old()`, `ctx.Errors()`, `ctx.RouteIs("users.*")`, and fluent redirects (`ctx.Back().WithErrors(err).WithInput().Send()`)
+- **Form Requests**: `http.ValidateRequest[T](ctx)` with a full lifecycle (`PrepareForValidation`, `Authorize`, `Rules`, `Messages`, `Attributes`, `AfterValidation`); Laravel-shaped 422 responses for API clients, redirect-back-with-errors-and-old-input for browsers
 - **Migrations & Schema Builder**: Programmatic schema with foreign keys, indexes, rollback/reset/fresh; PostgreSQL, MySQL/MariaDB, and SQLite drivers
 - **Seeders & Factories**: `db:seed`, `database.NewFactory[T]`
-- **Views**: `html/template`-based view layer with layouts, partials, components with slots (`{{component "alert" (dict ...)}}`), and `ctx.View("users.index", data)`
+- **Views**: `html/template`-based view layer with layouts, partials, components with slots (`{{component "alert" (dict ...)}}`), view composers, request helpers (`route`, `url`, `asset`, `csrf_field`, `method_field`, `trans`, `config`), and an auto-shared `errors`/`old`/`user` bag for `ctx.View("users.index", data)`
 - **Authentication**: Session and token guards, ORM user provider, login/logout/attempt, remember-me cookies, password reset broker, and signed email verification
 - **Authorization**: Gate with `Define/Allows/Authorize` and before-hooks
 - **Sessions**: Memory, file, database, and Redis drivers; flash data and old input
@@ -28,7 +29,7 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **HTTP Client**: Fluent outbound client with retries (`client.New().WithToken(...).Get(...)`)
 - **Localization**: Per-locale YAML lang files, `Trans`/`TransChoice`, locale-pinned views (`translator.In("de")`), request-locale detection middleware, and translated validation messages
 - **Collections**: Generic fluent collections (`Map`, `Filter`, `GroupBy`, ...)
-- **Validation**: Struct-tag validation with custom rules and messages
+- **Validation**: Struct-tag validation with custom rules and messages, database-backed `unique`/`exists`, plus `confirmed`, `prohibited`, and the conditional `required_*` rules
 - **Security**: CSRF protection, bcrypt hashing, security headers, secure-by-default cookies
 - **Filesystem**: Unified storage abstraction (local, S3) with presigned temporary URLs
 - **Logging**: Structured logging with multiple channels

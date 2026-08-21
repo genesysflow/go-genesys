@@ -60,7 +60,63 @@ viewManager.AddFunc("money", formatMoney)     // custom template function
 ```
 
 Built-in helpers: `raw` (opt out of escaping for trusted HTML), `upper`,
-`lower`, `title`. All output is HTML-escaped by default.
+`lower`, `title`, `dict`. All output is HTML-escaped by default.
+
+## Request helpers
+
+Every template also gets these, wired by the service providers:
+
+```html
+<a href="{{route "users.show" (dict "user" .user.ID)}}">Profile</a>
+<link rel="stylesheet" href="{{asset "css/app.css"}}">
+<a href="{{url "/about"}}">{{trans "nav.about"}}</a>
+<title>{{config "app.name"}}</title>
+
+<form method="POST" action="{{route "users.update" (dict "user" 1)}}">
+  {{csrf_field .csrf_token}}
+  {{method_field "PUT"}}
+</form>
+```
+
+`url` and `asset` build on `app.url`; `route` resolves named routes;
+`trans` and `config` reach the translator and configuration. Unwired
+helpers render empty rather than failing to parse.
+
+## Per-request data
+
+`ctx.View` shares these under whatever the handler passes, so a form
+never has to thread them through:
+
+| Key | What it holds |
+| --- | --- |
+| `errors` | the message bag flashed by the last validation failure |
+| `old` | input flashed by the previous request |
+| `session` | the request session |
+| `user` | the authenticated user, or nil |
+| `csrf_token` | the CSRF token, when the middleware ran |
+
+```html
+{{if .errors.Has "email"}}<span>{{.errors.First "email"}}</span>{{end}}
+<input name="email" value="{{.old.Get "email"}}">
+{{if .user}}Signed in as {{.user.Email}}{{end}}
+```
+
+Handler-supplied keys win, so passing your own `errors` overrides the bag.
+
+## Composers
+
+A composer fills in data for every view matching a pattern, so a partial
+can carry its own data instead of every handler remembering to pass it:
+
+```go
+viewManager.Composer("partials.*", func(data map[string]any) {
+    data["unreadCount"] = unread()
+})
+```
+
+Composers run in registration order, before the handler's data is layered
+on top - they supply defaults and never override what the handler passed.
+`*` matches every view.
 
 ## Components
 

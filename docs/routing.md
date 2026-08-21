@@ -95,3 +95,44 @@ router.Domain("{account}.example.com", func(r *http.Router) {
 
 router.GET("/dashboard", apexDashboard) // example.com keeps working
 ```
+
+## Request helpers
+
+Inside a handler the context carries the request's identity, so nothing
+has to be re-resolved:
+
+```go
+func Show(ctx *http.Context) error {
+    user, ok := http.UserAs[models.User](ctx)  // set by auth.Middleware
+    sess := ctx.Session()                      // nil without session middleware
+    email := ctx.Old("email")                  // input flashed last request
+
+    if ctx.RouteIs("users.*") {
+        // ctx.Route() / ctx.RouteName() describe the matched route
+    }
+    _ = user
+    _ = ok
+    _ = sess
+    _ = email
+    return nil
+}
+```
+
+## Redirects
+
+```go
+ctx.RedirectTo("/dashboard").Send()
+ctx.RedirectToRoute("users.show", map[string]any{"user": 42}).Send()
+
+ctx.Back("/users/create").
+    WithErrors(err).      // map[string][]string, *errors.ValidationError, or any error
+    WithInput().          // repopulates the form; password fields are dropped
+    With("status", "Saved!").
+    Status(303).
+    Send()
+```
+
+`Back` honours the `Referer` only when it points at this host, so a
+handler redirecting back is never an open redirect. Flashed values are
+read back with `ctx.Errors()`, `ctx.Old()`, and the session, and are
+shared with views automatically.

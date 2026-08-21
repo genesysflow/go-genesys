@@ -5,6 +5,57 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Added - round 5: the web request lifecycle
+
+- **Request ergonomics**: `ctx.User()`/`SetUser()`/`HasUser()` with the
+  typed `http.UserAs[T]` and `auth.UserFrom(ctx)`; `ctx.Session()`,
+  `ctx.Old()`, `ctx.Errors()`; and `ctx.Route()`/`RouteName()`/`RouteIs()`
+  with `users.*` wildcards. `auth.Middleware` resolves the user once per
+  request instead of every handler re-resolving it.
+- **Fluent redirects**: `ctx.Back()`/`RedirectTo()`/`RedirectToRoute()`
+  return a builder with `WithErrors()`, `WithInput()`, `With()`, and
+  `Status()`. `WithErrors` accepts `map[string][]string`, an
+  `*errors.ValidationError`, a `*support.MessageBag`, or a plain error;
+  `WithInput()` never flashes password fields.
+- **Validation failures branch on the client**: API clients keep the 422
+  envelope, browsers are redirected back to the form with the messages and
+  their old input flashed. Without a session the 422 shape is kept rather
+  than a redirect that loses the errors.
+- **Shared view data**: `ctx.View` layers `errors`, `old`, `session`,
+  `user`, and `csrf_token` under the handler's own data.
+- **Form request lifecycle**: optional `PrepareForValidation`,
+  `Authorize`, `Rules`, `Messages`, `Attributes`, and `AfterValidation`.
+  Authorization runs before validation; per-request messages go through
+  `Validator.WithOverrides` rather than mutating the shared validator.
+- **Database and conditional rules**: `unique=users.email` (with Laravel's
+  ignore argument, `unique=users.email.42[.column]`), `exists=users.email`,
+  `confirmed`, `prohibited`, and Laravel-shaped messages for
+  `required_if`/`unless`/`with`/`without`. Both database rules fail closed
+  when no connection is available, and only accept plain identifiers.
+- **View helpers and composers**: `route`, `url`, `asset`, `config`,
+  `trans`, `csrf_field`, `method_field`, plus
+  `Manager.Composer("partials.*", fn)`. Helpers resolve their dependency
+  at render time, so provider order does not matter, and degrade to empty
+  rather than failing to parse when unwired.
+- **`support.MessageBag`**: `Has`/`First`/`Get`/`All`/`Any`/`Keys`, the
+  bag flashed on validation failure and shared with views.
+
+### Fixed - round 5
+
+- **Route middleware chained after registration never ran**:
+  `GET(path, h).Middleware(auth.Middleware(guard))` captured the middleware
+  slice by value at registration, so appending to it silently left the
+  route unprotected. Route middleware is now read at request time.
+- **Sessions were discarded when a handler returned an error**: the
+  middleware returned early without saving, so anything written while
+  handling a failing request was lost.
+- **`Request.All()`/`Input()` ignored JSON bodies**: for a JSON API
+  request - where the body is all the input there is - they reported no
+  input at all.
+- **`Response.RedirectRoute` cannot resolve route names** (it holds no
+  router) and is documented as deprecated in favour of
+  `ctx.RedirectToRoute`.
+
 ### Added - round 4: closing the core parity gaps
 
 - **Polymorphic relations**: `morphOne`/`morphMany`/`morphToMany` via
