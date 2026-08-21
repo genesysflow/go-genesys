@@ -1,6 +1,6 @@
-// Package testutil provides helpers for testing applications built on
-// the framework: mocks, a Postgres container, and database assertions.
-package testutil
+// Package dbtest provides database assertions for tests: the answers to
+// "did that action write the row it was supposed to?"
+package dbtest
 
 import (
 	"fmt"

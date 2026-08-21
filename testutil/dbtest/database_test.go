@@ -1,10 +1,10 @@
-package testutil_test
+package dbtest_test
 
 import (
 	"testing"
 
 	"github.com/genesysflow/go-genesys/database"
-	"github.com/genesysflow/go-genesys/testutil"
+	"github.com/genesysflow/go-genesys/testutil/dbtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -45,8 +45,8 @@ func TestAssertDatabaseHas(t *testing.T) {
 	setupMembers(t)
 	require.NoError(t, database.Create(&Member{Name: "Ada", Email: "ada@example.com"}))
 
-	testutil.AssertDatabaseHas(t, "members", map[string]any{"email": "ada@example.com"})
-	testutil.AssertDatabaseMissing(t, "members", map[string]any{"email": "nobody@example.com"})
+	dbtest.AssertDatabaseHas(t, "members", map[string]any{"email": "ada@example.com"})
+	dbtest.AssertDatabaseMissing(t, "members", map[string]any{"email": "nobody@example.com"})
 }
 
 func TestAssertDatabaseCount(t *testing.T) {
@@ -54,7 +54,7 @@ func TestAssertDatabaseCount(t *testing.T) {
 	require.NoError(t, database.Create(&Member{Name: "Ada", Email: "ada@example.com"}))
 	require.NoError(t, database.Create(&Member{Name: "Grace", Email: "grace@example.com"}))
 
-	testutil.AssertDatabaseCount(t, "members", 2)
+	dbtest.AssertDatabaseCount(t, "members", 2)
 }
 
 // The assertions must fail when the row is not there - an assertion that
@@ -63,17 +63,17 @@ func TestDatabaseAssertionsFailLoudly(t *testing.T) {
 	setupMembers(t)
 
 	spy := &recordingT{}
-	testutil.AssertDatabaseHas(spy, "members", map[string]any{"email": "ada@example.com"})
+	dbtest.AssertDatabaseHas(spy, "members", map[string]any{"email": "ada@example.com"})
 	assert.NotEmpty(t, spy.failures, "a missing row should fail the assertion")
 
 	require.NoError(t, database.Create(&Member{Name: "Ada", Email: "ada@example.com"}))
 
 	spy = &recordingT{}
-	testutil.AssertDatabaseMissing(spy, "members", map[string]any{"email": "ada@example.com"})
+	dbtest.AssertDatabaseMissing(spy, "members", map[string]any{"email": "ada@example.com"})
 	assert.NotEmpty(t, spy.failures, "a present row should fail the missing assertion")
 
 	spy = &recordingT{}
-	testutil.AssertDatabaseCount(spy, "members", 5)
+	dbtest.AssertDatabaseCount(spy, "members", 5)
 	assert.NotEmpty(t, spy.failures)
 }
 
@@ -83,7 +83,7 @@ func TestAssertDatabaseHasUnknownTable(t *testing.T) {
 	setupMembers(t)
 
 	spy := &recordingT{}
-	testutil.AssertDatabaseHas(spy, "nope", map[string]any{"id": 1})
+	dbtest.AssertDatabaseHas(spy, "nope", map[string]any{"id": 1})
 	assert.NotEmpty(t, spy.failures)
 }
 
@@ -111,12 +111,12 @@ func TestAssertSoftDeleted(t *testing.T) {
 	draft := &Draft{Title: "Notes"}
 	require.NoError(t, database.Create(draft))
 
-	testutil.AssertNotSoftDeleted(t, "drafts", map[string]any{"id": draft.ID})
+	dbtest.AssertNotSoftDeleted(t, "drafts", map[string]any{"id": draft.ID})
 
 	_, err = database.Query[Draft]().Where("id", draft.ID).Delete()
 	require.NoError(t, err)
 
-	testutil.AssertSoftDeleted(t, "drafts", map[string]any{"id": draft.ID})
+	dbtest.AssertSoftDeleted(t, "drafts", map[string]any{"id": draft.ID})
 }
 
 // recordingT captures assertion failures instead of failing the test.
