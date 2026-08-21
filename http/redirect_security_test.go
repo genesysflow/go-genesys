@@ -48,7 +48,7 @@ func TestRedirectBackRefusesOffsiteReferer(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "http://example.com/back", nil)
+			req := httptest.NewRequest("GET", "/back", nil)
 			req.Host = "example.com"
 			if tc.referer != "" {
 				req.Header.Set("Referer", tc.referer)
@@ -79,7 +79,7 @@ func TestRedirectBackDefaultsToRoot(t *testing.T) {
 		return ctx.RedirectBack()
 	})
 
-	req := httptest.NewRequest("GET", "http://example.com/back", nil)
+	req := httptest.NewRequest("GET", "/back", nil)
 	req.Host = "example.com"
 	req.Header.Set("Referer", "https://evil.example/phish")
 
