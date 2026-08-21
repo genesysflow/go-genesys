@@ -3,6 +3,7 @@ package commands
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"time"
 
 	"github.com/genesysflow/go-genesys/container"
@@ -82,6 +83,9 @@ func runServer(app contracts.Application, host, port string) error {
 			middleware.Recover(logger),
 			middleware.Logger(logger),
 			middleware.CORS(),
+			middleware.Maintenance(middleware.MaintenanceConfig{
+				Path: filepath.Join(app.BasePath(), middleware.DefaultDownFilePath),
+			}),
 		}
 	}
 
