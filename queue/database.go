@@ -240,6 +240,11 @@ func (q *DatabaseQueue) ForgetFailed(id int64) error {
 	return err
 }
 
+// PruneFailed deletes failed jobs older than the given time.
+func (q *DatabaseQueue) PruneFailed(olderThan time.Time) (int64, error) {
+	return q.failedJobs().Where("failed_at", "<", olderThan.Unix()).Delete()
+}
+
 // Size returns the number of pending jobs on a queue.
 func (q *DatabaseQueue) Size(queueName string) (int64, error) {
 	if queueName == "" {

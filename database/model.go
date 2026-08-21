@@ -67,6 +67,7 @@ type ConnectionNamer interface {
 type fieldMeta struct {
 	column    string
 	index     []int
+	cast      string // "", "json", or "encrypted" (see casts.go)
 	isPK      bool
 	isCreated bool
 	isUpdated bool
@@ -133,15 +134,27 @@ func collectFields(t reflect.Type, parentIndex []int, meta *modelMeta) {
 		}
 
 		tag := field.Tag.Get("db")
-		if tag == "-" {
+		column, cast := tag, ""
+		if idx := strings.Index(tag, ","); idx >= 0 {
+			column, cast = tag[:idx], strings.TrimSpace(tag[idx+1:])
+		}
+		if column == "-" {
 			continue
 		}
 		if field.Tag.Get("rel") != "" {
 			continue // relation fields are loaded separately, never columns
 		}
-		column := tag
 		if column == "" {
 			column = support.ToSnakeCase(field.Name)
+		}
+		switch cast {
+		case "", castJSON:
+		case castEncrypted:
+			if field.Type.Kind() != reflect.String {
+				panic(fmt.Sprintf("database: %s.%s: the encrypted cast needs a string field", t.Name(), field.Name))
+			}
+		default:
+			panic(fmt.Sprintf("database: %s.%s: unknown cast %q (want json or encrypted)", t.Name(), field.Name, cast))
 		}
 
 		// Shadowed columns: the shallower field wins (an outer field
@@ -158,6 +171,7 @@ func collectFields(t reflect.Type, parentIndex []int, meta *modelMeta) {
 		meta.fields = append(meta.fields, fieldMeta{
 			column:    column,
 			index:     index,
+			cast:      cast,
 			isPK:      column == "id",
 			isCreated: column == "created_at",
 			isUpdated: column == "updated_at",
@@ -204,7 +218,16 @@ func (m *modelMeta) values(v reflect.Value, skipPK bool) map[string]any {
 		if skipPK && f.isPK {
 			continue
 		}
-		out[f.column] = v.FieldByIndex(f.index).Interface()
+		value := v.FieldByIndex(f.index).Interface()
+		if f.cast == castJSON {
+			// Deterministic serialized form: dirty comparison and the
+			// written column value are the same string.
+			value = marshalJSONCast(v.Type(), f, value)
+		}
+		// Encrypted fields stay plaintext here (ciphertexts differ on
+		// every encryption, which would break dirty tracking); write
+		// paths encrypt via encryptWriteValues.
+		out[f.column] = value
 	}
 	return out
 }
@@ -250,6 +273,12 @@ func scanRowsIntoType(rows *sql.Rows, structType reflect.Type) (reflect.Value, e
 		for i, column := range columns {
 			field, ok := meta.byCol[column]
 			if !ok {
+				continue
+			}
+			if field.cast != "" {
+				if err := assignCastValue(item.FieldByIndex(field.index), values[i], field.cast); err != nil {
+					return results, fmt.Errorf("database: column %q: %w", column, err)
+				}
 				continue
 			}
 			if err := assignValue(item.FieldByIndex(field.index), values[i]); err != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/genesysflow/go-genesys/query"
 	"github.com/genesysflow/go-genesys/support"
+	"github.com/jinzhu/inflection"
 )
 
 // Relationships are declared with a `rel` struct tag on a field that holds
@@ -32,6 +33,30 @@ import (
 // Options: fk (foreign key), ok (owner/local key, default id),
 // pivot (pivot table), pfk (pivot column referencing this model),
 // prk (pivot column referencing the related model).
+//
+// Polymorphic relations name their morph via the required "as" option;
+// the related table carries <as>_type and <as>_id columns, and the
+// type column stores the parent model's table name:
+//
+//	type Post struct {
+//	    database.Model
+//	    Comments []*Comment `rel:"morphMany,as:commentable"`
+//	    Image    *Image     `rel:"morphOne,as:imageable"`
+//	    Tags     []Tag      `rel:"morphToMany,as:taggable"` // pivot "taggables"
+//	}
+//
+// Through relations traverse an intermediate table:
+//
+//	type Country struct {
+//	    database.Model
+//	    Posts []*Post `rel:"hasManyThrough,through:users"`
+//	    // users.country_id -> posts.user_id
+//	}
+//
+// Through options: through (intermediate table, required), fk (key on
+// the intermediate referencing this model), sk (key on the related
+// table referencing the intermediate), ok (this model's local key),
+// tlk (the intermediate's local key, default id).
 type relKind int
 
 const (
@@ -39,6 +64,11 @@ const (
 	relHasMany
 	relBelongsTo
 	relBelongsToMany
+	relMorphOne
+	relMorphMany
+	relMorphToMany
+	relHasOneThrough
+	relHasManyThrough
 )
 
 type relation struct {
@@ -52,7 +82,19 @@ type relation struct {
 	pivotTable string
 	pivotFK    string // pivot column referencing the parent
 	pivotRK    string // pivot column referencing the related model
+
+	// morph* relations
+	morphName string // "commentable" -> commentable_type / commentable_id
+
+	// *Through relations
+	throughTable string // intermediate table
+	secondKey    string // key on the related table referencing the intermediate
+	throughLocal string // the intermediate's local key (default id)
 }
+
+// morphTypeCol / morphIDCol are the polymorphic column names.
+func (r *relation) morphTypeCol() string { return r.morphName + "_type" }
+func (r *relation) morphIDCol() string   { return r.morphName + "_id" }
 
 var relationCache sync.Map // reflect.Type -> map[string]*relation
 
@@ -121,6 +163,16 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 		rel.kind = relBelongsTo
 	case "belongsToMany":
 		rel.kind = relBelongsToMany
+	case "morphOne":
+		rel.kind = relMorphOne
+	case "morphMany":
+		rel.kind = relMorphMany
+	case "morphToMany":
+		rel.kind = relMorphToMany
+	case "hasOneThrough":
+		rel.kind = relHasOneThrough
+	case "hasManyThrough":
+		rel.kind = relHasManyThrough
 	default:
 		return nil, fmt.Errorf("database: field %s.%s: unknown relation kind %q", parent.Name(), field.Name, parts[0])
 	}
@@ -131,11 +183,15 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 	}
 	rel.related = related
 
-	if (rel.kind == relHasMany || rel.kind == relBelongsToMany) && field.Type.Kind() != reflect.Slice {
-		return nil, fmt.Errorf("database: field %s.%s: %s relations need a slice field", parent.Name(), field.Name, parts[0])
-	}
-	if (rel.kind == relHasOne || rel.kind == relBelongsTo) && field.Type.Kind() == reflect.Slice {
-		return nil, fmt.Errorf("database: field %s.%s: %s relations need a single-value field", parent.Name(), field.Name, parts[0])
+	switch rel.kind {
+	case relHasMany, relBelongsToMany, relMorphMany, relMorphToMany, relHasManyThrough:
+		if field.Type.Kind() != reflect.Slice {
+			return nil, fmt.Errorf("database: field %s.%s: %s relations need a slice field", parent.Name(), field.Name, parts[0])
+		}
+	case relHasOne, relBelongsTo, relMorphOne, relHasOneThrough:
+		if field.Type.Kind() == reflect.Slice {
+			return nil, fmt.Errorf("database: field %s.%s: %s relations need a single-value field", parent.Name(), field.Name, parts[0])
+		}
 	}
 
 	// Convention defaults.
@@ -152,6 +208,11 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 		rel.pivotTable = names[0] + "_" + names[1]
 		rel.pivotFK = parentKey
 		rel.pivotRK = relatedKey
+	case relMorphToMany:
+		rel.pivotRK = relatedKey
+	case relHasOneThrough, relHasManyThrough:
+		rel.foreignKey = parentKey // on the intermediate table
+		rel.throughLocal = "id"
 	}
 
 	for _, opt := range parts[1:] {
@@ -170,8 +231,41 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 			rel.pivotFK = value
 		case "prk":
 			rel.pivotRK = value
+		case "as":
+			rel.morphName = value
+		case "through":
+			rel.throughTable = value
+		case "sk":
+			rel.secondKey = value
+		case "tlk":
+			rel.throughLocal = value
 		default:
 			return nil, fmt.Errorf("database: field %s.%s: unknown rel option %q", parent.Name(), field.Name, key)
+		}
+	}
+
+	// Morph relations need their morph name; derive the dependent
+	// defaults from it after options are applied.
+	switch rel.kind {
+	case relMorphOne, relMorphMany:
+		if rel.morphName == "" {
+			return nil, fmt.Errorf("database: field %s.%s: %s needs an as:<morph name> option", parent.Name(), field.Name, parts[0])
+		}
+		rel.foreignKey = rel.morphIDCol() // on the related table
+	case relMorphToMany:
+		if rel.morphName == "" {
+			return nil, fmt.Errorf("database: field %s.%s: morphToMany needs an as:<morph name> option", parent.Name(), field.Name)
+		}
+		if rel.pivotTable == "" {
+			rel.pivotTable = rel.morphName + "s" // taggable -> taggables
+		}
+		rel.pivotFK = rel.morphIDCol()
+	case relHasOneThrough, relHasManyThrough:
+		if rel.throughTable == "" {
+			return nil, fmt.Errorf("database: field %s.%s: %s needs a through:<table> option", parent.Name(), field.Name, parts[0])
+		}
+		if rel.secondKey == "" {
+			rel.secondKey = inflection.Singular(rel.throughTable) + "_id" // on the related table
 		}
 	}
 
@@ -235,17 +329,20 @@ func loadRelationsValue(driver string, executor query.Executor, models reflect.V
 
 func loadRelation(driver string, executor query.Executor, models reflect.Value, rel *relation, nested []string) error {
 	switch rel.kind {
-	case relHasOne, relHasMany:
+	case relHasOne, relHasMany, relMorphOne, relMorphMany:
 		return loadHasMany(driver, executor, models, rel, nested)
 	case relBelongsTo:
 		return loadBelongsTo(driver, executor, models, rel, nested)
-	case relBelongsToMany:
+	case relBelongsToMany, relMorphToMany:
 		return loadBelongsToMany(driver, executor, models, rel, nested)
+	case relHasOneThrough, relHasManyThrough:
+		return loadThrough(driver, executor, models, rel, nested)
 	}
 	return fmt.Errorf("unsupported relation kind")
 }
 
-// loadHasMany also serves hasOne (a hasMany capped at one per parent).
+// loadHasMany also serves hasOne (a hasMany capped at one per parent)
+// and the polymorphic morphOne/morphMany, which add a morph-type filter.
 func loadHasMany(driver string, executor query.Executor, models reflect.Value, rel *relation, nested []string) error {
 	parentMeta, err := metaFor(models.Type().Elem())
 	if err != nil {
@@ -266,8 +363,12 @@ func loadHasMany(driver string, executor query.Executor, models reflect.Value, r
 	if err != nil {
 		return err
 	}
-	relatedSlice, err := fetchInto(driver, executor, rel.related,
-		query.New(driver, executor).Table(relatedMeta.table).WhereIn(rel.foreignKey, keys...))
+	builder := query.New(driver, executor).Table(relatedMeta.table).WhereIn(rel.foreignKey, keys...)
+	if rel.kind == relMorphOne || rel.kind == relMorphMany {
+		// The morph type column stores the parent's table name.
+		builder.Where(rel.morphTypeCol(), parentMeta.table)
+	}
+	relatedSlice, err := fetchInto(driver, executor, rel.related, builder)
 	if err != nil {
 		return err
 	}
@@ -287,10 +388,85 @@ func loadHasMany(driver string, executor query.Executor, models reflect.Value, r
 		buckets[key] = append(buckets[key], i)
 	}
 
+	single := rel.kind == relHasOne || rel.kind == relMorphOne
 	for i := 0; i < models.Len(); i++ {
 		parent := models.Index(i)
 		key := keyString(parent.FieldByIndex(ownerField.index).Interface())
-		assignRelated(parent.FieldByIndex(rel.fieldIndex), relatedSlice, buckets[key], rel.kind == relHasOne)
+		assignRelated(parent.FieldByIndex(rel.fieldIndex), relatedSlice, buckets[key], single)
+	}
+	return nil
+}
+
+// loadThrough serves hasManyThrough and hasOneThrough: parents link to
+// an intermediate table, whose rows link to the related table. Both
+// hops are batched.
+func loadThrough(driver string, executor query.Executor, models reflect.Value, rel *relation, nested []string) error {
+	parentMeta, err := metaFor(models.Type().Elem())
+	if err != nil {
+		return err
+	}
+	ownerField, ok := parentMeta.byCol[rel.ownerKey]
+	if !ok {
+		return fmt.Errorf("owner key %q is not a column of %s", rel.ownerKey, parentMeta.table)
+	}
+
+	keys := collectKeys(models, ownerField.index)
+	if len(keys) == 0 {
+		clearRelationField(models, rel)
+		return nil
+	}
+
+	// Hop 1: intermediate rows for these parents.
+	throughRows, err := query.New(driver, executor).Table(rel.throughTable).
+		WhereIn(rel.foreignKey, keys...).Get()
+	if err != nil {
+		return err
+	}
+	parentOfThrough := make(map[string]string) // through local key -> parent key
+	var throughKeys []any
+	for _, row := range throughRows {
+		throughKey := keyString(row[rel.throughLocal])
+		parentOfThrough[throughKey] = keyString(row[rel.foreignKey])
+		throughKeys = append(throughKeys, row[rel.throughLocal])
+	}
+	if len(throughKeys) == 0 {
+		clearRelationField(models, rel)
+		return nil
+	}
+
+	// Hop 2: related rows for those intermediates.
+	relatedMeta, err := metaFor(rel.related)
+	if err != nil {
+		return err
+	}
+	relatedSlice, err := fetchInto(driver, executor, rel.related,
+		query.New(driver, executor).Table(relatedMeta.table).WhereIn(rel.secondKey, throughKeys...))
+	if err != nil {
+		return err
+	}
+	if err := loadRelationsValue(driver, executor, relatedSlice, nested); err != nil {
+		return err
+	}
+
+	secondField, ok := relatedMeta.byCol[rel.secondKey]
+	if !ok {
+		return fmt.Errorf("second key %q is not a column of %s", rel.secondKey, relatedMeta.table)
+	}
+
+	// Bucket related rows by the parent they trace back to.
+	buckets := make(map[string][]int)
+	for i := 0; i < relatedSlice.Len(); i++ {
+		throughKey := keyString(relatedSlice.Index(i).FieldByIndex(secondField.index).Interface())
+		if parentKey, ok := parentOfThrough[throughKey]; ok {
+			buckets[parentKey] = append(buckets[parentKey], i)
+		}
+	}
+
+	single := rel.kind == relHasOneThrough
+	for i := 0; i < models.Len(); i++ {
+		parent := models.Index(i)
+		key := keyString(parent.FieldByIndex(ownerField.index).Interface())
+		assignRelated(parent.FieldByIndex(rel.fieldIndex), relatedSlice, buckets[key], single)
 	}
 	return nil
 }
@@ -357,8 +533,13 @@ func loadBelongsToMany(driver string, executor query.Executor, models reflect.Va
 		return nil
 	}
 
-	// Pivot rows: parent key -> related keys.
-	pivotRows, err := query.New(driver, executor).Table(rel.pivotTable).WhereIn(rel.pivotFK, keys...).Get()
+	// Pivot rows: parent key -> related keys. morphToMany pivots also
+	// filter on the morph type column (the parent's table name).
+	pivotQuery := query.New(driver, executor).Table(rel.pivotTable).WhereIn(rel.pivotFK, keys...)
+	if rel.kind == relMorphToMany {
+		pivotQuery.Where(rel.morphTypeCol(), parentMeta.table)
+	}
+	pivotRows, err := pivotQuery.Get()
 	if err != nil {
 		return err
 	}

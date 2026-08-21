@@ -37,9 +37,10 @@ type Message struct {
 
 // inbound is a client -> server frame.
 type inbound struct {
-	Action  string `json:"action"`
-	Channel string `json:"channel"`
-	Auth    string `json:"auth,omitempty"`
+	Action  string          `json:"action"`
+	Channel string          `json:"channel"`
+	Auth    string          `json:"auth,omitempty"`
+	Info    json.RawMessage `json:"info,omitempty"` // presence member info
 }
 
 // Authorizer decides whether a token may join a private channel.
@@ -49,7 +50,12 @@ type Authorizer func(channel, token string) bool
 type Hub struct {
 	mu        sync.RWMutex
 	channels  map[string]map[*client]bool
+	members   map[string]map[*client]json.RawMessage // presence channels
 	authorize Authorizer
+
+	// backplane, when set, relays Broadcast frames to other hub
+	// instances (see ConnectRedis).
+	backplane func(Message) error
 }
 
 // client is one connected WebSocket peer.
@@ -89,7 +95,10 @@ func (c *client) close() {
 
 // New creates a hub.
 func New() *Hub {
-	return &Hub{channels: make(map[string]map[*client]bool)}
+	return &Hub{
+		channels: make(map[string]map[*client]bool),
+		members:  make(map[string]map[*client]json.RawMessage),
+	}
 }
 
 // Authorize installs the private-channel authorizer. Without one, all
@@ -105,19 +114,51 @@ func IsPrivate(channel string) bool {
 	return strings.HasPrefix(channel, "private-")
 }
 
+// IsPresence reports whether a channel is a presence channel: it
+// requires authorization AND tracks who is subscribed. Joining clients
+// receive a genesys:here member list; everyone else receives
+// genesys:joining / genesys:leaving as membership changes.
+func IsPresence(channel string) bool {
+	return strings.HasPrefix(channel, "presence-")
+}
+
 // Broadcast sends an event to every subscriber of a channel. Slow
 // clients whose buffers are full are disconnected rather than blocking
-// the broadcast.
+// the broadcast. When a backplane is connected (ConnectRedis) the frame
+// is also relayed to the other hub instances.
 func (h *Hub) Broadcast(channel, event string, payload any) error {
-	frame, err := json.Marshal(Message{Channel: channel, Event: event, Payload: payload})
+	message := Message{Channel: channel, Event: event, Payload: payload}
+	if err := h.deliverLocal(message); err != nil {
+		return err
+	}
+	h.mu.RLock()
+	backplane := h.backplane
+	h.mu.RUnlock()
+	if backplane != nil {
+		return backplane(message)
+	}
+	return nil
+}
+
+// deliverLocal fans a message out to this instance's subscribers.
+func (h *Hub) deliverLocal(message Message) error {
+	frame, err := json.Marshal(message)
 	if err != nil {
 		return fmt.Errorf("broadcast: cannot encode payload: %w", err)
 	}
+	h.deliverFrame(message.Channel, frame, nil)
+	return nil
+}
 
+// deliverFrame sends a pre-encoded frame to a channel's subscribers,
+// skipping one client (the originator of a membership event).
+func (h *Hub) deliverFrame(channel string, frame []byte, skip *client) {
 	h.mu.RLock()
 	subscribers := make([]*client, 0, len(h.channels[channel]))
 	for c := range h.channels[channel] {
-		subscribers = append(subscribers, c)
+		if c != skip {
+			subscribers = append(subscribers, c)
+		}
 	}
 	h.mu.RUnlock()
 
@@ -126,7 +167,6 @@ func (h *Hub) Broadcast(channel, event string, payload any) error {
 			h.drop(c) // slow or closed consumer
 		}
 	}
-	return nil
 }
 
 // Subscribers returns how many clients are on a channel.
@@ -136,8 +176,8 @@ func (h *Hub) Subscribers(channel string) int {
 	return len(h.channels[channel])
 }
 
-func (h *Hub) subscribe(c *client, channel, token string) error {
-	if IsPrivate(channel) {
+func (h *Hub) subscribe(c *client, channel, token string, info json.RawMessage) error {
+	if IsPrivate(channel) || IsPresence(channel) {
 		h.mu.RLock()
 		authorize := h.authorize
 		h.mu.RUnlock()
@@ -145,32 +185,101 @@ func (h *Hub) subscribe(c *client, channel, token string) error {
 			return fmt.Errorf("unauthorized for channel %s", channel)
 		}
 	}
+
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if h.channels[channel] == nil {
 		h.channels[channel] = make(map[*client]bool)
 	}
 	h.channels[channel][c] = true
 	c.channels[channel] = true
+	if IsPresence(channel) {
+		if info == nil {
+			info = json.RawMessage(`{}`)
+		}
+		if h.members[channel] == nil {
+			h.members[channel] = make(map[*client]json.RawMessage)
+		}
+		h.members[channel][c] = info
+	}
+	h.mu.Unlock()
 	return nil
+}
+
+// announcePresence sends the joiner the current member list and tells
+// everyone else who joined; called after the subscribed ack so frame
+// order is predictable.
+func (h *Hub) announcePresence(c *client, channel string) {
+	if !IsPresence(channel) {
+		return
+	}
+	h.mu.RLock()
+	info := h.members[channel][c]
+	here := make([]json.RawMessage, 0, len(h.members[channel]))
+	for _, memberInfo := range h.members[channel] {
+		here = append(here, memberInfo)
+	}
+	h.mu.RUnlock()
+
+	if frame, err := json.Marshal(Message{Channel: channel, Event: "genesys:here", Payload: here}); err == nil {
+		c.trySend(frame)
+	}
+	if frame, err := json.Marshal(Message{Channel: channel, Event: "genesys:joining", Payload: info}); err == nil {
+		h.deliverFrame(channel, frame, c)
+	}
+}
+
+// Members returns the presence member info currently on a channel.
+func (h *Hub) Members(channel string) []json.RawMessage {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	members := make([]json.RawMessage, 0, len(h.members[channel]))
+	for _, info := range h.members[channel] {
+		members = append(members, info)
+	}
+	return members
 }
 
 func (h *Hub) unsubscribe(c *client, channel string) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	info, wasMember := h.members[channel][c]
+	delete(h.members[channel], c)
+	if len(h.members[channel]) == 0 {
+		delete(h.members, channel)
+	}
 	delete(h.channels[channel], c)
 	if len(h.channels[channel]) == 0 {
 		delete(h.channels, channel)
 	}
 	delete(c.channels, channel)
+	h.mu.Unlock()
+
+	if wasMember {
+		if frame, err := json.Marshal(Message{Channel: channel, Event: "genesys:leaving", Payload: info}); err == nil {
+			h.deliverFrame(channel, frame, c)
+		}
+	}
 }
 
 // drop disconnects a client from every channel, closes its outbox, and
 // closes the underlying connection so the peer learns it was dropped
-// instead of lingering as a subscribed-looking zombie.
+// instead of lingering as a subscribed-looking zombie. Presence
+// channels see the member leave.
 func (h *Hub) drop(c *client) {
+	type departure struct {
+		channel string
+		info    json.RawMessage
+	}
+	var departures []departure
+
 	h.mu.Lock()
 	for channel := range c.channels {
+		if info, ok := h.members[channel][c]; ok {
+			departures = append(departures, departure{channel: channel, info: info})
+			delete(h.members[channel], c)
+			if len(h.members[channel]) == 0 {
+				delete(h.members, channel)
+			}
+		}
 		delete(h.channels[channel], c)
 		if len(h.channels[channel]) == 0 {
 			delete(h.channels, channel)
@@ -181,6 +290,12 @@ func (h *Hub) drop(c *client) {
 	c.close()
 	if c.conn != nil {
 		_ = c.conn.Close() // unblocks the read loop; safe on repeat drops
+	}
+
+	for _, d := range departures {
+		if frame, err := json.Marshal(Message{Channel: d.channel, Event: "genesys:leaving", Payload: d.info}); err == nil {
+			h.deliverFrame(d.channel, frame, c)
+		}
 	}
 }
 
@@ -229,11 +344,12 @@ func (h *Hub) serve(conn *websocket.Conn) {
 
 		switch frame.Action {
 		case "subscribe":
-			if err := h.subscribe(c, frame.Channel, frame.Auth); err != nil {
+			if err := h.subscribe(c, frame.Channel, frame.Auth, frame.Info); err != nil {
 				reply(Message{Channel: frame.Channel, Event: "genesys:error", Payload: err.Error()})
 				continue
 			}
 			reply(Message{Channel: frame.Channel, Event: "genesys:subscribed"})
+			h.announcePresence(c, frame.Channel)
 		case "unsubscribe":
 			h.unsubscribe(c, frame.Channel)
 			reply(Message{Channel: frame.Channel, Event: "genesys:unsubscribed"})

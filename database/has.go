@@ -99,10 +99,18 @@ func (q *ModelQuery[T]) existsSubquery(parentType reflect.Type, parentTable, pat
 	case relHasOne, relHasMany:
 		sub = query.New(q.driver, q.executor).Table(tableExpr(relatedTable, innerRef)).
 			WhereColumn(innerRef+"."+rel.foreignKey, "=", parentTable+"."+rel.ownerKey)
+	case relMorphOne, relMorphMany:
+		parentMeta, err := metaFor(parentType)
+		if err != nil {
+			return nil, err
+		}
+		sub = query.New(q.driver, q.executor).Table(tableExpr(relatedTable, innerRef)).
+			WhereColumn(innerRef+"."+rel.morphIDCol(), "=", parentTable+"."+rel.ownerKey).
+			Where(innerRef+"."+rel.morphTypeCol(), parentMeta.table)
 	case relBelongsTo:
 		sub = query.New(q.driver, q.executor).Table(tableExpr(relatedTable, innerRef)).
 			WhereColumn(innerRef+"."+rel.ownerKey, "=", parentTable+"."+rel.foreignKey)
-	case relBelongsToMany:
+	case relBelongsToMany, relMorphToMany:
 		pivotRef := rel.pivotTable
 		if rel.pivotTable == parentTable {
 			pivotRef = "genesys_self_" + rel.pivotTable
@@ -110,6 +118,21 @@ func (q *ModelQuery[T]) existsSubquery(parentType reflect.Type, parentTable, pat
 		sub = query.New(q.driver, q.executor).Table(tableExpr(rel.pivotTable, pivotRef)).
 			Join(tableExpr(relatedTable, innerRef), pivotRef+"."+rel.pivotRK, "=", innerRef+"."+rel.ownerKey).
 			WhereColumn(pivotRef+"."+rel.pivotFK, "=", parentTable+"."+rel.ownerKey)
+		if rel.kind == relMorphToMany {
+			parentMeta, err := metaFor(parentType)
+			if err != nil {
+				return nil, err
+			}
+			sub.Where(pivotRef+"."+rel.morphTypeCol(), parentMeta.table)
+		}
+	case relHasOneThrough, relHasManyThrough:
+		throughRef := rel.throughTable
+		if rel.throughTable == parentTable {
+			throughRef = "genesys_self_" + rel.throughTable
+		}
+		sub = query.New(q.driver, q.executor).Table(tableExpr(relatedTable, innerRef)).
+			Join(tableExpr(rel.throughTable, throughRef), throughRef+"."+rel.throughLocal, "=", innerRef+"."+rel.secondKey).
+			WhereColumn(throughRef+"."+rel.foreignKey, "=", parentTable+"."+rel.ownerKey)
 	default:
 		return nil, fmt.Errorf("database: unsupported relation kind for %q", head)
 	}

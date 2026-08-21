@@ -25,7 +25,8 @@ func (w *Worker) Use(middleware ...JobMiddleware) *Worker {
 
 // runJob executes a job through the worker's and the job's middleware.
 func (w *Worker) runJob(job Job) error {
-	handler := func() error { return safeHandle(job) }
+	timeout := w.timeoutFor(job)
+	handler := func() error { return runWithTimeout(job, timeout) }
 
 	chain := w.middleware
 	if withOwn, ok := job.(HasMiddleware); ok {

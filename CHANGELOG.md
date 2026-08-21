@@ -5,6 +5,64 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Added - round 4: closing the core parity gaps
+
+- **Polymorphic relations**: `morphOne`/`morphMany`/`morphToMany` via
+  `rel:"morphMany,as:commentable"`; the morph type column stores the
+  parent's table name. Eager loading, `Has`/`WhereHas`, and `WithCount`
+  all honour the morph type.
+- **Through relations**: `hasManyThrough`/`hasOneThrough` via
+  `rel:"hasManyThrough,through:users"`, with batched two-hop eager
+  loading and joined existence queries.
+- **Relation counts**: `Query[T]().WithCount("Posts")` fills a
+  `PostsCount int64 \`db:"-"\`` field with one grouped query per
+  relation, across every relation kind.
+- **Attribute casting**: `db:"settings,json"` marshals any field to a
+  JSON column and back; `db:"ssn,encrypted"` (string fields) encrypts
+  at rest with the application key - the struct always holds plaintext,
+  and dirty tracking stays exact. Wired automatically by the
+  EncryptionServiceProvider.
+- **Write helpers**: atomic `Increment`/`Decrement` on model queries,
+  bulk `Upsert` (ON CONFLICT / ON DUPLICATE KEY, with timestamp
+  stamping) on the builder and `database.Upsert[T]`, and
+  `database.Touch` to bump `updated_at`.
+- **Query builder**: `LockForUpdate`/`SharedLock` (per driver),
+  `Union`/`UnionAll` with cross-driver placeholder renumbering and
+  ORDER BY applying to the combined result, `WhereJSON("meta",
+  "specs.weight", ">", 10)` JSON-path constraints, and `CrossJoin`.
+- **Read/write splitting**: `read_hosts` on a connection routes read
+  queries round-robin over replica pools while writes and transactions
+  stay on the primary.
+- **Job timeouts**: `worker.Timeout` / a job's `Timeout()` bounds each
+  attempt; timed-out jobs fail into the normal retry path, and
+  `ContextJob` handlers receive the deadline through their context.
+  `queue:prune-failed --hours` deletes old failed jobs on every driver.
+- **Queued event listeners**: `events.ListenQueued` serializes events
+  onto the queue for workers to replay; `Dispatcher.Subscribe` registers
+  event subscribers.
+- **Cache tags**: `cache.Tags(store, "users").Put/Get/Remember/Flush`
+  with version-keyed invalidation that works across processes on shared
+  stores.
+- **Presence channels + multi-node broadcasting**: `presence-` channels
+  track member info (`genesys:here`/`joining`/`leaving`), and
+  `hub.ConnectRedis` joins hubs to a Redis pub/sub backplane so
+  broadcasts reach every node.
+- **Encrypted cookies**: `middleware.EncryptCookies(encrypter,
+  except...)` - browsers hold ciphertext, handlers read plaintext,
+  forged cookies are dropped.
+- **HTTP client fake**: `client.NewFake().Respond(...)` with request
+  recording and `AssertSent`/`AssertNothingSent` - Laravel's
+  `Http::fake()`.
+- **Mail manager**: named mailers with a default, a failover mailer
+  chain, and `mail.SendQueued` for worker-delivered messages.
+- **Validation wildcards**: `items.*.email` rules on `ValidateMap`,
+  reporting failures under their element index.
+- **Contextual container bindings**: `c.When("reports").Needs("disk").
+  Give(...)` consulted by `MakeFor`.
+- **Test scaffolding**: `filesystem.NewFakeDisk()` (Storage::fake with
+  assertions) and a `router.Health()` liveness endpoint (Laravel 11's
+  `/up`).
+
 ### Fixed - whole-project audit
 
 A framework-wide adversarial review; the notable fixes, by area:

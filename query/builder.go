@@ -73,6 +73,8 @@ type Builder struct {
 	orders   []order
 	limit    int
 	offset   int
+	lock     string // "", "update", "shared" (see extensions.go)
+	unions   []unionPart
 }
 
 // New creates a builder for the given driver and executor.
@@ -98,6 +100,7 @@ func (b *Builder) Clone() *Builder {
 	clone.wheres = append([]where(nil), b.wheres...)
 	clone.groups = append([]string(nil), b.groups...)
 	clone.havings = append([]where(nil), b.havings...)
+	clone.unions = append([]unionPart(nil), b.unions...)
 	clone.orders = append([]order(nil), b.orders...)
 	return &clone
 }

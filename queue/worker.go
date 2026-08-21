@@ -31,6 +31,14 @@ type Worker struct {
 	// (default 5s); jobs can override via the HasBackoff interface.
 	Backoff time.Duration
 
+	// Timeout bounds each job's execution (0 = unlimited); jobs can
+	// override via the HasTimeout interface. A timed-out job counts as
+	// a failed attempt and follows the normal retry/fail path. Jobs
+	// implementing ContextJob receive the deadline through their
+	// context; plain Handle() jobs are abandoned to finish in the
+	// background while the worker moves on.
+	Timeout time.Duration
+
 	// OnError, when set, is called with processing errors (job failures
 	// and infrastructure errors) so callers can log them.
 	OnError func(err error)
@@ -187,9 +195,54 @@ func (w *Worker) backoffFor(job Job) time.Duration {
 	return w.Backoff
 }
 
+func (w *Worker) timeoutFor(job Job) time.Duration {
+	if withTimeout, ok := job.(HasTimeout); ok {
+		if timeout := withTimeout.Timeout(); timeout > 0 {
+			return timeout
+		}
+	}
+	return w.Timeout
+}
+
 func (w *Worker) report(err error) {
 	if w.OnError != nil {
 		w.OnError(err)
+	}
+}
+
+// ErrTimeout marks a job attempt that exceeded its timeout; it counts
+// as a normal failure for retry accounting.
+var ErrTimeout = fmt.Errorf("queue: job timed out")
+
+// runWithTimeout runs a job with an optional deadline. Context-aware
+// jobs get the deadline through their context; plain jobs are run in a
+// goroutine and abandoned when the deadline passes (Go cannot kill a
+// goroutine), so long-running plain jobs should implement ContextJob.
+func runWithTimeout(job Job, timeout time.Duration) error {
+	if timeout <= 0 {
+		if aware, ok := job.(ContextJob); ok {
+			return safeHandleContext(aware, context.Background())
+		}
+		return safeHandle(job)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		if aware, ok := job.(ContextJob); ok {
+			done <- safeHandleContext(aware, ctx)
+			return
+		}
+		done <- safeHandle(job)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("%w after %s", ErrTimeout, timeout)
 	}
 }
 
@@ -202,4 +255,14 @@ func safeHandle(job Job) (err error) {
 		}
 	}()
 	return job.Handle()
+}
+
+// safeHandleContext is safeHandle for context-aware jobs.
+func safeHandleContext(job ContextJob, ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic: %v", r)
+		}
+	}()
+	return job.HandleContext(ctx)
 }

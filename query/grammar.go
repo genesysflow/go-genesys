@@ -102,6 +102,10 @@ func (g *Grammar) CompileSelect(b *Builder) (string, []any) {
 	sqlParts = append(sqlParts, "FROM "+g.WrapTable(b.table))
 
 	for _, j := range b.joins {
+		if j.kind == "CROSS" {
+			sqlParts = append(sqlParts, "CROSS JOIN "+g.WrapTable(j.table))
+			continue
+		}
 		sqlParts = append(sqlParts, fmt.Sprintf("%s JOIN %s ON %s %s %s",
 			j.kind, g.WrapTable(j.table), g.Wrap(j.first), j.operator, g.Wrap(j.second)))
 	}
@@ -122,6 +126,19 @@ func (g *Grammar) CompileSelect(b *Builder) (string, []any) {
 	if clause, havingBindings := g.compileWheres(b.havings, len(bindings)); clause != "" {
 		sqlParts = append(sqlParts, "HAVING "+clause)
 		bindings = append(bindings, havingBindings...)
+	}
+
+	// Unions come before ORDER BY / LIMIT, which then apply to the
+	// combined result (standard SQL and Laravel semantics).
+	for _, u := range b.unions {
+		unionSQL, unionBindings := u.builder.grammar.CompileSelect(u.builder)
+		renumbered := g.renumberPlaceholders(neutralizePlaceholders(unionSQL), len(bindings))
+		keyword := "UNION"
+		if u.all {
+			keyword = "UNION ALL"
+		}
+		sqlParts = append(sqlParts, keyword+" "+renumbered)
+		bindings = append(bindings, unionBindings...)
 	}
 
 	if len(b.orders) > 0 {
@@ -153,6 +170,10 @@ func (g *Grammar) CompileSelect(b *Builder) (string, []any) {
 	}
 	if b.offset > 0 {
 		sqlParts = append(sqlParts, fmt.Sprintf("OFFSET %d", b.offset))
+	}
+
+	if lock := g.compileLock(b.lock); lock != "" {
+		sqlParts = append(sqlParts, lock)
 	}
 
 	return strings.Join(sqlParts, " "), bindings

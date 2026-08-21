@@ -63,6 +63,7 @@ func (p *MailServiceProvider) Boot(app contracts.Application) error {
 
 	app.BindValue("mailer", mailer)
 	facademail.SetInstance(mailer)
+	mail.SetDefaultMailer(mailer) // queued mail delivers through this
 
 	return nil
 }

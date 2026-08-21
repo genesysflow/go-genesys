@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -47,22 +48,29 @@ func (v *Validator) Validate(data any) *ValidationResult {
 	return v.newResult(err, nil)
 }
 
-// ValidateMap validates a map against rules.
+// ValidateMap validates a map against rules. Rule keys may use
+// Laravel-style array wildcards - "items.*.email" applies the rule to
+// the email of every element of items, reporting failures under their
+// index ("items.1.email"):
+//
+//	result := v.ValidateMap(payload, map[string]string{
+//	    "name":          "required",
+//	    "items.*.sku":   "required,alphanum",
+//	    "items.*.count": "gte=1",
+//	})
 func (v *Validator) ValidateMap(data map[string]any, rules map[string]string) *ValidationResult {
-	// Convert rules to map[string]any
+	// Split wildcard patterns from plain rules.
 	rulesAny := make(map[string]any, len(rules))
+	wildcards := make(map[string]string)
 	for k, val := range rules {
+		if strings.Contains(k, "*") {
+			wildcards[k] = val
+			continue
+		}
 		rulesAny[k] = val
 	}
 
 	errs := v.validate.ValidateMap(data, rulesAny)
-
-	if len(errs) == 0 {
-		return &ValidationResult{
-			valid:     true,
-			validated: data,
-		}
-	}
 
 	errors := NewValidationErrors()
 	for field, err := range errs {
@@ -77,11 +85,93 @@ func (v *Validator) ValidateMap(data map[string]any, rules map[string]string) *V
 		}
 	}
 
+	for pattern, rule := range wildcards {
+		v.applyWildcardRule(data, strings.Split(pattern, "."), "", rule, errors)
+	}
+
+	if errors.IsEmpty() {
+		return &ValidationResult{valid: true, validated: data}
+	}
 	return &ValidationResult{
 		valid:     false,
 		errors:    errors,
 		validated: data,
 	}
+}
+
+// applyWildcardRule walks a dotted pattern through nested maps and
+// slices, validating each leaf it reaches.
+func (v *Validator) applyWildcardRule(current any, segments []string, path string, rule string, errors *ValidationErrors) {
+	if len(segments) == 0 {
+		if err := v.validate.Var(current, rule); err != nil {
+			if fes, ok := err.(validator.ValidationErrors); ok && len(fes) > 0 {
+				errors.Add(path, v.formatMapError(fes[0], path))
+				return
+			}
+			errors.Add(path, "validation failed")
+		}
+		return
+	}
+
+	segment, rest := segments[0], segments[1:]
+	if segment == "*" {
+		items, ok := toAnySlice(current)
+		if !ok {
+			// Not iterable: required leaves fail, everything else passes.
+			if strings.Contains(rule, "required") {
+				errors.Add(strings.TrimPrefix(path+".*", "."), "field is required")
+			}
+			return
+		}
+		for i, item := range items {
+			v.applyWildcardRule(item, rest, joinPath(path, strconv.Itoa(i)), rule, errors)
+		}
+		return
+	}
+
+	container, ok := current.(map[string]any)
+	if !ok {
+		return
+	}
+	value, present := container[segment]
+	childPath := joinPath(path, segment)
+	if !present {
+		if len(rest) == 0 && strings.Contains(rule, "required") {
+			errors.Add(childPath, "field is required")
+		}
+		return
+	}
+	v.applyWildcardRule(value, rest, childPath, rule, errors)
+}
+
+func joinPath(base, segment string) string {
+	if base == "" {
+		return segment
+	}
+	return base + "." + segment
+}
+
+// toAnySlice normalizes the slice shapes a decoded payload can carry.
+func toAnySlice(value any) ([]any, bool) {
+	switch items := value.(type) {
+	case []any:
+		return items, true
+	case []map[string]any:
+		out := make([]any, len(items))
+		for i, item := range items {
+			out[i] = item
+		}
+		return out, true
+	}
+	rv := reflect.ValueOf(value)
+	if rv.Kind() == reflect.Slice {
+		out := make([]any, rv.Len())
+		for i := 0; i < rv.Len(); i++ {
+			out[i] = rv.Index(i).Interface()
+		}
+		return out, true
+	}
+	return nil, false
 }
 
 // ValidateValue validates a single value.

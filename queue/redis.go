@@ -303,6 +303,28 @@ func (q *RedisQueue) ForgetFailed(id int64) error {
 	return q.client.LRem(q.ctx, q.failedKey(), 1, raw).Err()
 }
 
+// PruneFailed deletes failed jobs older than the given time.
+func (q *RedisQueue) PruneFailed(olderThan time.Time) (int64, error) {
+	raws, err := q.client.LRange(q.ctx, q.failedKey(), 0, -1).Result()
+	if err != nil {
+		return 0, err
+	}
+	var pruned int64
+	for _, raw := range raws {
+		var job FailedJob
+		if err := json.Unmarshal([]byte(raw), &job); err != nil {
+			continue
+		}
+		if job.FailedAt.Before(olderThan) {
+			if err := q.client.LRem(q.ctx, q.failedKey(), 1, raw).Err(); err != nil {
+				return pruned, err
+			}
+			pruned++
+		}
+	}
+	return pruned, nil
+}
+
 func (q *RedisQueue) findFailed(id int64) (string, *FailedJob, error) {
 	raws, err := q.client.LRange(q.ctx, q.failedKey(), 0, -1).Result()
 	if err != nil {

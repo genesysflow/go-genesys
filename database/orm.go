@@ -62,6 +62,7 @@ type ModelQuery[T any] struct {
 	driver      string
 	executor    query.Executor
 	withs       []string
+	withCounts  []string
 	meta        *modelMeta
 	trashed     trashedMode
 	trashedDone bool
@@ -133,13 +134,22 @@ func (q *ModelQuery[T]) With(paths ...string) *ModelQuery[T] {
 	return q
 }
 
-// loadWiths eager-loads the requested relations onto scanned results.
+// loadWiths eager-loads the requested relations and relation counts
+// onto scanned results.
 func (q *ModelQuery[T]) loadWiths(results []T) error {
-	if len(q.withs) == 0 || len(results) == 0 {
+	if len(results) == 0 {
 		return nil
 	}
 	slice := reflect.ValueOf(&results).Elem()
-	return loadRelationsValue(q.driver, q.executor, slice, q.withs)
+	if len(q.withs) > 0 {
+		if err := loadRelationsValue(q.driver, q.executor, slice, q.withs); err != nil {
+			return err
+		}
+	}
+	if len(q.withCounts) > 0 {
+		return loadRelationCounts(q.driver, q.executor, slice, q.withCounts)
+	}
+	return nil
 }
 
 // Builder exposes the underlying untyped query builder.
@@ -406,6 +416,9 @@ func Create[T any](model *T, scope ...*TxScope) error {
 
 	driver, executor := executorFor[T](scope)
 	values := meta.values(reflect.ValueOf(model), true)
+	if err := meta.encryptWriteValues(values); err != nil {
+		return err
+	}
 
 	id, err := query.New(driver, executor).Table(meta.table).InsertGetID(values)
 	if err != nil {
@@ -468,6 +481,9 @@ func Update[T any](model *T, scope ...*TxScope) error {
 	}
 
 	driver, executor := executorFor[T](scope)
+	if err := meta.encryptWriteValues(values); err != nil {
+		return err
+	}
 	affected, err := query.New(driver, executor).Table(meta.table).Where("id", id).Update(values)
 	if err != nil {
 		return err

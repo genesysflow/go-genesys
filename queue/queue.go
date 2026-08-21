@@ -81,6 +81,14 @@ type FailedJobProvider interface {
 	ForgetFailed(id int64) error
 }
 
+// FailedJobPruner is implemented by drivers that can delete old failed
+// jobs - Laravel's queue:prune-failed.
+type FailedJobPruner interface {
+	// PruneFailed removes failed jobs older than the given time,
+	// returning how many were deleted.
+	PruneFailed(olderThan time.Time) (int64, error)
+}
+
 // NamedQueuePusher is implemented by drivers that support dispatching
 // onto named queues (memory, database, redis).
 type NamedQueuePusher interface {

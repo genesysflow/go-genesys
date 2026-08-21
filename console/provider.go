@@ -70,6 +70,7 @@ func (p *ConsoleServiceProvider) Register(app contracts.Application) error {
 	p.kernel.AddCommand(commands.KeyGenerateCommand(app))
 	p.kernel.AddCommand(commands.QueueWorkCommand(app))
 	p.kernel.AddCommand(commands.QueueFailedCommand(app))
+	p.kernel.AddCommand(commands.QueuePruneFailedCommand(app))
 	p.kernel.AddCommand(commands.QueueRetryCommand(app))
 	p.kernel.AddCommand(commands.ScheduleRunCommand(app))
 	p.kernel.AddCommand(commands.ScheduleWorkCommand(app))

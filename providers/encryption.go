@@ -3,6 +3,7 @@ package providers
 import (
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/crypt"
+	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/env"
 	facadecrypt "github.com/genesysflow/go-genesys/facades/crypt"
 )
@@ -44,6 +45,7 @@ func (p *EncryptionServiceProvider) Boot(app contracts.Application) error {
 	app.InstanceType(encrypter)
 	app.BindValue("encrypter", encrypter)
 	facadecrypt.SetInstance(encrypter)
+	database.SetEncrypter(encrypter) // powers `db:"...,encrypted"` casts
 	return nil
 }
 

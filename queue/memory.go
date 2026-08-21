@@ -133,6 +133,23 @@ func (q *MemoryQueue) ListFailed() ([]FailedJob, error) {
 	return append([]FailedJob(nil), q.failed...), nil
 }
 
+// PruneFailed deletes failed jobs older than the given time.
+func (q *MemoryQueue) PruneFailed(olderThan time.Time) (int64, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	kept := q.failed[:0]
+	var pruned int64
+	for _, f := range q.failed {
+		if f.FailedAt.Before(olderThan) {
+			pruned++
+			continue
+		}
+		kept = append(kept, f)
+	}
+	q.failed = kept
+	return pruned, nil
+}
+
 // RetryFailed re-dispatches a failed job.
 func (q *MemoryQueue) RetryFailed(id int64) error {
 	q.mu.Lock()

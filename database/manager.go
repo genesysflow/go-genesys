@@ -6,7 +6,10 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
+	"net"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/genesysflow/go-genesys/contracts"
@@ -64,6 +67,14 @@ type ConnectionConfig struct {
 
 	// ForeignKeyConstraints enables foreign key constraints (SQLite).
 	ForeignKeyConstraints bool `yaml:"foreign_key_constraints" json:"foreign_key_constraints"`
+
+	// ReadHosts, when set, routes read queries (Query/QueryRow) to
+	// replica pools on these hosts, round-robin, while writes and
+	// transactions stay on Host - Laravel's read/write connections.
+	// Reads inside a transaction always hit the primary, so
+	// read-your-own-write consistency holds wherever it matters.
+	// Entries may be "host" or "host:port".
+	ReadHosts []string `yaml:"read_hosts" json:"read_hosts"`
 }
 
 // Manager is the database manager that handles multiple connections.
@@ -181,13 +192,42 @@ func (m *Manager) makeConnection(name string) (*Connection, error) {
 		_, _ = db.Exec("PRAGMA foreign_keys = ON")
 	}
 
-	return &Connection{
+	conn := &Connection{
 		name:    name,
 		driver:  config.Driver,
 		db:      db,
 		prefix:  config.Prefix,
 		manager: m,
-	}, nil
+	}
+
+	// Open one replica pool per read host.
+	for _, host := range config.ReadHosts {
+		readConfig := config
+		readConfig.Host = host
+		if h, p, err := net.SplitHostPort(host); err == nil {
+			readConfig.Host = h
+			if port, err := strconv.Atoi(p); err == nil {
+				readConfig.Port = port
+			}
+		}
+		readDB, err := sql.Open(driverName, buildDSN(readConfig))
+		if err != nil {
+			db.Close()
+			for _, r := range conn.readDBs {
+				r.Close()
+			}
+			return nil, fmt.Errorf("failed to open read replica %q: %w", host, err)
+		}
+		if config.MaxOpenConns > 0 {
+			readDB.SetMaxOpenConns(config.MaxOpenConns)
+		}
+		if config.MaxIdleConns > 0 {
+			readDB.SetMaxIdleConns(config.MaxIdleConns)
+		}
+		conn.readDBs = append(conn.readDBs, readDB)
+	}
+
+	return conn, nil
 }
 
 // Raw executes a raw SQL query.
@@ -372,6 +412,22 @@ type Connection struct {
 	prefix  string
 	err     error
 	manager *Manager // for query listeners; nil on error connections
+
+	// Read/write splitting (see ConnectionConfig.ReadHosts): reads
+	// round-robin over the replica pools, writes and transactions stay
+	// on the primary db.
+	readDBs   []*sql.DB
+	readIndex atomic.Uint64
+}
+
+// readDB picks the handle for a read query: a replica pool when
+// configured, the primary otherwise.
+func (c *Connection) readDB() *sql.DB {
+	if len(c.readDBs) == 0 {
+		return c.db
+	}
+	n := c.readIndex.Add(1)
+	return c.readDBs[int(n)%len(c.readDBs)]
 }
 
 // Name returns the connection name.
@@ -401,7 +457,7 @@ func (c *Connection) Query(sqlQuery string, bindings ...any) (*sql.Rows, error) 
 		return nil, c.err
 	}
 	start := time.Now()
-	rows, err := c.db.Query(sqlQuery, bindings...)
+	rows, err := c.readDB().Query(sqlQuery, bindings...)
 	c.fireQueryEvent(sqlQuery, bindings, start, err)
 	return rows, err
 }
@@ -412,7 +468,7 @@ func (c *Connection) QueryContext(ctx context.Context, sqlQuery string, bindings
 		return nil, c.err
 	}
 	start := time.Now()
-	rows, err := c.db.QueryContext(ctx, sqlQuery, bindings...)
+	rows, err := c.readDB().QueryContext(ctx, sqlQuery, bindings...)
 	c.fireQueryEvent(sqlQuery, bindings, start, err)
 	return rows, err
 }
@@ -420,14 +476,14 @@ func (c *Connection) QueryContext(ctx context.Context, sqlQuery string, bindings
 // QueryRow executes a query that returns at most one row.
 func (c *Connection) QueryRow(sqlQuery string, bindings ...any) *sql.Row {
 	start := time.Now()
-	row := c.db.QueryRow(sqlQuery, bindings...)
+	row := c.readDB().QueryRow(sqlQuery, bindings...)
 	c.fireQueryEvent(sqlQuery, bindings, start, nil)
 	return row
 }
 
 // QueryRowContext executes a query that returns at most one row with context.
 func (c *Connection) QueryRowContext(ctx context.Context, sqlQuery string, bindings ...any) *sql.Row {
-	return c.db.QueryRowContext(ctx, sqlQuery, bindings...)
+	return c.readDB().QueryRowContext(ctx, sqlQuery, bindings...)
 }
 
 // Exec executes a raw statement.
@@ -514,10 +570,13 @@ func (c *Connection) Transaction(fn func(tx contracts.Transaction) error) error 
 	return tx.Commit()
 }
 
-// Close closes the connection.
+// Close closes the connection, including any read replica pools.
 func (c *Connection) Close() error {
 	if c.err != nil {
 		return c.err
+	}
+	for _, readDB := range c.readDBs {
+		_ = readDB.Close()
 	}
 	return c.db.Close()
 }
