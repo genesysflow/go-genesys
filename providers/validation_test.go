@@ -89,3 +89,4 @@ func TestValidationServiceProviderProvides(t *testing.T) {
 
 	assert.Contains(t, provides, "validator")
 }
+

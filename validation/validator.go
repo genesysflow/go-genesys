@@ -19,6 +19,7 @@ type Validator struct {
 	customMessages map[string]string
 	attributeNames map[string]string
 	translator     Translator
+	database       DatabaseResolver
 	mu             sync.RWMutex
 }
 
@@ -35,11 +36,14 @@ func New() *Validator {
 		return name
 	})
 
-	return &Validator{
+	instance := &Validator{
 		validate:       v,
 		customMessages: make(map[string]string),
 		attributeNames: make(map[string]string),
 	}
+	instance.registerLaravelRules()
+
+	return instance
 }
 
 // Validate validates the given struct.
@@ -278,6 +282,22 @@ func (v *Validator) defaultMessage(fe validator.FieldError, fieldNameOverride st
 	switch fe.Tag() {
 	case "required":
 		return field + " is required"
+	case "required_if":
+		return field + " is required when " + humanCondition(fe.Param())
+	case "required_unless":
+		return field + " is required unless " + humanCondition(fe.Param())
+	case "required_with", "required_with_all":
+		return field + " is required when " + humanList(fe.Param()) + " is present"
+	case "required_without", "required_without_all":
+		return field + " is required when " + humanList(fe.Param()) + " is not present"
+	case "confirmed":
+		return field + " confirmation does not match"
+	case "prohibited":
+		return field + " is prohibited"
+	case "unique":
+		return field + " has already been taken"
+	case "exists":
+		return field + " is invalid"
 	case "email":
 		return field + " must be a valid email address"
 	case "min":
@@ -602,6 +622,7 @@ func (v *Validator) WithOverrides(messages, attributes map[string]string) *Valid
 		customMessages: mergedStrings(v.customMessages, messages),
 		attributeNames: mergedStrings(v.attributeNames, attributes),
 		translator:     v.translator,
+		database:       v.database,
 	}
 }
 
@@ -615,4 +636,19 @@ func mergedStrings(base, overrides map[string]string) map[string]string {
 		merged[key] = value
 	}
 	return merged
+}
+
+// humanCondition renders a required_if/required_unless param
+// ("Kind company") as "Kind is company".
+func humanCondition(param string) string {
+	parts := strings.Fields(param)
+	if len(parts) < 2 {
+		return param
+	}
+	return parts[0] + " is " + strings.Join(parts[1:], " or ")
+}
+
+// humanList renders a space-separated field list as "a, b".
+func humanList(param string) string {
+	return strings.Join(strings.Fields(param), ", ")
 }
