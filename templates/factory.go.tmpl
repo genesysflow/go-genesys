@@ -1,0 +1,30 @@
+package factories
+
+import (
+	"fmt"
+
+	"github.com/genesysflow/go-genesys/database"
+	"github.com/genesysflow/go-genesys/support/faker"
+)
+
+// fake generates values for the factory. Use faker.NewSeeded for
+// reproducible data in tests.
+var fake = faker.New()
+
+// {{.Name}} builds models for seeders and tests:
+//
+//	rows, err := factories.{{.Name}}.Create(10)
+//	one := factories.{{.Name}}.MakeOne(func(m *models.Model) { m.Name = "Ada" })
+var {{.Name}} = database.NewFactory(func(i int) *model {
+	return &model{
+		Name:  fmt.Sprintf("Name %d", i),
+		Email: fake.Email(),
+	}
+})
+
+// model is a placeholder: point the factory at your own model type.
+type model struct {
+	database.Model
+	Name  string `db:"name"`
+	Email string `db:"email"`
+}

@@ -36,6 +36,10 @@ func TestProviderRegistersCommands(t *testing.T) {
 		"cache:clear", "cache:forget", "storage:link", "config:show",
 		"migrate:refresh", "db:wipe", "db:show", "db:table",
 		"schedule:test", "event:list",
+		"make:mail", "make:notification", "make:factory", "make:resource",
+		"make:rule", "make:observer", "make:cast", "make:scope",
+		"make:channel", "make:exception", "make:enum", "make:test",
+		"make:view", "make:component",
 	} {
 		assert.True(t, registered[name], "command %q should be registered", name)
 	}

@@ -1,0 +1,17 @@
+package rules
+
+import (
+	"github.com/go-playground/validator/v10"
+)
+
+// {{.Name}} is a custom validation rule. Register it once at boot:
+//
+//	validator.RegisterValidation("{{.LowerName}}", rules.{{.Name}})
+//
+// then use it in a tag: `validate:"{{.LowerName}}"`.
+func {{.Name}}(fl validator.FieldLevel) bool {
+	value := fl.Field().String()
+
+	// Report false when the value is invalid.
+	return value != ""
+}

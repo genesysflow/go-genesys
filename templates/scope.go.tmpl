@@ -1,0 +1,12 @@
+package scopes
+
+import (
+	"github.com/genesysflow/go-genesys/database"
+)
+
+// {{.Name}} constrains a query. Apply it with:
+//
+//	users, err := database.Query[models.User]().Scope(scopes.{{.Name}}[models.User]).Get()
+func {{.Name}}[T any](q *database.ModelQuery[T]) {
+	// q.Where("active", true)
+}

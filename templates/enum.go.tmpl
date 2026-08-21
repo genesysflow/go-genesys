@@ -1,0 +1,24 @@
+package enums
+
+// {{.Name}} is a string enum stored as a column value.
+type {{.Name}} string
+
+// The values {{.Name}} may take.
+const (
+	{{.Name}}Unknown {{.Name}} = "unknown"
+)
+
+// Valid reports whether the value is one this enum defines.
+func (e {{.Name}}) Valid() bool {
+	switch e {
+	case {{.Name}}Unknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// String renders the enum value.
+func (e {{.Name}}) String() string {
+	return string(e)
+}

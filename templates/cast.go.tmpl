@@ -1,0 +1,14 @@
+package casts
+
+// {{.Name}} converts a column value to and from its stored form.
+//
+// Implement sql.Scanner and driver.Valuer on the type and use it as the
+// model's field type:
+//
+//	type Product struct {
+//	    database.Model
+//	    Price casts.{{.Name}} `db:"price"`
+//	}
+type {{.Name}} struct {
+	Value string
+}

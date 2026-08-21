@@ -1,0 +1,13 @@
+package resources
+
+// {{.Name}} shapes a model for a JSON response:
+//
+//	return ctx.Resource(resources.New{{.Name}}(user))
+type {{.Name}} struct {
+	ID int64 `json:"id"`
+}
+
+// New{{.Name}} maps the model onto the resource.
+func New{{.Name}}(id int64) {{.Name}} {
+	return {{.Name}}{ID: id}
+}
