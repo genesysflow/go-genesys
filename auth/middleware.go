@@ -23,6 +23,12 @@ func Middleware(guard Guard, options ...MiddlewareOptions) http.MiddlewareFunc {
 			return next()
 		}
 		if opts.RedirectTo != "" && !ctx.IsJSON() && !ctx.IsAjax() {
+			// Remember where they were headed, so the application can
+			// send them on after they sign in - ctx.Intended(...), which
+			// checks the destination rather than trusting it.
+			if ctx.Method() == "GET" {
+				ctx.SetIntendedURL(ctx.FiberCtx().OriginalURL())
+			}
 			return ctx.Redirect(opts.RedirectTo)
 		}
 		return errors.Unauthorized("Unauthenticated.")

@@ -137,3 +137,32 @@ func TestFormsWithoutACSRFTokenAreRefused(t *testing.T) {
 
 	dbtest.AssertDatabaseMissing(t, "posts", map[string]any{"title": "No token here"})
 }
+
+// A guest who tried to reach a page lands on it after signing in.
+func TestLoginReturnsToWhereTheGuestWasHeaded(t *testing.T) {
+	h := boot(t)
+	user := h.author(t)
+
+	h.visit(t, "/drafts/new").AssertRedirect("/login")
+	h.signIn(t, user)
+
+	// The redirect after login went to the guarded page, not the home
+	// page.
+	h.tc.Get("/drafts/new").AssertOK()
+}
+
+// The destination is not a place an attacker can choose. A session
+// carrying an off-site URL is ignored in favour of the fallback.
+func TestLoginWillNotFollowAnOffsiteDestination(t *testing.T) {
+	h := boot(t)
+	user := h.author(t)
+
+	// Reach the login form so a session exists, then plant the URL.
+	h.visit(t, "/login").AssertOK()
+	h.plantIntended(t, "https://evil.example.com/phish")
+
+	h.form(t, "/login", map[string]string{
+		"email":    user.Email,
+		"password": factories.Password,
+	}).AssertRedirect("/posts")
+}

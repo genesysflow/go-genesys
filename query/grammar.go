@@ -89,7 +89,11 @@ func (g *Grammar) CompileSelect(b *Builder) (string, []any) {
 	if len(b.columns) > 0 {
 		wrapped := make([]string, len(b.columns))
 		for i, c := range b.columns {
-			wrapped[i] = g.wrapColumnExpression(c)
+			if c.raw {
+				wrapped[i] = c.expr
+				continue
+			}
+			wrapped[i] = g.Wrap(c.expr)
 		}
 		columns = strings.Join(wrapped, ", ")
 	}
@@ -177,14 +181,6 @@ func (g *Grammar) CompileSelect(b *Builder) (string, []any) {
 	}
 
 	return strings.Join(sqlParts, " "), bindings
-}
-
-// wrapColumnExpression wraps a column unless it is a raw expression or contains a function call.
-func (g *Grammar) wrapColumnExpression(column string) string {
-	if strings.ContainsAny(column, "()") {
-		return column
-	}
-	return g.Wrap(column)
 }
 
 // compileWheres compiles a list of where clauses; offset is the number of

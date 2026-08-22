@@ -3,6 +3,7 @@ package routes
 import (
 	"crypto/sha256"
 	"path/filepath"
+	"strings"
 
 	"github.com/genesysflow/go-genesys/env"
 	"github.com/genesysflow/go-genesys/foundation"
@@ -16,11 +17,23 @@ func GlobalMiddleware(app *foundation.Application) []http.MiddlewareFunc {
 		middleware.RequestID(),
 		middleware.Logger(app.GetLogger()),
 		middleware.Recover(app.GetLogger()),
-		middleware.CORS(),
+
+		// The headers that cost nothing and close whole classes of
+		// attack: no MIME sniffing, no framing, no referrer leaking to
+		// other sites. HSTS is deliberately left off until the operator
+		// knows every subdomain is served over TLS.
+		middleware.Secure(),
+
 		middleware.Maintenance(middleware.MaintenanceConfig{
 			Path: filepath.Join(app.BasePath(), middleware.DefaultDownFilePath),
 		}),
 	}
+
+	// CORS belongs on the token API, which is meant to be called from
+	// elsewhere - not on the session-backed HTML site, where advertising
+	// every page as cross-origin readable buys nothing and gives away
+	// what a cookie protects.
+	stack = append(stack, apiCORS())
 
 	// Forms are protected; the token API is exempt because it
 	// authenticates with a bearer token rather than a cookie, and
@@ -34,6 +47,20 @@ func GlobalMiddleware(app *foundation.Application) []http.MiddlewareFunc {
 	}
 
 	return stack
+}
+
+// apiCORS answers cross-origin requests for the JSON API only. Every
+// other path is left without the headers, so a browser will not let
+// another site read it.
+func apiCORS() http.MiddlewareFunc {
+	cors := middleware.CORS()
+
+	return func(ctx *http.Context, next func() error) error {
+		if !strings.HasPrefix(ctx.Path(), "/api/") {
+			return next()
+		}
+		return cors(ctx, next)
+	}
 }
 
 // csrfSecret derives the CSRF signing key from the application key, so

@@ -217,18 +217,26 @@ func (m *Manager) loadLocked() error {
 		}
 		return template.HTML(out), nil // #nosec G203 -- component output is template-rendered
 	}
-	// slot renders a component's slot content as HTML.
+	// slot renders a component's slot content.
+	//
+	// A slot is usually filled from a handler, which means from user
+	// data, so a plain string is escaped like any other value. Markup
+	// says so by arriving as template.HTML - what `raw` produces, and
+	// what a nested component already returns.
 	funcs["slot"] = func(data map[string]any) template.HTML {
 		if data == nil {
 			return ""
 		}
-		if s, ok := data["slot"].(string); ok {
-			return template.HTML(s) // #nosec G203 -- explicit slot opt-in
+		switch content := data["slot"].(type) {
+		case template.HTML:
+			return content
+		case string:
+			return template.HTML(template.HTMLEscapeString(content)) // #nosec G203 -- escaped on the line above
+		case nil:
+			return ""
+		default:
+			return template.HTML(template.HTMLEscapeString(fmt.Sprint(content))) // #nosec G203 -- escaped on the line above
 		}
-		if h, ok := data["slot"].(template.HTML); ok {
-			return h
-		}
-		return ""
 	}
 
 	root := template.New("").Funcs(funcs)

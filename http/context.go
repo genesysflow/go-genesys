@@ -6,6 +6,7 @@ import (
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/validation"
 	"github.com/genesysflow/go-genesys/view"
 	"github.com/gofiber/fiber/v2"
@@ -88,9 +89,24 @@ func (c *Context) JSON(v any) error {
 	return c.request.JSON(v)
 }
 
-// Bind binds the request body to a struct (alias for JSON).
+// Bind binds the request body to a struct.
+//
+// A model's server-owned columns - its primary key and timestamps - are
+// cleared afterwards. Binding a request straight into a model is the
+// shortest path a handler can take, and it must not be the one that
+// lets a client choose which row it is writing.
+//
+// Prefer a form request (ValidateRequest) for anything a client sends:
+// it binds only the fields the request type declares, which is the same
+// protection for every other column.
 func (c *Context) Bind(v any) error {
-	return c.fiberCtx.BodyParser(v)
+	if err := c.fiberCtx.BodyParser(v); err != nil {
+		return err
+	}
+	if model, ok := v.(database.ServerOwned); ok {
+		model.ResetServerOwned()
+	}
+	return nil
 }
 
 // Validate validates the request data against the given rules.

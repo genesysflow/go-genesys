@@ -68,6 +68,49 @@ func (c *Context) Back(fallback ...string) *Redirector {
 	return r
 }
 
+// intendedSessionKey holds the URL a guest was trying to reach.
+const intendedSessionKey = "url.intended"
+
+// SetIntendedURL remembers where the visitor was headed, so they can be
+// sent on after signing in. The auth middleware records it before
+// sending a guest to the login page.
+//
+// Nothing is validated here: the value is checked when it is used, so a
+// stored URL cannot become trusted by sitting in the session.
+func (c *Context) SetIntendedURL(target string) {
+	session := c.Session()
+	if session == nil || target == "" {
+		return
+	}
+	_ = session.Set(intendedSessionKey, target)
+}
+
+// Intended redirects to where the visitor was headed before they were
+// asked to sign in, falling back to the given path - Laravel's
+// redirect()->intended().
+//
+// The stored destination came from the request, so it is honoured only
+// when it stays on this host: this is the redirect an application would
+// otherwise write as RedirectTo(ctx.Query("next")), which is an open
+// redirect. It is spent once, so a later login lands on the fallback.
+func (c *Context) Intended(fallback string) *Redirector {
+	if fallback == "" {
+		fallback = "/"
+	}
+
+	target := fallback
+	if session := c.Session(); session != nil {
+		if stored, ok := session.Get(intendedSessionKey).(string); ok && stored != "" {
+			if sameHostRedirect(stored, c.fiberCtx.Hostname()) {
+				target = stored
+			}
+		}
+		session.Forget(intendedSessionKey)
+	}
+
+	return &Redirector{ctx: c, target: target, status: 302}
+}
+
 // RedirectToRoute starts a redirect to a named route. Send reports an
 // error when no route carries that name.
 func (c *Context) RedirectToRoute(name string, params ...map[string]any) *Redirector {

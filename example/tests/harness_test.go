@@ -2,6 +2,7 @@ package tests
 
 import (
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,7 +48,11 @@ func boot(t *testing.T) *harness {
 	// Each test gets its own database. Shared-cache in-memory sqlite is
 	// still one database per DSN, so the name carries the test's name.
 	t.Setenv("DB_DATABASE", "file:"+t.Name()+"?mode=memory&cache=shared")
-	t.Setenv("APP_ENV", "testing")
+	// Not overridden when a test asked for another environment: the
+	// difference between environments is what some of them are testing.
+	if os.Getenv("APP_ENV") == "" {
+		t.Setenv("APP_ENV", "testing")
+	}
 
 	// Sessions in memory: a test should leave nothing behind on disk,
 	// and each test gets its own store with its own kernel.
@@ -118,6 +123,18 @@ func boot(t *testing.T) *harness {
 	})
 
 	return h
+}
+
+// bootProduction boots the application as it runs on a production box,
+// which is where the difference between "debug on" and "debug off"
+// stops being cosmetic.
+func bootProduction(t *testing.T) *harness {
+	t.Helper()
+
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("APP_DEBUG", "false")
+
+	return boot(t)
 }
 
 // appRoot returns the example application's directory, which is the
@@ -210,6 +227,21 @@ func (h *harness) work(t *testing.T) error {
 	t.Helper()
 
 	return queue.NewWorker(h.jobs).Drain()
+}
+
+// plantIntended stores a post-login destination in the session, the way
+// only this application can - the auth middleware records the path a
+// guest asked for, never a value from the query string. It exists so a
+// test can check what happens if one gets in anyway.
+func (h *harness) plantIntended(t *testing.T, target string) {
+	t.Helper()
+
+	h.kernel.GET("/_test/plant-intended", func(ctx *genhttp.Context) error {
+		ctx.SetIntendedURL(ctx.Query("to"))
+		return ctx.String("planted")
+	})
+
+	h.tc.Get("/_test/plant-intended?to=" + url.QueryEscape(target)).AssertOK()
 }
 
 // resetToken reads the token the reset mail carried, the way a reader

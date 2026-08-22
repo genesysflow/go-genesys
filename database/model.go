@@ -41,6 +41,24 @@ type originalHolder interface {
 func (m *Model) getOriginal() map[string]any       { return m.original }
 func (m *Model) setOriginal(values map[string]any) { m.original = values }
 
+// ServerOwned is implemented by *Model and promoted to every model that
+// embeds it. It marks the columns the database owns - the primary key
+// and the timestamps - which a request must never be able to choose.
+//
+// http.Bind resets them after binding, so filling a model straight from
+// a request body cannot hand a client someone else's row.
+type ServerOwned interface {
+	// ResetServerOwned clears the columns the server assigns.
+	ResetServerOwned()
+}
+
+// ResetServerOwned clears the id and timestamps.
+func (m *Model) ResetServerOwned() {
+	m.ID = 0
+	m.CreatedAt = time.Time{}
+	m.UpdatedAt = time.Time{}
+}
+
 // SoftDeletes adds a deleted_at column to a model, switching the ORM to
 // soft deletion: Delete marks the row instead of removing it, and queries
 // exclude trashed rows unless WithTrashed/OnlyTrashed is used.

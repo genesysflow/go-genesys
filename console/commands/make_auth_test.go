@@ -120,3 +120,23 @@ func TestMakeAuthScaffoldsAWorkingPasswordReset(t *testing.T) {
 	assert.NotContains(t, source, "TODO: store the hashed password")
 	assert.NotContains(t, source, "TODO: mail the reset link")
 }
+
+// An unthrottled login is a password guessed at machine speed. The
+// scaffolding rate-limits the endpoints that check a credential.
+func TestMakeAuthThrottlesTheCredentialEndpoints(t *testing.T) {
+	app := generatorApp(t)
+	_, err := runCommand(t, app, commands.MakeAuthCommand(app))
+	require.NoError(t, err)
+
+	routes, err := os.ReadFile(filepath.Join(app.BasePath(), "app", "http", "auth", "routes.go"))
+	require.NoError(t, err)
+	source := string(routes)
+
+	assert.Contains(t, source, "Throttle", "the login route should be rate-limited")
+
+	// The limiter guards the POSTs that check a credential, not the
+	// forms - a visitor reloading a page is not an attack.
+	for _, guarded := range []string{"c.Login", "c.SendResetLink", "c.ResetPassword"} {
+		assert.Contains(t, source, guarded)
+	}
+}

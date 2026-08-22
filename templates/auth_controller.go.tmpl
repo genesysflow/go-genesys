@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	genesysauth "github.com/genesysflow/go-genesys/auth"
+	"github.com/genesysflow/go-genesys/cache"
 	"github.com/genesysflow/go-genesys/hash"
 	"github.com/genesysflow/go-genesys/http"
 )
@@ -52,6 +53,12 @@ type Controller struct {
 
 	// Home is where a freshly authenticated user lands.
 	Home string
+
+	// Limiter backs the rate limit on the endpoints that check a
+	// credential. Leave it nil and a per-process store is used, which
+	// is better than nothing but resets on restart and does not hold
+	// across instances - pass the application's cache store instead.
+	Limiter cache.Store
 }
 
 // home returns the post-login destination.
@@ -95,7 +102,9 @@ func (c *Controller) Login(ctx *http.Context) error {
 		}
 	}
 
-	return ctx.RedirectTo(c.home()).Send()
+	// Back to whatever they were trying to reach, when that was
+	// somewhere on this site.
+	return ctx.Intended(c.home()).Send()
 }
 
 // Logout ends the session.

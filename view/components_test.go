@@ -34,8 +34,10 @@ func TestComponentSlots(t *testing.T) {
 	root := t.TempDir()
 	writeComponent(t, root, "card.html",
 		`<div class="card"><h2>{{.title}}</h2><div class="body">{{slot .}}</div></div>`)
+	// Markup in a slot is markup the template author wrote, so it says
+	// so with raw; a bare string is data and would be escaped.
 	writeView(t, root, "page.html",
-		`{{component "card" (dict "title" "Hello" "slot" "<p>Inner content</p>")}}`)
+		`{{component "card" (dict "title" "Hello" "slot" (raw "<p>Inner content</p>"))}}`)
 
 	m := view.NewManager(view.Config{Path: root})
 	out, err := m.RenderString("page", nil)

@@ -142,3 +142,48 @@ func TestResolveUserDoesNotReplaceAnExistingUser(t *testing.T) {
 	body, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, "already@example.com", string(body))
 }
+
+// A guest sent to the login page was trying to reach something. The
+// middleware records it so the application can send them on afterwards
+// - through Intended, which refuses a destination off this host.
+func TestMiddlewareRecordsWhereTheGuestWasHeaded(t *testing.T) {
+	kernel, _, _ := setupAuthApp(t)
+
+	guard := &alwaysGuestGuard{}
+	kernel.GET("/drafts/new", func(ctx *genhttp.Context) error {
+		return ctx.String("form")
+	}, auth.Middleware(guard, auth.MiddlewareOptions{RedirectTo: "/login"}))
+
+	kernel.GET("/after-login", func(ctx *genhttp.Context) error {
+		return ctx.Intended("/").Send()
+	})
+
+	tc := genhttp.NewTestCase(t, kernel).WithHeader("Accept", "text/html")
+	tc.Get("/drafts/new").AssertRedirect("/login")
+	tc.Get("/after-login").AssertRedirect("/drafts/new")
+}
+
+// A guest refused with a 401 (an API client) leaves nothing behind.
+func TestMiddlewareRecordsNothingWithoutARedirect(t *testing.T) {
+	kernel, _, _ := setupAuthApp(t)
+
+	guard := &alwaysGuestGuard{}
+	kernel.GET("/api/posts", func(ctx *genhttp.Context) error {
+		return ctx.String("posts")
+	}, auth.Middleware(guard))
+	kernel.GET("/after-login", func(ctx *genhttp.Context) error {
+		return ctx.Intended("/home").Send()
+	})
+
+	tc := genhttp.NewTestCase(t, kernel)
+	tc.Get("/api/posts").AssertUnauthorized()
+	tc.Get("/after-login").AssertRedirect("/home")
+}
+
+// alwaysGuestGuard refuses everyone, which is what a guest looks like to
+// the middleware.
+type alwaysGuestGuard struct{}
+
+func (g *alwaysGuestGuard) Check(ctx *genhttp.Context) bool                { return false }
+func (g *alwaysGuestGuard) User(ctx *genhttp.Context) auth.Authenticatable { return nil }
+func (g *alwaysGuestGuard) ID(ctx *genhttp.Context) any                    { return nil }
