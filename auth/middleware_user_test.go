@@ -88,3 +88,57 @@ type userlessGuard struct{}
 func (g *userlessGuard) Check(ctx *genhttp.Context) bool                { return true }
 func (g *userlessGuard) User(ctx *genhttp.Context) auth.Authenticatable { return nil }
 func (g *userlessGuard) ID(ctx *genhttp.Context) any                    { return nil }
+
+// A public page still needs to know who is reading it - to greet them,
+// to show an edit link, to let a policy see past a draft. ResolveUser
+// puts the user on the context without requiring one.
+func TestResolveUserMakesTheUserAvailableWithoutRequiringOne(t *testing.T) {
+	kernel, _, tokenGuard := setupAuthApp(t)
+
+	kernel.Use(auth.ResolveUser(tokenGuard))
+	kernel.GET("/public", func(ctx *genhttp.Context) error {
+		if user, ok := genhttp.UserAs[User](ctx); ok {
+			return ctx.String("hello " + user.Email)
+		}
+		return ctx.String("hello guest")
+	})
+
+	// Signed in.
+	req := httptest.NewRequest("GET", "/public", nil)
+	req.Header.Set("Authorization", "Bearer token-123")
+	resp, err := kernel.Fiber().Test(req, -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, "hello alice@example.com", string(body))
+
+	// A guest reaches the same page, rather than a 401.
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/public", nil), -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+	body, _ = io.ReadAll(resp.Body)
+	assert.Equal(t, "hello guest", string(body))
+}
+
+// A user another middleware already resolved is left alone.
+func TestResolveUserDoesNotReplaceAnExistingUser(t *testing.T) {
+	kernel, _, tokenGuard := setupAuthApp(t)
+
+	kernel.Use(func(ctx *genhttp.Context, next func() error) error {
+		ctx.SetUser(&User{Email: "already@example.com"})
+		return next()
+	})
+	kernel.Use(auth.ResolveUser(tokenGuard))
+	kernel.GET("/public", func(ctx *genhttp.Context) error {
+		user, _ := genhttp.UserAs[User](ctx)
+		return ctx.String(user.Email)
+	})
+
+	req := httptest.NewRequest("GET", "/public", nil)
+	req.Header.Set("Authorization", "Bearer token-123")
+	resp, err := kernel.Fiber().Test(req, -1)
+	require.NoError(t, err)
+
+	body, _ := io.ReadAll(resp.Body)
+	assert.Equal(t, "already@example.com", string(body))
+}

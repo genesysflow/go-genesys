@@ -162,3 +162,25 @@ func TestAssertionsFailLoudly(t *testing.T) {
 
 	assert.NotEmpty(t, spy.failures, "a leaked field should fail the assertion")
 }
+
+// Form values routinely contain spaces and punctuation - a post title,
+// an address - so they have to be encoded, not concatenated.
+func TestPostFormEncodesValues(t *testing.T) {
+	kernel := testKernel(t)
+
+	kernel.POST("/echo", func(ctx *genhttp.Context) error {
+		return ctx.JSONResponse(map[string]any{
+			"title": ctx.Input("title"),
+			"tags":  ctx.Input("tags"),
+		})
+	})
+
+	genhttp.NewTestCase(t, kernel).
+		PostForm("/echo", map[string]string{
+			"title": "Hello & goodbye, world",
+			"tags":  "go+web=fun",
+		}).
+		AssertOK().
+		AssertJsonPath("title", "Hello & goodbye, world").
+		AssertJsonPath("tags", "go+web=fun")
+}

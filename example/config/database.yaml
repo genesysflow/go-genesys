@@ -5,7 +5,8 @@ default: sqlite
 connections:
   sqlite:
     driver: sqlite
-    database: storage/database.sqlite
+    # Overridable so tests can run against an in-memory database.
+    database: ${DB_DATABASE:-storage/database.sqlite}
     prefix: ""
     foreign_key_constraints: true
 

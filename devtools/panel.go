@@ -17,22 +17,29 @@ import (
 // SQL, which is exactly what must not leave a production box. Guarding
 // it here means an application cannot enable it there by accident.
 func Register(kernel *http.Kernel, recorder *Recorder, path ...string) error {
+	return RegisterRoutes(kernel.Router(), recorder, path...)
+}
+
+// RegisterRoutes mounts the panel on a router, which is where an
+// application registers its routes. Register is the same thing for a
+// kernel.
+func RegisterRoutes(router *http.Router, recorder *Recorder, path ...string) error {
 	mountAt := "/_genesys"
 	if len(path) > 0 && path[0] != "" {
 		mountAt = path[0]
 	}
 
-	app := kernel.Router().App()
+	app := router.App()
 	if app != nil && app.IsProduction() {
 		return fmt.Errorf("devtools: the panel exposes request paths and SQL and will not be mounted in production")
 	}
 
 	recorder.setPanelPath(mountAt)
 
-	kernel.GET(mountAt, func(ctx *http.Context) error {
+	router.GET(mountAt, func(ctx *http.Context) error {
 		return ctx.HTML(recorder.render())
 	})
-	kernel.POST(mountAt+"/clear", func(ctx *http.Context) error {
+	router.POST(mountAt+"/clear", func(ctx *http.Context) error {
 		recorder.Clear()
 		return ctx.RedirectTo(mountAt).Send()
 	})

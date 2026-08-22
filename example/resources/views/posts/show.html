@@ -1,0 +1,30 @@
+<article>
+  <h1>{{.post.Title}}</h1>
+  {{if not .post.Published}}<p class="draft">Draft</p>{{end}}
+  <div class="body">{{.post.Body}}</div>
+
+  {{if .gate.Allows "update" .post}}
+    <a href="{{route "posts.edit" (dict "post" .post.Slug)}}">Edit</a>
+  {{end}}
+
+  {{if .gate.Allows "publish" .post}}
+    <form method="POST" action="/posts/{{.post.Slug}}/publish">
+      {{csrf_field .csrf_token}}
+      <button type="submit">Publish</button>
+    </form>
+  {{end}}
+</article>
+
+<section class="comments">
+  <h2>Comments</h2>
+  {{range .comments}}<p>{{.Body}}</p>{{end}}
+
+  {{if .user}}
+    <form method="POST" action="/posts/{{.post.Slug}}/comments">
+      {{csrf_field .csrf_token}}
+      <textarea name="body" required>{{.old.Get "body"}}</textarea>
+      {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+      <button type="submit">Reply</button>
+    </form>
+  {{end}}
+</section>

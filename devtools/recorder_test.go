@@ -205,3 +205,43 @@ func TestPanelDoesNotRecordItself(t *testing.T) {
 		assert.False(t, strings.HasPrefix(entry.Path, "/_genesys"), "the panel should not record itself")
 	}
 }
+
+// Routes are usually registered on a router, not the kernel, so the
+// panel mounts there too.
+func TestRegisterOnARouter(t *testing.T) {
+	app := foundation.New()
+	require.NoError(t, app.Boot())
+
+	fiberApp := genhttp.NewKernel(app, genhttp.KernelConfig{DisableStartupMessage: true})
+	router := fiberApp.Router()
+
+	recorder := devtools.NewRecorder(10)
+	router.Use(devtools.Middleware(recorder))
+	require.NoError(t, devtools.RegisterRoutes(router, recorder, "/_panel"))
+
+	router.GET("/users", func(ctx *genhttp.Context) error { return ctx.String("ok") })
+
+	_, err := fiberApp.Fiber().Test(httptest.NewRequest("GET", "/users", nil), -1)
+	require.NoError(t, err)
+
+	resp, err := fiberApp.Fiber().Test(httptest.NewRequest("GET", "/_panel", nil), -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	body := make([]byte, 8192)
+	n, _ := resp.Body.Read(body)
+	assert.Contains(t, string(body[:n]), "/users")
+}
+
+// Mounting on a router refuses in production for the same reason.
+func TestRegisterOnARouterRefusesInProduction(t *testing.T) {
+	t.Setenv("APP_ENV", "production")
+
+	app := foundation.New()
+	require.NoError(t, app.Boot())
+
+	kernel := genhttp.NewKernel(app, genhttp.KernelConfig{DisableStartupMessage: true})
+
+	err := devtools.RegisterRoutes(kernel.Router(), devtools.NewRecorder(10), "/_panel")
+	assert.Error(t, err)
+}

@@ -329,3 +329,73 @@ func TestFormRequestWithoutInterfacesUnchanged(t *testing.T) {
 	status, _ := postJSON(t, k, "/users", `{"name":"Alice","email":"alice@example.com"}`)
 	assert.Equal(t, 201, status)
 }
+
+// preparedSlugRequest fills in a value the form left blank, then names a
+// rule for it. Laravel's prepareForValidation merges into the input the
+// rules see, so a derived value is checked, not skipped.
+type preparedSlugRequest struct {
+	Title string `json:"title" form:"title" validate:"required"`
+	Slug  string `json:"slug" form:"slug"`
+}
+
+func (r *preparedSlugRequest) PrepareForValidation(ctx *genhttp.Context) error {
+	if r.Slug == "" {
+		r.Slug = strings.ToLower(strings.ReplaceAll(r.Title, " ", "-"))
+	}
+	return nil
+}
+
+func (r *preparedSlugRequest) Rules() map[string]string {
+	return map[string]string{"slug": "required,max=8"}
+}
+
+func TestRulesSeeValuesPrepareForValidationDerived(t *testing.T) {
+	kernel := interfaceKernel(t, func(k *genhttp.Kernel) {
+		k.POST("/prepared", func(ctx *genhttp.Context) error {
+			req, err := genhttp.ValidateRequest[preparedSlugRequest](ctx)
+			if err != nil {
+				return err
+			}
+			return ctx.JSONResponse(map[string]any{"slug": req.Slug})
+		})
+	})
+
+	// The derived slug is short enough.
+	status, payload := postJSON(t, kernel, "/prepared", `{"title":"Ada Bee"}`)
+	assert.Equal(t, 200, status)
+	assert.Equal(t, "ada-bee", payload["slug"])
+
+	// And too long a derived slug is caught, rather than slipping past
+	// because the form never sent the field.
+	status, payload = postJSON(t, kernel, "/prepared", `{"title":"A Much Longer Title"}`)
+	require.Equal(t, 422, status)
+	errs, _ := payload["errors"].(map[string]any)
+	assert.Contains(t, errs, "slug")
+}
+
+// Input the struct does not carry is still available to Rules(), so a
+// rule can name a field the form request does not bind.
+func TestRulesStillSeeUnboundInput(t *testing.T) {
+	kernel := interfaceKernel(t, func(k *genhttp.Kernel) {
+		k.POST("/unbound", func(ctx *genhttp.Context) error {
+			_, err := genhttp.ValidateRequest[unboundRulesRequest](ctx)
+			if err != nil {
+				return err
+			}
+			return ctx.String("ok")
+		})
+	})
+
+	status, payload := postJSON(t, kernel, "/unbound", `{"title":"Ada","captcha":"no"}`)
+	require.Equal(t, 422, status)
+	errs, _ := payload["errors"].(map[string]any)
+	assert.Contains(t, errs, "captcha")
+}
+
+type unboundRulesRequest struct {
+	Title string `json:"title" validate:"required"`
+}
+
+func (r *unboundRulesRequest) Rules() map[string]string {
+	return map[string]string{"captcha": "eq=yes"}
+}

@@ -71,6 +71,18 @@ func (v *Validator) ValidateMap(data map[string]any, rules map[string]string) *V
 			wildcards[k] = val
 			continue
 		}
+
+		// An attribute that was not submitted has no value to describe,
+		// so only the rules about presence itself apply to it. Without
+		// this the underlying library fails every rule on a missing key,
+		// reporting that a field nobody filled in is too long.
+		if _, present := data[k]; !present {
+			val = presenceRulesIn(val)
+			if val == "" {
+				continue
+			}
+		}
+
 		rulesAny[k] = val
 	}
 
@@ -651,4 +663,47 @@ func humanCondition(param string) string {
 // humanList renders a space-separated field list as "a, b".
 func humanList(param string) string {
 	return strings.Join(strings.Fields(param), ", ")
+}
+
+// presenceRules are the rules that describe whether an attribute is
+// there at all, rather than what it holds. They are the only ones that
+// mean anything for an attribute that was not submitted.
+var presenceRules = map[string]bool{
+	"required":               true,
+	"required_if":            true,
+	"required_unless":        true,
+	"required_with":          true,
+	"required_with_all":      true,
+	"required_without":       true,
+	"required_without_all":   true,
+	"excluded_if":            true,
+	"excluded_unless":        true,
+	"excluded_with":          true,
+	"excluded_with_all":      true,
+	"excluded_without":       true,
+	"excluded_without_all":   true,
+	"isdefault":              true,
+	"prohibited":             true,
+	"prohibited_if":          true,
+	"prohibited_unless":      true,
+	"prohibited_with":        true,
+	"prohibited_with_all":    true,
+	"prohibited_without":     true,
+	"prohibited_without_all": true,
+}
+
+// presenceRulesIn keeps only the presence rules from a rule string,
+// returning "" when none remain.
+func presenceRulesIn(rule string) string {
+	kept := make([]string, 0, 2)
+	for _, part := range strings.Split(rule, ",") {
+		name := part
+		if index := strings.IndexAny(name, "=:"); index >= 0 {
+			name = name[:index]
+		}
+		if presenceRules[strings.TrimSpace(name)] {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, ",")
 }

@@ -183,3 +183,36 @@ func TestCanAnyMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 }
+
+// A route addressed by something other than the primary key - a slug, a
+// uuid, an email - is authorized the same way.
+func TestCanByMiddlewareBindsOnAColumn(t *testing.T) {
+	kernel, _, _ := setupAuthApp(t)
+
+	gate := auth.NewGate()
+	require.NoError(t, auth.RegisterPolicy[User](gate, &UserPolicy{}))
+
+	actingAs := int64(1)
+	kernel.Use(func(ctx *genhttp.Context, next func() error) error {
+		ctx.SetUser(&User{Model: database.Model{ID: actingAs}})
+		return next()
+	})
+
+	kernel.GET("/users/:user/edit", func(ctx *genhttp.Context) error {
+		return ctx.String("edit")
+	}).Middleware(auth.CanBy[User](gate, "update", "user", "email"))
+
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users/alice@example.com/edit", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	actingAs = 2
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/alice@example.com/edit", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+
+	// An address nobody has is a 404, not a 403.
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/nobody@example.com/edit", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 404, resp.StatusCode)
+}

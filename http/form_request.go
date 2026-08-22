@@ -1,6 +1,8 @@
 package http
 
 import (
+	"encoding/json"
+
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/errors"
 	"github.com/genesysflow/go-genesys/validation"
@@ -100,10 +102,13 @@ func ValidateRequest[T any](ctx *Context) (*T, error) {
 	failures := validator.Validate(req).Messages()
 
 	// Rules() covers what tags cannot: rules that depend on the payload
-	// or on application state. They run against the raw input.
+	// or on application state. They run against the prepared request -
+	// the bound struct laid over the raw input - so a value
+	// PrepareForValidation derived is checked rather than skipped, and a
+	// rule may still name a field the struct does not bind.
 	if ruled, ok := any(req).(ProvidesRules); ok {
 		if rules := ruled.Rules(); len(rules) > 0 {
-			mergeFailures(&failures, validator.ValidateMap(ctx.All(), rules).Messages())
+			mergeFailures(&failures, validator.ValidateMap(preparedInput(ctx, req), rules).Messages())
 		}
 	}
 
@@ -139,6 +144,36 @@ func requestValidator(ctx *Context, req any) *validation.Validator {
 	}
 
 	return validator.WithOverrides(messages, attributes)
+}
+
+// preparedInput is what Rules() is checked against: the request's own
+// input, with the bound struct's fields laid over it.
+//
+// The struct wins because PrepareForValidation may have normalised or
+// derived a value, and that is the value the rules are about. Fields the
+// struct does not carry are kept, so a rule may name one the form
+// request does not bind.
+func preparedInput(ctx *Context, req any) map[string]any {
+	input := ctx.All()
+
+	encoded, err := json.Marshal(req)
+	if err != nil {
+		return input
+	}
+
+	var bound map[string]any
+	if err := json.Unmarshal(encoded, &bound); err != nil {
+		return input
+	}
+
+	prepared := make(map[string]any, len(input)+len(bound))
+	for key, value := range input {
+		prepared[key] = value
+	}
+	for key, value := range bound {
+		prepared[key] = value
+	}
+	return prepared
 }
 
 // mergeFailures folds extra messages into failures, allocating only when

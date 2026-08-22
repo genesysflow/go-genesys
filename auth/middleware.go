@@ -36,6 +36,30 @@ type MiddlewareOptions struct {
 	RedirectTo string
 }
 
+// ResolveUser puts the authenticated user on the context when there is
+// one, and lets the request through when there is not.
+//
+// It is Laravel's default posture, where the guard knows who you are on
+// every page rather than only on the guarded ones: a public page can
+// greet a reader by name, show an edit link, or let a policy see a draft
+// its author is entitled to. Register it globally, before the routes:
+//
+//	router.Use(auth.ResolveUser(guard))
+//
+// Guarding a route is still Middleware's job. A user another middleware
+// already resolved is left alone, so this composes with a test's acting
+// user or with a second guard.
+func ResolveUser(guard Guard) http.MiddlewareFunc {
+	return func(ctx *http.Context, next func() error) error {
+		if !ctx.HasUser() && guard.Check(ctx) {
+			if user := guard.User(ctx); user != nil {
+				ctx.SetUser(user)
+			}
+		}
+		return next()
+	}
+}
+
 // GuestMiddleware redirects authenticated users away (e.g. from login
 // pages) to the given path.
 func GuestMiddleware(guard Guard, redirectTo string) http.MiddlewareFunc {

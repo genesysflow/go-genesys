@@ -1,0 +1,19 @@
+<!-- Sign in -->
+<form method="POST" action="/login">
+  {{csrf_field .csrf_token}}
+
+  {{if .session}}{{with .session.GetString "status"}}<p class="status">{{.}}</p>{{end}}{{end}}
+
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" value="{{.old.Get "email"}}" required>
+  {{if .errors.Has "email"}}<span class="error">{{.errors.First "email"}}</span>{{end}}
+
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" required>
+  {{if .errors.Has "password"}}<span class="error">{{.errors.First "password"}}</span>{{end}}
+
+  <label><input name="remember" type="checkbox" value="1"> Remember me</label>
+
+  <button type="submit">Sign in</button>
+  <a href="/forgot-password">Forgot your password?</a>
+</form>

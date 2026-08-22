@@ -1,0 +1,15 @@
+<h1>Posts</h1>
+
+{{if not .posts}}<p class="empty">Nothing published yet.</p>{{end}}
+
+<ul class="posts">
+  {{range .posts}}
+    <li>
+      <a href="{{route "posts.show" (dict "post" .Slug)}}">{{.Title}}</a>
+      <span class="meta">{{.CommentsCount}} comments</span>
+      {{range .Tags}}<span class="tag">{{.Name}}</span>{{end}}
+    </li>
+  {{end}}
+</ul>
+
+<p class="pagination">Page {{.page}} of {{.total}} posts</p>

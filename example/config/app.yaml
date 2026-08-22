@@ -3,5 +3,9 @@ env: ${APP_ENV:-local}
 debug: ${APP_DEBUG:-true}
 url: ${APP_URL:-http://localhost:3000}
 
+# Signs encrypted values, signed URLs and CSRF tokens. Generate one with
+# `genesys key:generate`; without it CSRF protection stays off.
+key: ${APP_KEY}
+
 timezone: UTC
 

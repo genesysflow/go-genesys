@@ -52,6 +52,28 @@ func Can[T any](gate *Gate, ability, param string) http.MiddlewareFunc {
 	}
 }
 
+// CanBy is Can for a route addressed by a column other than the primary
+// key - a slug, a uuid, an email:
+//
+//	router.PUT("/posts/:post", UpdatePost).
+//	    Middleware(auth.CanBy[models.Post](gate, "update", "post", "slug"))
+//
+// The column is a schema name, not user input; the value from the route
+// is bound, never interpolated.
+func CanBy[T any](gate *Gate, ability, param, column string) http.MiddlewareFunc {
+	return func(ctx *http.Context, next func() error) error {
+		model, err := http.BindModelBy[T](ctx, param, column)
+		if err != nil {
+			return err
+		}
+
+		if !gate.Allows(UserFrom(ctx), ability, model) {
+			return errors.Forbidden("This action is unauthorized.")
+		}
+		return next()
+	}
+}
+
 // CanAny guards a route with an instance-less ability, such as "create"
 // or "view-any":
 //

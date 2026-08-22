@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{config "app.name"}}</title>
+  <link rel="stylesheet" href="{{asset "css/blog.css"}}">
+</head>
+<body>
+  <header>
+    <a href="{{route "posts.index"}}">{{config "app.name"}}</a>
+    {{if .user}}
+      <span>Signed in as {{.user.Name}}</span>
+      <form method="POST" action="/logout">{{csrf_field .csrf_token}}<button>Sign out</button></form>
+    {{else}}
+      <a href="/login">Sign in</a>
+    {{end}}
+  </header>
+
+  {{if .session}}{{with .session.GetString "status"}}<p class="status">{{.}}</p>{{end}}{{end}}
+  {{if .errors.Any}}<ul class="errors">{{range .errors.All}}<li>{{.}}</li>{{end}}</ul>{{end}}
+
+  <main>{{.content}}</main>
+</body>
+</html>
