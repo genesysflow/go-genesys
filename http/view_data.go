@@ -26,8 +26,15 @@ func (o OldInput) Get(key string, defaultValue ...string) string {
 }
 
 // Has reports whether any input was flashed for key.
+//
+// Asked of the session by key rather than by comparing against a
+// sentinel value: a flashed value that happened to equal the sentinel
+// would otherwise report absent.
 func (o OldInput) Has(key string) bool {
-	return o.Get(key, "\x00missing") != "\x00missing"
+	if o.sess == nil {
+		return false
+	}
+	return o.sess.HasOld(key)
 }
 
 // Any reports whether the previous request flashed any input at all.

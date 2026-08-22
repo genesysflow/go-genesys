@@ -33,10 +33,24 @@ func (p *{{.Name}}) Create(user auth.Authenticatable) bool {
 
 // Update answers "update".
 func (p *{{.Name}}) Update(user auth.Authenticatable, m *model) bool {
-	return user != nil && m.OwnerID == user.GetAuthIdentifier()
+	return owns(user, m)
 }
 
 // Delete answers "delete".
 func (p *{{.Name}}) Delete(user auth.Authenticatable, m *model) bool {
-	return user != nil && m.OwnerID == user.GetAuthIdentifier()
+	return owns(user, m)
+}
+
+// owns reports whether the user owns the model.
+//
+// The identifier is asserted rather than compared directly: an
+// identifier is an any, and `m.OwnerID == user.GetAuthIdentifier()`
+// compiles happily while being false forever if the two hold different
+// numeric types - a policy that denies everything with no error to find.
+func owns(user auth.Authenticatable, m *model) bool {
+	if user == nil {
+		return false
+	}
+	id, ok := user.GetAuthIdentifier().(int64)
+	return ok && m.OwnerID == id
 }

@@ -383,6 +383,20 @@ func (s *Session) Old(key string, defaultValue ...string) string {
 	return ""
 }
 
+// HasOld reports whether input was flashed for a specific key.
+//
+// Answered by key rather than by comparing the value against a sentinel,
+// so a flashed empty string is still input and no real value can be
+// mistaken for absence.
+func (s *Session) HasOld(key string) bool {
+	input, ok := s.Get("_old_input").(map[string]any)
+	if !ok {
+		return false
+	}
+	_, present := input[key]
+	return present
+}
+
 // HasOldInput reports whether any input was flashed on the previous request.
 func (s *Session) HasOldInput() bool {
 	_, ok := s.Get("_old_input").(map[string]any)

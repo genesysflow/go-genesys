@@ -30,9 +30,10 @@ func TestWorkerStopsOnRestartSignal(t *testing.T) {
 
 	require.NoError(t, driver.Push(&countingJob{Label: "one"}))
 
-	// The signal is checked between jobs, so a restart never interrupts
-	// work in flight. This one predates the worker, so it stops on the
-	// first check - before taking the queued job, not after draining it.
+	// The signal is issued after WatchRestart, so it applies to this
+	// worker. It is checked between jobs, so a restart never interrupts
+	// work in flight - and here it is seen on the very first check,
+	// before the queued job is taken rather than after the queue drains.
 	require.NoError(t, queue.SignalRestart(store))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

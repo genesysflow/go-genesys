@@ -113,6 +113,12 @@ Building it found seventeen defects. Everything below is one of them.
   a cookie there is no cross-site request to forge. An exempt path still
   gets a token issued, so a form rendered by one can post to a guarded
   path.
+- **Every `make:*` Go stub is compiled against the framework in a test.**
+  Only `make:auth` was, which is how a policy stub teaching a fragile
+  comparison and a resource stub whose own doc example did not match its
+  signature both survived.
+- **`Session.HasOld(key)`**, answering by key rather than by comparing a
+  value against a sentinel.
 - **`mail.SendDefault(mailable)`**: sends through the application's
   mailer, resolved when the message is sent rather than when the handler
   was wired - the same reason the notification manager needed
@@ -147,6 +153,15 @@ Building it found seventeen defects. Everything below is one of them.
   polymorphic column in the framework.
 - **`Attach`/`Detach`/`Sync` refused a `morphToMany` relation**, so a
   polymorphic pivot could be read but never written.
+- **`OldInput.Has` compared against a sentinel string**, so a flashed
+  value equal to that sentinel reported absent. It asks the session by
+  key now.
+- **The `make:policy` stub compared an `int64` id with the `any` an
+  identifier is.** That compiles, and is false forever when the two hold
+  different numeric types - a policy that denies everything with no
+  error to find. The stub asserts the identifier instead, and says why.
+- **The `make:resource` stub's doc example did not match its own
+  signature**, so the first thing a developer copied out of it failed.
 - **The scaffolded password reset did not reset the password.** The
   generated controller left the two things the flow exists for - mailing
   the link and storing the new password - as `TODO` comments, so a
