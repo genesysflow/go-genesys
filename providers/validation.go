@@ -47,8 +47,8 @@ func (p *ValidationServiceProvider) Register(app contracts.Application) error {
 		}
 
 		conn := manager.Connection()
-		if conn == nil {
-			return "", nil, fmt.Errorf("validation: no database connection for unique/exists rules")
+		if connErr := conn.Error(); connErr != nil {
+			return "", nil, fmt.Errorf("validation: no database connection for unique/exists rules: %w", connErr)
 		}
 
 		return conn.Driver(), conn, nil

@@ -20,6 +20,12 @@ import (
 type Request struct {
 	ctx   *fiber.Ctx
 	store sync.Map
+
+	// jsonDecoded caches the parsed JSON body. Input() reads one key at
+	// a time and All() reads every key, so without this a request with
+	// n fields unmarshals its body n times.
+	jsonDecoded map[string]any
+	jsonParsed  bool
 }
 
 // NewRequest creates a new Request wrapper.
@@ -199,6 +205,13 @@ func (r *Request) Input(key string, defaultValue ...string) string {
 // other content type, an empty body, or a body that is not an object (a
 // bare array or scalar is a payload, not named input).
 func (r *Request) jsonBody() map[string]any {
+	// Parsed once per request. A nil result is cached too, so a body
+	// that is not a JSON object is not re-parsed on every lookup.
+	if r.jsonParsed {
+		return r.jsonDecoded
+	}
+	r.jsonParsed = true
+
 	if !r.IsJSON() {
 		return nil
 	}
@@ -212,6 +225,8 @@ func (r *Request) jsonBody() map[string]any {
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		return nil
 	}
+
+	r.jsonDecoded = decoded
 	return decoded
 }
 

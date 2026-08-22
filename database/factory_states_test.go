@@ -84,3 +84,44 @@ func TestFactoryOverridesBeatStates(t *testing.T) {
 	user := factory.MakeOne(func(u *User) { u.Age = 99 })
 	assert.Equal(t, 99, user.Age)
 }
+
+// A sequence cycles across everything the factory makes, not within one
+// call. Indexing by the per-call loop counter means CreateOne() always
+// applies the first state, which is exactly the case a sequence is most
+// useful for: alternating rows as a test creates them one at a time.
+func TestSequenceCyclesAcrossCalls(t *testing.T) {
+	factory := database.NewFactory(func(i int) *sequenced {
+		return &sequenced{Label: "base"}
+	}).Sequence(
+		func(s *sequenced) { s.Label = "first" },
+		func(s *sequenced) { s.Label = "second" },
+	)
+
+	// One at a time is the common case.
+	assert.Equal(t, "first", factory.MakeOne().Label)
+	assert.Equal(t, "second", factory.MakeOne().Label)
+	assert.Equal(t, "first", factory.MakeOne().Label, "the sequence should wrap")
+	assert.Equal(t, "second", factory.MakeOne().Label)
+}
+
+// A batch keeps cycling from where the factory left off rather than
+// restarting.
+func TestSequenceContinuesIntoABatch(t *testing.T) {
+	factory := database.NewFactory(func(i int) *sequenced {
+		return &sequenced{Label: "base"}
+	}).Sequence(
+		func(s *sequenced) { s.Label = "a" },
+		func(s *sequenced) { s.Label = "b" },
+	)
+
+	assert.Equal(t, "a", factory.MakeOne().Label)
+
+	batch := factory.Make(3)
+	assert.Equal(t, []string{"b", "a", "b"},
+		[]string{batch[0].Label, batch[1].Label, batch[2].Label})
+}
+
+type sequenced struct {
+	database.Model
+	Label string `db:"label"`
+}

@@ -179,8 +179,8 @@ func passwordBroker(app contracts.Application) (*genesysauth.PasswordBroker, err
 	}
 
 	connection := manager.Connection()
-	if connection == nil {
-		return nil, errNoConnection
+	if err := connection.Error(); err != nil {
+		return nil, fmt.Errorf("%w: %w", errNoConnection, err)
 	}
 
 	return genesysauth.NewPasswordBroker(connection.Driver(), connection, ""), nil

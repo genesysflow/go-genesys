@@ -120,8 +120,8 @@ func DbShowCommand(app contracts.Application) *cli.Command {
 
 			name := manager.GetDefaultConnection()
 			conn := manager.Connection()
-			if conn == nil {
-				return fmt.Errorf("db:show: no connection available")
+			if connErr := conn.Error(); connErr != nil {
+				return fmt.Errorf("db:show: %w", connErr)
 			}
 			driver := conn.Driver()
 
@@ -186,8 +186,8 @@ func resolveConnection(app contracts.Application) (contracts.Connection, string,
 	}
 
 	conn := manager.Connection()
-	if conn == nil {
-		return nil, "", fmt.Errorf("no database connection available")
+	if connErr := conn.Error(); connErr != nil {
+		return nil, "", fmt.Errorf("the database connection could not be opened: %w", connErr)
 	}
 	return conn, conn.Driver(), nil
 }

@@ -80,7 +80,11 @@ func (f *Factory[T]) Make(count int, overrides ...func(*T)) []*T {
 			state(model)
 		}
 		if len(f.sequences) > 0 {
-			f.sequences[i%len(f.sequences)](model)
+			// Indexed on the factory's own counter, not the loop's: a
+			// sequence cycles across everything the factory makes, so
+			// calling MakeOne twice gives the first state then the
+			// second rather than the first twice.
+			f.sequences[(f.sequence-1)%len(f.sequences)](model)
 		}
 		for _, override := range overrides {
 			override(model)

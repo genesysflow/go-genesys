@@ -30,8 +30,9 @@ func TestWorkerStopsOnRestartSignal(t *testing.T) {
 
 	require.NoError(t, driver.Push(&countingJob{Label: "one"}))
 
-	// A restart issued before the worker starts stops it once the queue
-	// drains, rather than mid-job.
+	// The signal is checked between jobs, so a restart never interrupts
+	// work in flight. This one predates the worker, so it stops on the
+	// first check - before taking the queued job, not after draining it.
 	require.NoError(t, queue.SignalRestart(store))
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -40,6 +41,12 @@ func TestWorkerStopsOnRestartSignal(t *testing.T) {
 	err := worker.Run(ctx)
 	require.ErrorIs(t, err, queue.ErrRestartRequested)
 	assert.NotErrorIs(t, err, context.DeadlineExceeded, "the worker should stop on the signal, not the deadline")
+
+	// The job it did not take is still queued, so a deploy replaces
+	// workers without dropping work.
+	size, err := driver.Size("")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), size, "a restart must not lose a queued job")
 }
 
 // A worker started after the signal was issued must not stop: the

@@ -121,8 +121,8 @@ func builderFor(table string, columns map[string]any) (*query.Builder, error) {
 	}
 
 	conn := manager.Connection()
-	if conn == nil {
-		return nil, fmt.Errorf("no database connection is available")
+	if err := conn.Error(); err != nil {
+		return nil, fmt.Errorf("the database connection could not be opened: %w", err)
 	}
 
 	builder := query.New(conn.Driver(), conn).Table(table)

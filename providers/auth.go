@@ -79,7 +79,10 @@ func (p *AuthServiceProvider) Boot(app contracts.Application) error {
 	}
 
 	conn := manager.Connection()
-	if conn == nil {
+	if conn.Error() != nil {
+		// No usable database, so no token repository. That is not an
+		// error for an application that authenticates with sessions
+		// only; anything resolving the repository will say so.
 		return nil
 	}
 
