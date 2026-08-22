@@ -97,3 +97,26 @@ func TestMakeAuthGeneratesCompilingCode(t *testing.T) {
 	output, err := build.CombinedOutput()
 	assert.NoError(t, err, "the scaffolded auth code should compile:\n%s", output)
 }
+
+// The password reset flow has to be able to do the two things it exists
+// for: mail the link, and store the new password. A scaffold that leaves
+// both as TODOs generates a flow that reports success and changes
+// nothing.
+func TestMakeAuthScaffoldsAWorkingPasswordReset(t *testing.T) {
+	app := generatorApp(t)
+	_, err := runCommand(t, app, commands.MakeAuthCommand(app))
+	require.NoError(t, err)
+
+	controller, err := os.ReadFile(filepath.Join(app.BasePath(), "app", "http", "auth", "controller.go"))
+	require.NoError(t, err)
+	source := string(controller)
+
+	// Hooks the application fills in, the way Create is filled in for
+	// registration.
+	assert.Contains(t, source, "SendLink func(")
+	assert.Contains(t, source, "UpdatePassword func(")
+
+	// And no TODO standing in for the work.
+	assert.NotContains(t, source, "TODO: store the hashed password")
+	assert.NotContains(t, source, "TODO: mail the reset link")
+}

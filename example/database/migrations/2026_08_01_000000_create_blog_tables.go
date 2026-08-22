@@ -89,11 +89,12 @@ func (m *CreateBlogTables) Up(builder *schema.Builder) error {
 		return err
 	}
 
+	// One live reset token per address, which is what the broker's
+	// delete-then-insert assumes.
 	if err := builder.Create("password_reset_tokens", func(table *schema.Blueprint) {
-		table.String("email", 255)
+		table.String("email", 255).Unique()
 		table.String("token", 64)
 		table.Timestamp("created_at").Nullable()
-		table.Index("email")
 	}); err != nil {
 		return err
 	}

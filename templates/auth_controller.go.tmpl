@@ -18,6 +18,11 @@ import (
 //	        user := &models.User{Email: email, Password: hashed}
 //	        return user, database.Create(user)
 //	    },
+//	    UpdatePassword: func(user genesysauth.Authenticatable, hashed string) error {
+//	        account := user.(*models.User)
+//	        account.Password = hashed
+//	        return database.Update(account)
+//	    },
 //	}
 //	controller.Routes(router)
 type Controller struct {
@@ -34,6 +39,16 @@ type Controller struct {
 	// Passwords issues and consumes password-reset tokens. Leave it nil
 	// to disable the reset flow.
 	Passwords *genesysauth.PasswordBroker
+
+	// SendLink delivers a reset link. The framework does not know what
+	// your reset page looks like or how you send mail, so the token
+	// comes back here to be put in a message.
+	SendLink func(email, token string) error
+
+	// UpdatePassword stores a reset password on your user model, which
+	// the framework does not know how to write. It runs inside the token
+	// consumption, so a failure here leaves the token unspent.
+	UpdatePassword func(user genesysauth.Authenticatable, hashedPassword string) error
 
 	// Home is where a freshly authenticated user lands.
 	Home string
@@ -138,8 +153,7 @@ func (c *Controller) ShowForgotPassword(ctx *http.Context) error {
 	return ctx.View("auth.forgot_password")
 }
 
-// SendResetLink issues a reset token. Wire up the mail yourself: the
-// token is what goes into the link.
+// SendResetLink issues a reset token and hands it to SendLink.
 func (c *Controller) SendResetLink(ctx *http.Context) error {
 	req, err := http.ValidateRequest[ForgotPasswordRequest](ctx)
 	if err != nil {
@@ -150,11 +164,12 @@ func (c *Controller) SendResetLink(ctx *http.Context) error {
 	}
 
 	// The token is issued whether or not the address is registered, and
-	// the answer is the same either way: a different response would
-	// disclose who has an account here.
-	if _, err := c.Passwords.CreateToken(req.Email); err != nil {
-		// TODO: mail the reset link to req.Email.
-		_ = err
+	// the answer is the same either way: a different response - or a
+	// different response time - would disclose who has an account here.
+	// A failure to send is logged by the sender, not reported here, for
+	// the same reason.
+	if token, err := c.Passwords.CreateToken(req.Email); err == nil && c.SendLink != nil {
+		_ = c.SendLink(req.Email, token)
 	}
 
 	return ctx.Back("/forgot-password").
@@ -180,14 +195,24 @@ func (c *Controller) ResetPassword(ctx *http.Context) error {
 		return fmt.Errorf("auth: set Controller.Passwords to enable password resets")
 	}
 
+	if c.UpdatePassword == nil {
+		return fmt.Errorf("auth: set Controller.UpdatePassword to store reset passwords")
+	}
+
+	// The write happens inside Consume, so a token is spent only when
+	// the password it was issued for was actually changed.
 	err = c.Passwords.Consume(req.Email, req.Token, func() error {
+		user, err := c.Users.RetrieveByCredentials(map[string]any{"email": req.Email})
+		if err != nil || user == nil {
+			return fmt.Errorf("auth: no user for %s", req.Email)
+		}
+
 		hashed, err := hash.Make(req.Password)
 		if err != nil {
 			return err
 		}
-		// TODO: store the hashed password on your user model.
-		_ = hashed
-		return nil
+
+		return c.UpdatePassword(user, hashed)
 	})
 	if err != nil {
 		return ctx.Back("/reset-password").

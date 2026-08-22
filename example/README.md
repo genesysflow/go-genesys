@@ -69,8 +69,14 @@ everything, so no policy has to know about the role.
 
 **Authentication** — the scaffolding `make:auth` generates, in
 `app/http/auth`, wired to this application's user model in
-`routes/blog.go`. Sessions for the site; personal access tokens for the
-API, issued from `/api-tokens` and checked with `RequireAbility`.
+`routes/blog.go`: registration greets the new author, and the password
+reset mails a link and writes the new password. Sessions for the site;
+personal access tokens for the API, issued from `/api-tokens` and
+checked with `RequireAbility`.
+
+**Mailables** — `app/mail/welcome.go`: the welcome greeting and the
+password-reset link, sent as objects rather than messages assembled by
+hand.
 
 **Queues, mail and notifications** — publishing dispatches an event; the
 listener pushes `app/jobs/publish_post.go` onto the queue; the job
@@ -86,7 +92,8 @@ when several run the schedule; the digest is queued rather than run.
 
 **Views** — `resources/views`. Pages render inside
 `layouts/blog.html`, configured as the default layout in
-`config/view.yaml`.
+`config/view.yaml`; a tag renders through the `components/tag.html`
+component, so its markup lives in one place.
 
 **Factories and seeders** — `database/factories` builds models for both
 the seeders and the tests, with states (`Editors`, `Published`) for the
@@ -110,6 +117,7 @@ does not have.
 | File                 | What it covers                                        |
 |----------------------|-------------------------------------------------------|
 | `auth_test.go`       | registration, login, logout, guests, CSRF             |
+| `password_reset_test.go` | the reset link, the token, the new password       |
 | `posts_test.go`      | CRUD, validation redirects, slug uniqueness, policies |
 | `api_test.go`        | tokens, abilities, JSON errors, hidden fields         |
 | `queue_test.go`      | the publish job, its mail and database notifications  |

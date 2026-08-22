@@ -151,6 +151,29 @@ err = broker.Consume(email, token, func() error {
 }) // token survives when the callback fails; deleted on success
 ```
 
+`make:auth` scaffolds the whole flow. The framework does not know your
+user model or how you send mail, so two hooks on the generated
+controller do the parts that are yours - the same way `Create` handles
+registration:
+
+```go
+controller := &auth.Controller{
+    // ...
+    Passwords: broker,
+    SendLink: func(email, token string) error {
+        return mail.SendDefault(&appmail.ResetLink{Email: email, URL: resetURL(email, token)})
+    },
+    UpdatePassword: func(user genesysauth.Authenticatable, hashed string) error {
+        account := user.(*models.User)
+        account.Password = hashed
+        return database.Update(account)
+    },
+}
+```
+
+`UpdatePassword` runs inside `Consume`, so a token is spent only when
+the password it was issued for was actually changed.
+
 ## Email Verification
 
 Temporary signed links bind a user id to a hash of their email:

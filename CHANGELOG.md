@@ -10,9 +10,9 @@ All notable changes to Go-Genesys are documented here. The format follows
 The framework had grown a lot of Laravel-shaped surface with no
 application exercising it end to end. `example/` is now a small blog -
 authentication, policies, form requests, morph relations, a queued job,
-a token API, a console command and scheduled tasks - with fifty feature
-tests driving it through its real routes, middleware and database.
-Building it found fifteen defects. Everything below is one of them.
+a token API, a console command and scheduled tasks - with fifty-seven
+feature tests driving it through its real routes, middleware and database.
+Building it found seventeen defects. Everything below is one of them.
 
 - **View layouts**: `view.Manager.SetLayout` (and `view.layout` in
   configuration) wraps every rendered page in a layout, which receives
@@ -51,6 +51,10 @@ Building it found fifteen defects. Everything below is one of them.
   a cookie there is no cross-site request to forge. An exempt path still
   gets a token issued, so a form rendered by one can post to a guarded
   path.
+- **`mail.SendDefault(mailable)`**: sends through the application's
+  mailer, resolved when the message is sent rather than when the handler
+  was wired - the same reason the notification manager needed
+  `SetMailer`.
 - **`devtools.RegisterRoutes(router, recorder, path)`**: mounts the panel
   on a router, which is where applications register routes. It refuses in
   production for the same reason `Register` does.
@@ -81,6 +85,13 @@ Building it found fifteen defects. Everything below is one of them.
   polymorphic column in the framework.
 - **`Attach`/`Detach`/`Sync` refused a `morphToMany` relation**, so a
   polymorphic pivot could be read but never written.
+- **The scaffolded password reset did not reset the password.** The
+  generated controller left the two things the flow exists for - mailing
+  the link and storing the new password - as `TODO` comments, so a
+  reset reported success and changed nothing. `Controller.SendLink` and
+  `Controller.UpdatePassword` are now hooks the application fills in,
+  like `Create` for registration, and `UpdatePassword` runs inside
+  `Consume` so a token is spent only when the password really changed.
 
 ### Added - round 6: console, authorization, and the surrounding tooling
 

@@ -2,6 +2,9 @@ package routes
 
 import (
 	"errors"
+	"fmt"
+	"net/url"
+	"strings"
 
 	genesysauth "github.com/genesysflow/go-genesys/auth"
 	"github.com/genesysflow/go-genesys/container"
@@ -10,8 +13,10 @@ import (
 	"github.com/genesysflow/go-genesys/events"
 	appauth "github.com/genesysflow/go-genesys/example/app/http/auth"
 	"github.com/genesysflow/go-genesys/example/app/http/blog"
+	appmail "github.com/genesysflow/go-genesys/example/app/mail"
 	"github.com/genesysflow/go-genesys/example/app/models"
 	"github.com/genesysflow/go-genesys/http"
+	"github.com/genesysflow/go-genesys/mail"
 	"github.com/genesysflow/go-genesys/queue"
 )
 
@@ -19,6 +24,11 @@ import (
 // the token-authenticated JSON API.
 func Blog(app contracts.Application, r *http.Router) error {
 	guard, gate, tokens, err := authServices(app)
+	if err != nil {
+		return err
+	}
+
+	passwords, err := passwordBroker(app)
 	if err != nil {
 		return err
 	}
@@ -33,9 +43,11 @@ func Blog(app contracts.Application, r *http.Router) error {
 
 	// Authentication: the scaffolded controller, wired to this
 	// application's user model.
+	users := genesysauth.NewORMUserProvider[models.User]()
+
 	authController := &appauth.Controller{
 		Guard: guard,
-		Users: genesysauth.NewORMUserProvider[models.User](),
+		Users: users,
 		Home:  "/posts",
 		Create: func(email, hashedPassword string) (genesysauth.Authenticatable, error) {
 			user := &models.User{
@@ -45,7 +57,32 @@ func Blog(app contracts.Application, r *http.Router) error {
 				Birthdate: "1970-01-01",
 				Role:      "author",
 			}
-			return user, database.Create(user)
+			if err := database.Create(user); err != nil {
+				return nil, err
+			}
+
+			// A greeting, sent as a mailable rather than assembled here.
+			// A failure to greet is not a failure to register.
+			_ = mail.SendDefault(&appmail.Welcome{Name: user.Name, Email: user.Email})
+
+			return user, nil
+		},
+		Passwords: passwords,
+		SendLink: func(email, token string) error {
+			return mail.SendDefault(&appmail.ResetLink{
+				Email: email,
+				URL: fmt.Sprintf("%s/reset-password?token=%s&email=%s",
+					strings.TrimRight(app.GetConfig().GetString("app.url"), "/"),
+					url.QueryEscape(token), url.QueryEscape(email)),
+			})
+		},
+		UpdatePassword: func(user genesysauth.Authenticatable, hashedPassword string) error {
+			account, ok := user.(*models.User)
+			if !ok {
+				return errNotOurUser
+			}
+			account.Password = hashedPassword
+			return database.Update(account)
 		},
 	}
 	authController.Routes(r)
@@ -133,5 +170,28 @@ func authServices(app contracts.Application) (genesysauth.StatefulGuard, *genesy
 	return stateful, gate, tokens, nil
 }
 
+// passwordBroker builds the reset-token broker over the application's
+// database connection.
+func passwordBroker(app contracts.Application) (*genesysauth.PasswordBroker, error) {
+	manager, err := container.Resolve[*database.Manager](app)
+	if err != nil {
+		return nil, err
+	}
+
+	connection := manager.Connection()
+	if connection == nil {
+		return nil, errNoConnection
+	}
+
+	return genesysauth.NewPasswordBroker(connection.Driver(), connection, ""), nil
+}
+
 // errNotStateful is returned when the web guard cannot log users in.
 var errNotStateful = errors.New("routes: the web guard cannot log users in")
+
+// errNoConnection is returned when the database is not configured.
+var errNoConnection = errors.New("routes: no database connection for password resets")
+
+// errNotOurUser is returned when a reset lands on a user this
+// application did not create.
+var errNotOurUser = errors.New("routes: the reset user is not a models.User")

@@ -1,7 +1,9 @@
 package tests
 
 import (
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/genesysflow/go-genesys/auth"
@@ -208,6 +210,24 @@ func (h *harness) work(t *testing.T) error {
 	t.Helper()
 
 	return queue.NewWorker(h.jobs).Drain()
+}
+
+// resetToken reads the token the reset mail carried, the way a reader
+// would by following the link.
+func (h *harness) resetToken(t *testing.T) string {
+	t.Helper()
+
+	sent := h.mailer.Sent()
+	require.NotEmpty(t, sent, "no reset mail was sent")
+
+	body := sent[len(sent)-1].GetHTML()
+	_, after, found := strings.Cut(body, "token=")
+	require.True(t, found, "the reset mail carries no token: %s", body)
+
+	raw, _, _ := strings.Cut(after, "&")
+	token, err := url.QueryUnescape(raw)
+	require.NoError(t, err)
+	return token
 }
 
 // token mints a personal access token for a user, the way the site's

@@ -161,3 +161,41 @@ func TestMailableAttachments(t *testing.T) {
 	assert.Contains(t, string(raw), "invoice.pdf")
 	assert.Contains(t, string(raw), "application/pdf")
 }
+
+// A handler that sends a mailable usually has no mailer to hand, and
+// capturing one when the route was wired is what stops a test's array
+// mailer from ever seeing the message.
+func TestSendDefaultUsesTheMailerAtSendTime(t *testing.T) {
+	original := mail.NewArrayMailer(mail.Config{FromAddress: "hello@example.com"})
+	mail.SetDefaultMailer(original)
+	t.Cleanup(func() { mail.SetDefaultMailer(nil) })
+
+	replacement := mail.NewArrayMailer(mail.Config{FromAddress: "hello@example.com"})
+	mail.SetDefaultMailer(replacement)
+
+	require.NoError(t, mail.SendDefault(&welcomeMailable{To: "ada@example.com"}))
+
+	replacement.AssertSentTo(t, "ada@example.com")
+	assert.Empty(t, original.Sent())
+}
+
+// With no mailer installed, sending says so rather than dropping the
+// message.
+func TestSendDefaultWithoutAMailer(t *testing.T) {
+	mail.SetDefaultMailer(nil)
+
+	err := mail.SendDefault(&welcomeMailable{To: "ada@example.com"})
+	assert.Error(t, err)
+}
+
+type welcomeMailable struct {
+	To string
+}
+
+func (m *welcomeMailable) Envelope() mail.Envelope {
+	return mail.Envelope{From: "hello@example.com", To: []string{m.To}, Subject: "Welcome"}
+}
+
+func (m *welcomeMailable) Content() mail.Content {
+	return mail.Content{Text: "Welcome aboard."}
+}

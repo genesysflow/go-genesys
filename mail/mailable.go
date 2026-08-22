@@ -131,6 +131,21 @@ func SendWith(mailer Mailer, renderer Renderer, mailable Mailable) error {
 	return mailer.Send(message)
 }
 
+// SendDefault builds and sends a mailable through the application's
+// default mailer, resolved when the message is sent rather than when the
+// handler was wired.
+//
+// That is what a handler usually wants: it has a mailable and no mailer
+// to hand, and capturing one at wiring time is what stops a test's array
+// mailer from ever seeing the message.
+func SendDefault(mailable Mailable) error {
+	mailer := DefaultMailer()
+	if mailer == nil {
+		return fmt.Errorf("mail: no default mailer installed - register the MailServiceProvider")
+	}
+	return Send(mailer, mailable)
+}
+
 // Pending addresses a mailable at send time, Laravel's
 // `Mail::to($user)->send(...)`: the handler knows the recipient even
 // when the mailable does not.

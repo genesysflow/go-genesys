@@ -7,7 +7,7 @@
     <li>
       <a href="{{route "posts.show" (dict "post" .Slug)}}">{{.Title}}</a>
       <span class="meta">{{.CommentsCount}} comments</span>
-      {{range .Tags}}<span class="tag">{{.Name}}</span>{{end}}
+      {{range .Tags}}{{component "tag" (dict "name" .Name "slug" .Slug)}}{{end}}
     </li>
   {{end}}
 </ul>

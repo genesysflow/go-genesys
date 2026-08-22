@@ -167,3 +167,19 @@ func TestSerializingAPost(t *testing.T) {
 	assert.NotContains(t, rendered, "deleted_at")
 	assert.Contains(t, rendered, "excerpt")
 }
+
+// Tags render through a view component, so the markup for one lives in
+// one place.
+func TestTagsRenderThroughTheComponent(t *testing.T) {
+	h := boot(t)
+	post := h.published(t, h.author(t))
+
+	tag, err := factories.Tags.CreateOne(func(tag *models.Tag) {
+		tag.Name, tag.Slug = "Go", "go"
+	})
+	require.NoError(t, err)
+	require.NoError(t, database.Attach(post, "Tags", tag.ID))
+
+	body := h.visit(t, "/posts").AssertOK().BodyString()
+	assert.Contains(t, body, `<span class="tag tag-go">Go</span>`)
+}
