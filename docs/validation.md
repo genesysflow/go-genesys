@@ -96,6 +96,8 @@ func (r *StorePostRequest) Authorize(ctx *http.Context) bool {
 }
 
 // 3. Rules that tags cannot express, because they depend on the payload.
+//    They run against the prepared request, so the slug derived above is
+//    checked rather than skipped.
 func (r *StorePostRequest) Rules() map[string]string {
     if r.Kind == "company" {
         return map[string]string{"vat": "required"}
@@ -150,6 +152,26 @@ stop. Table and column names must be plain identifiers.
 
 `unique` doubles as go-playground's slice-distinctness rule; a param that
 is not `table.column` keeps that meaning (`validate:"unique"`).
+
+## Attributes that were not submitted
+
+A rule describes a value, so an attribute the request did not carry has
+nothing for `max`, `email` or `unique` to describe, and those rules are
+skipped for it - as they are in Laravel. Rules about presence itself
+(`required`, `required_if`, `prohibited`, ...) still apply, which is how
+a missing field is caught:
+
+```go
+v.ValidateMap(map[string]any{}, map[string]string{
+    "slug":  "max=140",          // skipped: no slug was submitted
+    "email": "required,email",   // fails on required, not on email
+})
+```
+
+Map validation checks one attribute at a time and has no view of its
+siblings, so a conditional presence rule cannot read the field it names;
+it fails closed rather than passing silently. Cross-field checks belong
+in `AfterValidation`.
 
 ## Other Laravel rules
 

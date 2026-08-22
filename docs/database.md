@@ -282,6 +282,15 @@ database.Sync(post, "Tags", tagGo, tagRust)   // make the pivot exactly this set
 database.Toggle(post, "Tags", tagGo)          // attach if missing, detach if present
 ```
 
+They work on a `morphToMany` relation too, where the pivot also carries
+the parent's type, so one tag table can label posts today and videos
+tomorrow. Writes are scoped by that type: detaching a tag from a post
+leaves another model's use of it alone.
+
+`database.TableNameOf(value)` returns the table a value's model maps to,
+where `TableNameFor[T]` needs a type - which is what a polymorphic column
+has when all it holds is an interface.
+
 Children are created through their relation, foreign key filled in:
 
 ```go

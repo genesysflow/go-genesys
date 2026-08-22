@@ -17,9 +17,23 @@ The database driver needs a table (`session.CreateSessionsTable` in a
 migration) and resolves its connection lazily after the database provider
 boots.
 
+`files` is relative to the application root, not to the directory the
+binary was started from.
+
 ## Middleware
 
+The kernel installs the session middleware from the registered manager,
+so registering the provider is all that is needed:
+
 ```go
+app.Register(&providers.SessionServiceProvider{})
+```
+
+An application that places the middleware itself - a different store per
+route group, say - turns the automatic one off:
+
+```go
+kernel := http.NewKernel(app, http.KernelConfig{DisableSession: true})
 kernel.UseFiber(sessionManager.Middleware())
 ```
 

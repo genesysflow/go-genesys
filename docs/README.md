@@ -2,6 +2,11 @@
 
 Laravel-style docs, one topic per file.
 
+For how the pieces fit together, read [the example
+application](../example/README.md): a small blog that uses every feature
+documented here, with feature tests driving it through its real routes,
+middleware and database.
+
 ## Getting Started
 - [Getting Started](getting-started.md) — installation, lifecycle, container, providers
 

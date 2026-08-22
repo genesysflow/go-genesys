@@ -11,8 +11,12 @@ app.Register(&providers.ViewServiceProvider{})
 ```yaml
 # config/view.yaml
 path: resources/views
-reload: true   # re-parse on every render; defaults to true outside production
+reload: true            # re-parse on every render; defaults to true outside production
+layout: layouts.app     # wraps every rendered page; omit for no layout
 ```
+
+`path` is relative to the application root, not to the directory the
+binary was started from.
 
 ## Naming and rendering
 
@@ -37,19 +41,52 @@ func Index(ctx *http.Context) error {
 html, err := view.Render("emails.welcome", data)
 ```
 
-## Layouts and partials
+## Layouts
 
-Compose templates with the standard `{{template}}` action:
+A layout is an ordinary view that renders the page through `{{.content}}`.
+Set it once and every page is wrapped in it - Laravel's `@extends`,
+without a directive in every file.
 
 ```html
-<!-- users/index.html -->
-{{template "layouts.app" .}}
-
 <!-- layouts/app.html -->
 <html>
   {{template "partials.nav" .}}
   <main>{{.content}}</main>
 </html>
+
+<!-- users/index.html: just the page -->
+<h1>Users</h1>
+<ul>{{range .users}}<li>{{.Name}}</li>{{end}}</ul>
+```
+
+```yaml
+# config/view.yaml
+layout: layouts.app
+```
+
+The page is rendered first and passed to the layout as already-rendered
+HTML, so its markup is not escaped on the way in. The layout receives the
+page's data too, so `{{.title}}` works in both.
+
+A page can name a different layout, or opt out of one entirely - a
+fragment answering an ajax request has no business carrying the site's
+chrome:
+
+```go
+ctx.ViewIn("layouts.print", "invoices.show", data)  // a different layout
+ctx.ViewIn("", "partials.row", data)                // no layout
+```
+
+Rendering a layout by name renders it directly rather than wrapping it in
+itself.
+
+## Partials
+
+Include one template from another with the standard `{{template}}`
+action:
+
+```html
+{{template "partials.nav" .}}
 ```
 
 ## Shared data and helpers

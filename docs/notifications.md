@@ -130,6 +130,19 @@ than one that fails loudly.
 
 ## Testing
 
+A manager built at boot holds the mailer that existed then, so a test
+that swaps in an array mailer points the manager at it too - otherwise
+what a notification sends never lands in the array:
+
+```go
+mailer := mail.NewArrayMailer(mail.Config{FromAddress: "hello@example.com"})
+mail.SetDefaultMailer(mailer)
+container.MustResolve[*notifications.Manager](app).SetMailer(mailer)
+```
+
+A manager built without a mailer falls back to the application's default
+one rather than refusing to send.
+
 ```go
 fake := notifications.NewFake()
 

@@ -71,7 +71,10 @@ func main() {
 }
 ```
 
-See [`example/`](example/) for a complete application and [`docs/`](docs/) for per-topic guides.
+See [`example/`](example/README.md) for a complete application - a small
+blog with authentication, policies, form requests, a queued job, a token
+API and fifty feature tests driving it - and [`docs/`](docs/) for
+per-topic guides.
 
 ## Database
 

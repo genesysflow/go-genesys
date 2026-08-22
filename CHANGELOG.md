@@ -5,6 +5,83 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Added - round 7: an example application, and what it exposed
+
+The framework had grown a lot of Laravel-shaped surface with no
+application exercising it end to end. `example/` is now a small blog -
+authentication, policies, form requests, morph relations, a queued job,
+a token API, a console command and scheduled tasks - with fifty feature
+tests driving it through its real routes, middleware and database.
+Building it found fifteen defects. Everything below is one of them.
+
+- **View layouts**: `view.Manager.SetLayout` (and `view.layout` in
+  configuration) wraps every rendered page in a layout, which receives
+  the page as `{{.content}}`. `ctx.ViewIn(layout, name, data)` picks a
+  different one, and an empty layout opts out - a fragment has no
+  business carrying the site's chrome. Composition was `{{template}}`
+  includes before this, which cannot wrap a page in anything.
+- **The kernel installs the session middleware** from the registered
+  session manager. Every application had to remember
+  `kernel.UseFiber(manager.Middleware())` itself, which is how a login
+  flow ends up working under test and failing in the browser.
+  `KernelConfig.DisableSession` turns it off for an application that
+  places the middleware itself.
+- **`auth.ResolveUser(guard)`**: the user a public page still needs to
+  know about - to greet a reader, show an edit link, or let a policy see
+  a draft its author is entitled to - without requiring one. Guarding a
+  route is still `auth.Middleware`'s job.
+- **`auth.CanBy[T](gate, ability, param, column)`**: the `can` middleware
+  for a route addressed by a slug, uuid or email rather than by its
+  primary key.
+- **`ctx.CreatedResource(data)`**: a 201 with the same `data` envelope
+  `ctx.Resource` uses, so a client reads `data.*` whether it just wrote
+  the record or fetched it.
+- **`database.TableNameOf(value)`**: the table a value's model maps to,
+  where `TableNameFor[T]` needs a type - which is what a polymorphic
+  column has when all it holds is an interface.
+- **`Manager.SetMailer`** on the notification manager, and a fallback to
+  the application's default mailer when it was built without one. A
+  manager built at boot held the mailer that existed then, so swapping in
+  an array mailer for a test never reached the mail channel.
+- **`console.Option.TakesValue`**: an option that takes a value but has
+  no sensible default. Without it `--since 2020-01-01` parsed the date as
+  a positional argument, because an empty default meant "boolean flag".
+- **`middleware.CSRFConfig.Except`**: paths exempt from verification, for
+  an endpoint authenticated by bearer token rather than cookie - without
+  a cookie there is no cross-site request to forge. An exempt path still
+  gets a token issued, so a form rendered by one can post to a guarded
+  path.
+- **`devtools.RegisterRoutes(router, recorder, path)`**: mounts the panel
+  on a router, which is where applications register routes. It refuses in
+  production for the same reason `Register` does.
+
+### Fixed - round 7
+
+- **A validation rule was applied to an attribute that was not
+  submitted.** `ValidateMap` failed every rule on a key absent from the
+  data, so `unique=posts.slug` reported "has already been taken" for a
+  field nobody filled in. Rules about a value are now skipped for an
+  absent attribute, as they are in Laravel; rules about presence still
+  apply.
+- **Form-request `Rules()` ran against the raw input**, so a value
+  `PrepareForValidation` derived - a slug from a title - was never
+  checked. They now run against the prepared request, with input the
+  struct does not bind still visible to them.
+- **Configured paths were resolved against the working directory**
+  rather than the application root, so `resources/views` only worked when
+  the binary ran from that directory. Views, translations, session files
+  and the log file now all resolve against the base path; an absolute
+  path is left alone.
+- **`TestRequest.WithForm` concatenated fields instead of encoding
+  them**, truncating any value containing a space, an ampersand or a plus
+  sign - which is most form values worth testing.
+- **A token's `tokenable_type` held a Go type string**, package path and
+  all, so moving the model to another package would orphan every token
+  ever issued. It now holds the model's table name, like every other
+  polymorphic column in the framework.
+- **`Attach`/`Detach`/`Sync` refused a `morphToMany` relation**, so a
+  polymorphic pivot could be read but never written.
+
 ### Added - round 6: console, authorization, and the surrounding tooling
 
 - **Console command base**: `console.Command` declares arguments and

@@ -35,6 +35,24 @@ Unauthorized/Forbidden/NotFound/Unprocessable`, `AssertRedirect`,
 subset), `AssertJsonPath` (dot paths with array indices),
 `AssertJsonCount`, and `AssertValidationError`. All are chainable.
 
+`tc.PostForm` sends a form body, encoding keys and values, so a field
+carrying a space or an ampersand arrives as it was written.
+
+A browser states what it accepts, and the framework reads that to decide
+between an HTML redirect and a JSON error body. A test driving an HTML
+site has to say the same thing, or it exercises the API's behaviour by
+accident:
+
+```go
+tc := http.NewTestCase(t, kernel).WithHeader("Accept", "text/html")
+```
+
+The most useful HTTP test boots the real application - every provider,
+the real routes, the real middleware - against a throwaway database,
+rather than assembling a kernel of its own. A test that wires the
+application up itself can pass on wiring the application does not have.
+`example/tests/harness_test.go` is a worked example.
+
 ## Queue fakes
 
 `queue.NewFake` records dispatches without running jobs:

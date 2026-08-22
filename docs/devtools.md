@@ -21,6 +21,17 @@ if err := devtools.Register(kernel, recorder, "/_genesys"); err != nil {
 }
 ```
 
+Applications usually register routes on a router rather than the kernel;
+`RegisterRoutes` mounts the panel there and refuses in production for the
+same reason:
+
+```go
+func Devtools(r *http.Router) {
+    r.Use(devtools.Middleware(recorder))
+    _ = devtools.RegisterRoutes(r, recorder, "/_genesys")
+}
+```
+
 Then open `/_genesys`.
 
 ## What it records

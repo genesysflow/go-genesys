@@ -119,6 +119,7 @@ var Import = &console.Command{
     Options: []console.Option{
         {Name: "dry-run", Description: "Parse without writing"},
         {Name: "chunk", Description: "Rows per batch", Default: "500"},
+        {Name: "since", Description: "Only rows after this date", TakesValue: true},
     },
     Handle: func(c *console.Context) error {
         if !c.Confirm("Import "+c.Argument("file")+"?", true) {
@@ -141,6 +142,11 @@ var Import = &console.Command{
 
 kernel.AddCommand(Import.Cobra(app))
 ```
+
+An option with a `Default` takes a value; one without is a boolean
+switch, read with `c.BoolOption`. An option that takes a value but has no
+sensible default says so with `TakesValue`, otherwise `--since 2020-01-01`
+would parse the date as a positional argument.
 
 Output helpers: `Line`, `Linef`, `Info`, `Comment`, `Warn`, `Error`,
 `NewLine`, `Table`, `WithProgressBar`. Prompts: `Ask`, `Secret`,

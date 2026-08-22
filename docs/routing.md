@@ -72,6 +72,21 @@ router.GET("/users/:user", func(ctx *http.Context) error {
 post, err := http.BindModelBy[models.Post](ctx, "slug", "slug")
 ```
 
+## JSON responses
+
+```go
+ctx.Resource(user)                    // {"data": {...}}
+ctx.ResourceWith(users, meta)         // {"data": [...], "meta": {...}}
+ctx.Paginated(page)                   // splits a paginator into data and meta
+ctx.CreatedResource(user)             // 201 with the same data envelope
+ctx.Created(payload)                  // 201, unwrapped
+```
+
+`CreatedResource` is the one to reach for after writing a record, so a
+client reads `data.*` whether it just created the resource or fetched it.
+`Created` sends the body as-is, for a payload that is not a resource -
+the plaintext of a freshly issued token, say.
+
 ## Resource controllers
 
 ```go
