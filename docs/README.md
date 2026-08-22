@@ -21,6 +21,7 @@ middleware and database.
 - [Database](database.md) — query builder, ORM, migrations, seeders, factories
 
 ## Security
+- [Security](security.md) — what is handled for you, the escape hatches, the settings that decide
 - [Authentication & Authorization](auth.md) — guards, gates, policies, API tokens
 - [Encryption & Signed URLs](encryption.md)
 

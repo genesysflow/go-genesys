@@ -89,6 +89,17 @@ action:
 {{template "partials.nav" .}}
 ```
 
+A slot is data unless it says otherwise: a plain string is escaped, and
+markup declares itself with `raw`.
+
+```html
+{{component "card" (dict "slot" .userComment)}}          <!-- escaped -->
+{{component "card" (dict "slot" (raw "<p>markup</p>"))}} <!-- rendered -->
+```
+
+That matters because a slot is usually filled from a handler, and a
+handler's data is a request's data.
+
 ## Shared data and helpers
 
 ```go

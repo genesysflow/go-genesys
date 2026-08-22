@@ -5,6 +5,57 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Security - round 8: an adversarial pass over the framework
+
+Most of what was probed held: operators are allowlisted, identifiers are
+quoted, `Back` refuses to leave the host, tokens are hashed and compared
+in constant time, templates escape by default, CORS panics on the
+wildcard-plus-credentials combination, and the dev panel refuses to
+mount in production. Six things did not.
+
+- **`Select` emitted client SQL.** A column containing parentheses was
+  passed through as an expression, so a query built from a client-chosen
+  field list could smuggle in a subquery. `Select`/`AddSelect` now quote
+  every column as the identifier it is; **`SelectRaw` is the explicit
+  door for an expression**, and the aggregates use it. A caller passing
+  `COUNT(*)` to `Select` must move it to `SelectRaw`.
+- **A component slot rendered a plain string as raw HTML**, which is
+  stored XSS behind an invisible opt-in: a slot is usually filled from a
+  handler, and a handler's data is a request's data. A string is now
+  escaped; markup says so by arriving as `template.HTML`, which is what
+  `raw` produces. A template passing literal markup to a slot needs
+  `(raw "...")`.
+- **`ctx.Bind` filled a model's primary key and timestamps from the
+  request** - enough to write over another row. Those columns are
+  cleared after binding, through the new `database.ServerOwned`.
+- **The scaffolded login was unthrottled.** `make:auth` now rate-limits
+  the endpoints that check a credential, keyed by address as well as IP
+  so one attacker cannot lock every account out and one office NAT is
+  not one bucket. `Controller.Limiter` takes the shared cache store.
+- **There was no safe way to honour a "next" URL**, so applications
+  write `RedirectTo(ctx.Query("next"))` and ship an open redirect.
+  **`ctx.Intended(fallback)`** is Laravel's answer: the auth middleware
+  records where a guest was headed, and Intended honours it only when it
+  stays on this host.
+- **`APP_DEBUG` could not be turned on.** The flag was read from the
+  environment before configuration existed, so `debug: true` in
+  `config/app.yaml` did nothing and the debug error page was
+  unreachable. Configuration now wins where it says something, with the
+  environment variable as the fallback and off as the default.
+
+The session provider warns when a production application hands out a
+cookie that is not Secure. The example gains the security headers it was
+not sending, scopes CORS to the JSON API rather than the session-backed
+HTML site, and defaults both `session.secure` and `app.debug` to the
+safe value so a deployment that forgets to say is not the one that
+leaks.
+
+Forty security tests cover all of it, and the classes that already held:
+IDOR across every write route, mass assignment through both the form and
+the JSON API, session fixation on login and logout, cookie flags,
+account enumeration, token forgery, traversal, and what an error page
+and a 403 are allowed to say.
+
 ### Added - round 7: an example application, and what it exposed
 
 The framework had grown a lot of Laravel-shaped surface with no

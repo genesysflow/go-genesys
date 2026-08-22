@@ -151,6 +151,15 @@ err = broker.Consume(email, token, func() error {
 }) // token survives when the callback fails; deleted on success
 ```
 
+The scaffolded login is rate-limited, keyed by address as well as IP so
+one attacker cannot lock every account out and one office NAT is not one
+bucket. Pass the application's cache store so the limit survives a
+restart and holds across instances:
+
+```go
+controller := &auth.Controller{Guard: guard, Limiter: cacheStore}
+```
+
 `make:auth` scaffolds the whole flow. The framework does not know your
 user model or how you send mail, so two hooks on the generated
 controller do the parts that are yours - the same way `Create` handles

@@ -287,6 +287,18 @@ the parent's type, so one tag table can label posts today and videos
 tomorrow. Writes are scoped by that type: detaching a tag from a post
 leaves another model's use of it alone.
 
+Columns are quoted as identifiers wherever they are named - `Select`,
+`Where`, `OrderBy`, `GroupBy` - so a client-chosen field list cannot
+become SQL. An expression is explicit:
+
+```go
+builder.Select("customer_id").SelectRaw("SUM(total) AS revenue")
+```
+
+`SelectRaw`, `WhereRaw`, `HavingRaw` and `OrderByRaw` take SQL, not data.
+Never build one from client input; pass values through `Where`, which
+binds them.
+
 `database.TableNameOf(value)` returns the table a value's model maps to,
 where `TableNameFor[T]` needs a type - which is what a polymorphic column
 has when all it holds is an interface.

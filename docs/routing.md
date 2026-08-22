@@ -87,6 +87,20 @@ client reads `data.*` whether it just created the resource or fetched it.
 `Created` sends the body as-is, for a payload that is not a resource -
 the plaintext of a freshly issued token, say.
 
+## Redirects that came from the request
+
+`RedirectTo` names a target you chose, so an external one is fine. A
+target the request supplied is not:
+
+```go
+ctx.Intended("/dashboard")   // where a guest was headed, if it is on this host
+ctx.Back("/posts")           // the Referer, if it is on this host
+```
+
+The auth middleware records the destination when it sends a guest to the
+login page, so `Intended` is what a login handler returns. Writing
+`ctx.RedirectTo(ctx.Query("next"))` instead is an open redirect.
+
 ## Resource controllers
 
 ```go

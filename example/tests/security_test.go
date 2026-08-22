@@ -462,3 +462,25 @@ func TestTheAPIAllowsCrossOriginCallers(t *testing.T) {
 	response.AssertOK()
 	assert.NotEmpty(t, response.Header("Access-Control-Allow-Origin"))
 }
+
+// On a production box the session cookie must not travel over plain
+// http: anyone on the network path could read it and replay it as the
+// account. Local development turns this off in .env, which is the one
+// place it is safe to.
+func TestTheSessionCookieIsSecureInProduction(t *testing.T) {
+	h := bootProduction(t)
+
+	cookie := h.tc.Get("/posts").AssertOK().Cookie("genesys_session")
+	require.NotNil(t, cookie)
+	assert.True(t, cookie.Secure, "a production session cookie must be Secure")
+	assert.True(t, cookie.HttpOnly)
+}
+
+// The CSRF cookie travels the same way.
+func TestTheCSRFCookieIsSecureInProduction(t *testing.T) {
+	h := bootProduction(t)
+
+	cookie := h.tc.Get("/posts").AssertOK().Cookie("genesys_csrf")
+	require.NotNil(t, cookie)
+	assert.True(t, cookie.Secure)
+}

@@ -75,15 +75,13 @@ func New(basePath ...string) *Application {
 	app.loadEnvironment()
 	app.loadConfig()
 
-	// Set environment from ENV variable.
-	//
-	// APP_DEBUG defaults to false. Debug mode puts the underlying error and a
-	// full Go stack trace in the HTTP response body, so defaulting it on would
-	// mean any deployment that merely forgot to set the variable leaks
-	// internals — SQL text, filesystem paths, dependency versions — to every
-	// client that can trigger a 500. Opt in to debug; never opt out of it.
+	// Debug mode puts the underlying error and a full Go stack trace in
+	// the HTTP response body, so it defaults to off: a deployment that
+	// merely forgot to say would otherwise leak internals — SQL text,
+	// filesystem paths, dependency versions — to every client that can
+	// trigger a 500. Opt in to debug; never opt out of it.
 	app.environment = env.Get("APP_ENV", "local")
-	app.debug = env.GetBool("APP_DEBUG", false)
+	app.debug = resolveDebug(app.config)
 
 	return app
 }
@@ -177,6 +175,19 @@ func (app *Application) IsProduction() bool {
 // IsLocal checks if the app is running locally.
 func (app *Application) IsLocal() bool {
 	return app.environment == "local"
+}
+
+// resolveDebug decides whether debug mode is on.
+//
+// Configuration wins where it says something, so turning debug off in
+// config/app.yaml actually turns it off rather than being overridden by
+// a stale environment variable; the variable is the fallback for a
+// deployment with no config file to edit. Neither set is off.
+func resolveDebug(cfg *config.Config) bool {
+	if cfg != nil && cfg.Has("app.debug") {
+		return cfg.GetBool("app.debug")
+	}
+	return env.GetBool("APP_DEBUG", false)
 }
 
 // IsDebug checks if debug mode is enabled.

@@ -11,7 +11,8 @@ path: /
 same_site: Lax
 http_only: true
 
-# A secure cookie is not sent over plain http, so local development
-# would never see a session. Turn it on wherever the site is served over
-# https, which is everywhere that is not a developer's machine.
-secure: ${SESSION_SECURE:-false}
+# A session cookie sent over plain http is readable by anyone on the
+# network path and replayable as a full account takeover, so this
+# defaults on. Local development over http:// turns it off in .env,
+# which is the one place it is safe to.
+secure: ${SESSION_SECURE:-true}

@@ -24,6 +24,12 @@ CREATE TABLE "comments" (
 
 CREATE INDEX "comments_post_id_index" ON "comments" ("post_id");
 
+CREATE TABLE "create_user_table" (
+  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
+  "created_at" TIMESTAMP,
+  "updated_at" TIMESTAMP
+);
+
 CREATE TABLE "failed_jobs" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "queue" VARCHAR(255) NOT NULL,
@@ -58,12 +64,10 @@ CREATE TABLE "notifications" (
 CREATE INDEX "notifications_notifiable_id_index" ON "notifications" ("notifiable_id");
 
 CREATE TABLE "password_reset_tokens" (
-  "email" VARCHAR(255) NOT NULL,
+  "email" VARCHAR(255) NOT NULL UNIQUE,
   "token" VARCHAR(64) NOT NULL,
   "created_at" TIMESTAMP
 );
-
-CREATE INDEX "password_reset_tokens_email_index" ON "password_reset_tokens" ("email");
 
 CREATE TABLE "personal_access_tokens" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,

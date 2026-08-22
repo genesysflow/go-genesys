@@ -10,6 +10,7 @@ import (
 	"github.com/samber/do/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockProvider is a mock service provider
@@ -162,4 +163,50 @@ func TestResolve_WithApplication(t *testing.T) {
 	val, err := container.Resolve[string](app)
 	assert.NoError(t, err)
 	assert.Equal(t, "hello", val)
+}
+
+// Debug mode puts the underlying error and a stack trace in the
+// response, so it is opt-in - but the opt-in has to work, or the debug
+// page is unreachable and developers read stack traces out of logs.
+func TestDebugComesFromConfiguration(t *testing.T) {
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "config"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(base, "config", "app.yaml"), []byte("debug: true\n"), 0o600))
+
+	app := New(base)
+	assert.True(t, app.IsDebug(), "config/app.yaml should be able to turn debug on")
+}
+
+// The environment variable still works, for a deployment that has no
+// config file to edit.
+func TestDebugComesFromTheEnvironment(t *testing.T) {
+	t.Setenv("APP_DEBUG", "true")
+
+	assert.True(t, New(t.TempDir()).IsDebug())
+}
+
+// Neither set is off. A deployment that merely forgot to say must not
+// leak SQL text and filesystem paths to every client that can trigger a
+// 500.
+func TestDebugIsOffByDefault(t *testing.T) {
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "config"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(base, "config", "app.yaml"), []byte("name: Test\n"), 0o600))
+
+	assert.False(t, New(base).IsDebug())
+}
+
+// An explicit false in configuration wins over a stale environment
+// variable: turning debug off must actually turn it off.
+func TestDebugConfiguredOffWins(t *testing.T) {
+	t.Setenv("APP_DEBUG", "true")
+
+	base := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(base, "config"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(base, "config", "app.yaml"), []byte("debug: false\n"), 0o600))
+
+	assert.False(t, New(base).IsDebug())
 }

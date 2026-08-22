@@ -134,6 +134,11 @@ func bootProduction(t *testing.T) *harness {
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("APP_DEBUG", "false")
 
+	// A deployment does not carry the developer's .env, so the config
+	// defaults are what actually apply there - which is the point of
+	// checking them.
+	t.Setenv("SESSION_SECURE", "")
+
 	return boot(t)
 }
 
