@@ -187,3 +187,48 @@ func TestViewDoesNotMutateCallerData(t *testing.T) {
 }
 
 type viewUser struct{ Email string }
+
+// A page renders inside the application's layout, and a partial can opt
+// out of it - an ajax fragment has no business carrying the site chrome.
+func TestContextViewUsesTheLayout(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "layouts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "layouts", "app.html"),
+		[]byte(`<html><main>{{.content}}</main></html>`), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "page.html"),
+		[]byte(`<p>{{.name}}</p>`), 0o600))
+
+	app := foundation.New()
+	require.NoError(t, app.Register(&providers.ViewServiceProvider{
+		Config: &view.Config{Path: root, Layout: "layouts.app"},
+	}))
+	require.NoError(t, app.Boot())
+
+	kernel := genhttp.NewKernel(app, genhttp.KernelConfig{DisableStartupMessage: true})
+	kernel.GET("/page", func(ctx *genhttp.Context) error {
+		return ctx.View("page", map[string]any{"name": "Ada"})
+	})
+	kernel.GET("/fragment", func(ctx *genhttp.Context) error {
+		return ctx.ViewIn("", "page", map[string]any{"name": "Ada"})
+	})
+
+	body := getBody(t, kernel, "/page")
+	assert.Contains(t, body, "<html>")
+	assert.Contains(t, body, "<p>Ada</p>")
+
+	fragment := getBody(t, kernel, "/fragment")
+	assert.Equal(t, "<p>Ada</p>", strings.TrimSpace(fragment))
+}
+
+// getBody performs a GET and returns the response body.
+func getBody(t *testing.T, kernel *genhttp.Kernel, path string) string {
+	t.Helper()
+
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), -1)
+	require.NoError(t, err)
+	require.Equal(t, 200, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return string(body)
+}

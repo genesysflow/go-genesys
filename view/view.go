@@ -26,6 +26,11 @@ type Config struct {
 	// Reload re-parses templates on every render; enable in development
 	// so edits show up without restarting.
 	Reload bool `yaml:"reload" json:"reload"`
+
+	// Layout is the view every page is wrapped in ("layouts.app"),
+	// rendering it through {{.content}}. Empty renders pages on their
+	// own.
+	Layout string `yaml:"layout" json:"layout"`
 }
 
 // Manager loads and renders templates.
@@ -37,6 +42,10 @@ type Manager struct {
 	tmpl      *template.Template
 	composers []composer
 	mu        sync.RWMutex
+
+	// layout is the view every rendered page is wrapped in, unless the
+	// render names another or opts out.
+	layout string
 
 	// Helper wiring, set by the service providers.
 	urls       URLGenerator
@@ -64,6 +73,7 @@ func NewManager(config ...Config) *Manager {
 	m := &Manager{
 		path:   cfg.Path,
 		reload: cfg.Reload,
+		layout: cfg.Layout,
 		shared: make(map[string]any),
 		funcs:  defaultFuncs(),
 	}
@@ -283,9 +293,79 @@ func (m *Manager) Exists(name string) bool {
 	return tmpl.Lookup(name) != nil
 }
 
-// Render writes the named view to w with the given data merged over
-// shared data.
+// SetLayout sets the view every rendered page is wrapped in - Laravel's
+// @extends, without a directive in every file.
+//
+// The layout is an ordinary view that renders the page through
+// {{.content}}:
+//
+//	<html><body><main>{{.content}}</main></body></html>
+//
+// RenderIn overrides it for one render, and an empty layout there opts
+// out, for a partial or an email body. Rendering the layout itself never
+// wraps it in itself.
+func (m *Manager) SetLayout(name string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.layout = name
+}
+
+// Layout returns the configured default layout, empty when none is set.
+func (m *Manager) Layout() string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.layout
+}
+
+// Render writes the named view to w, wrapped in the configured layout,
+// with the given data merged over shared data.
 func (m *Manager) Render(w io.Writer, name string, data map[string]any) error {
+	return m.RenderIn(w, m.Layout(), name, data)
+}
+
+// RenderIn writes the named view to w inside a specific layout. An empty
+// layout renders the view on its own.
+func (m *Manager) RenderIn(w io.Writer, layout, name string, data map[string]any) error {
+	// A layout rendered directly is the page, not its own wrapper.
+	if layout == "" || layout == name {
+		return m.renderOne(w, name, data)
+	}
+
+	tmpl, err := m.ensureLoaded()
+	if err != nil {
+		return err
+	}
+	if tmpl.Lookup(layout) == nil {
+		return fmt.Errorf("view: layout [%s] not found in %s", layout, m.path)
+	}
+
+	var page strings.Builder
+	if err := m.renderOne(&page, name, data); err != nil {
+		return err
+	}
+
+	// The page is already-rendered HTML: marking it as such is what
+	// keeps the layout from escaping the markup it is wrapping.
+	wrapped := make(map[string]any, len(data)+1)
+	for key, value := range data {
+		wrapped[key] = value
+	}
+	wrapped["content"] = template.HTML(page.String()) //nolint:gosec // rendered by this manager
+
+	return m.renderOne(w, layout, wrapped)
+}
+
+// RenderStringIn renders a view inside a layout and returns the result.
+func (m *Manager) RenderStringIn(layout, name string, data map[string]any) (string, error) {
+	var sb strings.Builder
+	if err := m.RenderIn(&sb, layout, name, data); err != nil {
+		return "", err
+	}
+	return sb.String(), nil
+}
+
+// renderOne writes one view with no layout around it.
+func (m *Manager) renderOne(w io.Writer, name string, data map[string]any) error {
 	tmpl, err := m.ensureLoaded()
 	if err != nil {
 		return err

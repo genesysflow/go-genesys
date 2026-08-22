@@ -17,7 +17,6 @@ import (
 	"github.com/genesysflow/go-genesys/mail"
 	"github.com/genesysflow/go-genesys/notifications"
 	"github.com/genesysflow/go-genesys/queue"
-	"github.com/genesysflow/go-genesys/session"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
@@ -47,6 +46,10 @@ func boot(t *testing.T) *harness {
 	// still one database per DSN, so the name carries the test's name.
 	t.Setenv("DB_DATABASE", "file:"+t.Name()+"?mode=memory&cache=shared")
 	t.Setenv("APP_ENV", "testing")
+
+	// Sessions in memory: a test should leave nothing behind on disk,
+	// and each test gets its own store with its own kernel.
+	t.Setenv("SESSION_DRIVER", "memory")
 	t.Setenv("APP_KEY", "base64:dGVzdGluZy1rZXktMzItYnl0ZXMtbG9uZy0xMjM0NTY=")
 
 	// The example's root, not the tests directory: config, views and
@@ -80,8 +83,10 @@ func boot(t *testing.T) *harness {
 	kernelConfig := container.MustResolve[*genhttp.KernelConfig](app)
 	kernelConfig.DisableStartupMessage = true
 
+	// Built exactly as `serve` builds it - the kernel installs the
+	// session middleware from the registered manager, so a test cannot
+	// pass on wiring the application does not have.
 	kernel := genhttp.NewKernel(app, *kernelConfig)
-	kernel.UseFiber(session.NewManager(session.Config{CookieSecure: false}).Middleware())
 
 	routes := container.MustResolve[func(*genhttp.Router)](app)
 	globalMiddleware := container.MustResolve[[]genhttp.MiddlewareFunc](app)

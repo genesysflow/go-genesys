@@ -100,6 +100,12 @@ func DefaultConfig() Config {
 	}
 }
 
+// Config returns the manager's configuration, so a caller can see what
+// it resolved to - which store, which cookie, which directory.
+func (m *Manager) Config() Config {
+	return m.config
+}
+
 // NewManager creates a new session manager.
 func NewManager(config ...Config) *Manager {
 	cfg := DefaultConfig()

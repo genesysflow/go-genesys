@@ -2,6 +2,8 @@
 # and credentials. Copy .env.example and fill it in.
 .env
 
-# The example's local sqlite database and generated files.
+# Runtime state the application writes, not source.
 example/storage/database.sqlite-shm
 example/storage/database.sqlite-wal
+example/storage/framework/sessions/
+example/storage/logs/

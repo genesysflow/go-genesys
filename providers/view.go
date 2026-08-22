@@ -38,6 +38,7 @@ func (p *ViewServiceProvider) Boot(app contracts.Application) error {
 		if path := appCfg.GetString("view.path"); path != "" {
 			cfg.Path = basePathFor(app, path)
 		}
+		cfg.Layout = appCfg.GetString("view.layout")
 		if appCfg.Has("view.reload") {
 			cfg.Reload = appCfg.GetBool("view.reload")
 		} else {

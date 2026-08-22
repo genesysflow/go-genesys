@@ -199,11 +199,27 @@ func (c *Context) View(name string, data ...map[string]any) error {
 	if err != nil {
 		return fmt.Errorf("http: view manager not available - register the ViewServiceProvider: %w", err)
 	}
+	return c.renderView(manager, manager.Layout(), name, data...)
+}
+
+// ViewIn renders a template inside a specific layout. An empty layout
+// renders the view on its own, for a fragment that has no business
+// carrying the site's chrome.
+func (c *Context) ViewIn(layout, name string, data ...map[string]any) error {
+	manager, err := container.Resolve[*view.Manager](c.app)
+	if err != nil {
+		return fmt.Errorf("http: view manager not available - register the ViewServiceProvider: %w", err)
+	}
+	return c.renderView(manager, layout, name, data...)
+}
+
+// renderView renders a view with the request's shared data and sends it.
+func (c *Context) renderView(manager *view.Manager, layout, name string, data ...map[string]any) error {
 	var viewData map[string]any
 	if len(data) > 0 {
 		viewData = data[0]
 	}
-	html, err := manager.RenderString(name, c.shareViewData(viewData))
+	html, err := manager.RenderStringIn(layout, name, c.shareViewData(viewData))
 	if err != nil {
 		return err
 	}

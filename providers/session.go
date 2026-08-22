@@ -53,7 +53,7 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 			sessionConfig.Storage = driver
 		}
 		if files := cfg.GetString("session.files"); files != "" {
-			sessionConfig.Path = files
+			sessionConfig.Path = basePathFor(app, files)
 		}
 		if table := cfg.GetString("session.table"); table != "" {
 			sessionConfig.Table = table
