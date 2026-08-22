@@ -296,3 +296,22 @@ func TestRequireAbilityMiddleware(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 }
+
+// A token's owner is recorded polymorphically, and the type column holds
+// the model's table name - the same thing every other polymorphic column
+// in the framework stores. A Go type string would embed the package
+// path, so moving the model would orphan every token ever issued.
+func TestTokenableTypeIsTheTableName(t *testing.T) {
+	repo, _ := tokenRepo(t)
+	user := tokenUser(1)
+
+	plaintext, token, err := repo.Create(user, "cli", []string{"*"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "users", token.TokenableType)
+
+	// And the token still resolves, so the guard finds its owner.
+	found, err := repo.Find(plaintext)
+	require.NoError(t, err)
+	assert.Equal(t, "users", found.TokenableType)
+	assert.Equal(t, int64(1), found.TokenableID)
+}

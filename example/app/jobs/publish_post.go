@@ -63,8 +63,10 @@ func (j *PublishPost) Handle() error {
 		return nil
 	}
 
+	// The user is the notifiable: it routes mail to their address and
+	// the database channel to their id, so one Send reaches both.
 	return manager.Send(
-		notifications.Route("mail", author.Email),
+		author,
 		&PostPublishedNotification{PostTitle: post.Title, PostSlug: post.Slug},
 	)
 }

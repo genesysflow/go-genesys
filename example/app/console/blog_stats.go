@@ -25,7 +25,7 @@ func BlogStatsCommand(app contracts.Application) *cli.Command {
 		Description: "Show how many posts, comments and authors the blog holds",
 		Options: []cli.Option{
 			{Name: "fresh", Description: "Recompute instead of reading the cache"},
-			{Name: "since", Description: "Only count posts published after this date (YYYY-MM-DD)", Default: ""},
+			{Name: "since", Description: "Only count posts published after this date (YYYY-MM-DD)", TakesValue: true},
 		},
 		Handle: func(c *cli.Context) error {
 			if c.BoolOption("fresh") {

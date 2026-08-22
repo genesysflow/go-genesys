@@ -207,6 +207,29 @@ func TableNameFor[T any]() string {
 	return meta.table
 }
 
+// TableNameOf returns the table a value's model maps to, where
+// TableNameFor needs a type. A polymorphic column is written from an
+// interface, where the concrete type is only known at runtime.
+func TableNameOf(value any) (string, error) {
+	if value == nil {
+		return "", fmt.Errorf("database: cannot name the table of a nil value")
+	}
+
+	typ := reflect.TypeOf(value)
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != reflect.Struct {
+		return "", fmt.Errorf("database: %s is not a model", typ)
+	}
+
+	meta, err := metaFor(typ)
+	if err != nil {
+		return "", err
+	}
+	return meta.table, nil
+}
+
 // values extracts column -> value pairs from a model, optionally skipping
 // the primary key (for inserts with auto-increment ids).
 func (m *modelMeta) values(v reflect.Value, skipPK bool) map[string]any {

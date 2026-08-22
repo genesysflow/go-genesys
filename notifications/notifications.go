@@ -160,8 +160,33 @@ func (m *Manager) sendOn(channel string, notifiable Notifiable, notification Not
 	}
 }
 
+// SetMailer replaces the mailer the mail channel delivers through.
+//
+// A manager built at boot holds the mailer that existed then; a test
+// that swaps in an array mailer needs what the application sends to land
+// in it, notifications included.
+func (m *Manager) SetMailer(mailer mail.Mailer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.mailer = mailer
+}
+
+// mailerFor returns the mailer to deliver through: this manager's, or
+// the application's default when it was built without one.
+func (m *Manager) mailerFor() mail.Mailer {
+	m.mu.RLock()
+	mailer := m.mailer
+	m.mu.RUnlock()
+
+	if mailer != nil {
+		return mailer
+	}
+	return mail.DefaultMailer()
+}
+
 func (m *Manager) sendMail(notifiable Notifiable, notification Notification) error {
-	if m.mailer == nil {
+	mailer := m.mailerFor()
+	if mailer == nil {
 		return fmt.Errorf("no mailer configured (use notifications.WithMailer)")
 	}
 	mailable, ok := notification.(MailNotification)
@@ -183,7 +208,7 @@ func (m *Manager) sendMail(notifiable Notifiable, notification Notification) err
 	if len(message.Recipients()) == 0 {
 		message.To(email)
 	}
-	return m.mailer.Send(message)
+	return mailer.Send(message)
 }
 
 func (m *Manager) sendDatabase(notifiable Notifiable, notification Notification) error {

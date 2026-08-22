@@ -288,3 +288,50 @@ func TestCommandHandleErrorPropagates(t *testing.T) {
 	_, err := run(t, cmd, "")
 	assert.ErrorIs(t, err, assert.AnError)
 }
+
+// An option that takes a value but has no sensible default is still an
+// option that takes a value: without this, --since 2020-01-01 parses the
+// date as a positional argument.
+func TestStringOptionWithAnEmptyDefault(t *testing.T) {
+	var got string
+
+	command := &cli.Command{
+		Name: "report",
+		Options: []cli.Option{
+			{Name: "since", Description: "Start date", TakesValue: true},
+		},
+		Handle: func(c *cli.Context) error {
+			got = c.Option("since")
+			return nil
+		},
+	}
+
+	_, err := run(t, command, "", "--since", "2020-01-01")
+	require.NoError(t, err)
+	assert.Equal(t, "2020-01-01", got)
+
+	// Absent, it is empty rather than the string "false".
+	got = "unset"
+	_, err = run(t, command, "")
+	require.NoError(t, err)
+	assert.Equal(t, "", got)
+}
+
+// An option with no default and no value is still a boolean switch, so
+// existing commands keep working.
+func TestOptionWithoutADefaultIsBoolean(t *testing.T) {
+	var forced bool
+
+	command := &cli.Command{
+		Name:    "prune",
+		Options: []cli.Option{{Name: "force"}},
+		Handle: func(c *cli.Context) error {
+			forced = c.BoolOption("force")
+			return nil
+		},
+	}
+
+	_, err := run(t, command, "", "--force")
+	require.NoError(t, err)
+	assert.True(t, forced)
+}

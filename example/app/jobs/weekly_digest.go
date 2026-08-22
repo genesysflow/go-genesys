@@ -50,7 +50,7 @@ func (j *WeeklyDigest) Handle() error {
 
 	for i := range authors {
 		if err := manager.Send(
-			notifications.Route("mail", authors[i].Email),
+			&authors[i],
 			&WeeklyDigestNotification{Titles: titles},
 		); err != nil {
 			return fmt.Errorf("sending the digest to %s: %w", authors[i].Email, err)

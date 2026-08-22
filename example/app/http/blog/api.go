@@ -68,7 +68,7 @@ func (a *API) Store(ctx *http.Context) error {
 		return err
 	}
 
-	return ctx.Created(database.ToMap(post))
+	return ctx.CreatedResource(database.ToMap(post))
 }
 
 // Me describes the caller and the token they used.

@@ -41,8 +41,15 @@ type Option struct {
 	Description string
 
 	// Default is the value when the flag is absent. Leave empty for a
-	// boolean flag.
+	// boolean flag, or set TakesValue for a value option with no
+	// sensible default.
 	Default string
+
+	// TakesValue marks an option that takes a value even though its
+	// default is empty - "--since 2020-01-01" rather than a switch.
+	// Without it an option with no default is a boolean flag, which is
+	// the common case (--force, --seed).
+	TakesValue bool
 }
 
 // Command describes a console command in the shape Laravel's commands
@@ -89,7 +96,7 @@ func (c *Command) Cobra(app contracts.Application) *cobra.Command {
 	}
 
 	for _, option := range c.Options {
-		if option.Default == "" {
+		if option.Default == "" && !option.TakesValue {
 			cmd.Flags().BoolP(option.Name, option.Shorthand, false, option.Description)
 			continue
 		}

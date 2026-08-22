@@ -26,6 +26,23 @@ func (u *User) GetAuthPassword() string { return u.Password }
 // IsEditor reports whether the user may act on anyone's post.
 func (u *User) IsEditor() bool { return u.Role == "editor" }
 
+// RouteNotificationFor makes a user notifiable directly: mail goes to
+// their address, and the database channel records the notification
+// against their id, so it can be shown in the application too.
+//
+// A channel with no route here is skipped, which is how a user opts out
+// of one.
+func (u *User) RouteNotificationFor(channel string) any {
+	switch channel {
+	case "mail":
+		return u.Email
+	case "database":
+		return u.ID
+	default:
+		return nil
+	}
+}
+
 // Hidden keeps the password hash out of anything serialized from the
 // model, whatever the caller does with it.
 func (u *User) Hidden() []string { return []string{"password"} }

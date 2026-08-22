@@ -1,0 +1,14 @@
+# Mail Configuration
+
+# log is the safe default: nothing leaves the machine, every message is
+# written to the log. Use smtp in production, array in tests.
+driver: ${MAIL_DRIVER:-log}
+
+host: ${MAIL_HOST:-127.0.0.1}
+port: ${MAIL_PORT:-1025}
+username: ${MAIL_USERNAME:-}
+password: ${MAIL_PASSWORD:-}
+encryption: ${MAIL_ENCRYPTION:-none}
+
+from_address: ${MAIL_FROM_ADDRESS:-blog@example.com}
+from_name: ${MAIL_FROM_NAME:-The Genesys Blog}

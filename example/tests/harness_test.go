@@ -15,6 +15,7 @@ import (
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
 	"github.com/genesysflow/go-genesys/mail"
+	"github.com/genesysflow/go-genesys/notifications"
 	"github.com/genesysflow/go-genesys/queue"
 	"github.com/genesysflow/go-genesys/session"
 	"github.com/stretchr/testify/require"
@@ -59,8 +60,15 @@ func boot(t *testing.T) *harness {
 
 	// Mail goes to an array, not a mail server, so a test can read what
 	// would have been sent.
-	mailer := mail.NewArrayMailer()
+	mailer := mail.NewArrayMailer(mail.Config{FromAddress: "blog@example.com", FromName: "The Genesys Blog"})
 	mail.SetDefaultMailer(mailer)
+
+	// The notification manager was built at boot with the configured
+	// mailer; point it at the array too, so what a notification sends is
+	// readable here.
+	if notifier, err := container.Resolve[*notifications.Manager](app); err == nil {
+		notifier.SetMailer(mailer)
+	}
 
 	// Jobs stay in memory until a test drains them, which is what makes
 	// "the request queued the work" assertable.
@@ -163,6 +171,59 @@ func (h *harness) signIn(t *testing.T, user *models.User) *models.User {
 // testOrigin is the origin fiber's test transport gives a request, and
 // so the origin a browser driving these tests would report.
 const testOrigin = "http://example.com"
+
+// age backdates a row's updated_at, so a test can reach a state that
+// would otherwise take months to arrive at.
+func (h *harness) age(t *testing.T, table string, id int64, interval string) {
+	t.Helper()
+
+	manager := container.MustResolve[*database.Manager](h.app)
+	connection := manager.Connection()
+	require.NotNil(t, connection)
+
+	_, err := connection.Exec(
+		"UPDATE "+table+" SET updated_at = datetime('now', ?) WHERE id = ?",
+		interval, id,
+	)
+	require.NoError(t, err)
+}
+
+// queued reports how many jobs are waiting.
+func (h *harness) queued(t *testing.T) int64 {
+	t.Helper()
+
+	size, err := h.jobs.Size("")
+	require.NoError(t, err)
+	return size
+}
+
+// work drains the queue, which is what a worker process does - here it
+// happens inline, so a test can assert on what the job left behind.
+func (h *harness) work(t *testing.T) error {
+	t.Helper()
+
+	return queue.NewWorker(h.jobs).Drain()
+}
+
+// token mints a personal access token for a user, the way the site's
+// token page does.
+func (h *harness) token(t *testing.T, user *models.User, abilities ...string) string {
+	t.Helper()
+
+	plaintext, _, err := h.tokens.Create(user, "test", abilities, nil)
+	require.NoError(t, err)
+	return plaintext
+}
+
+// api drives the JSON API: a bearer token instead of a session, and a
+// client that asks for JSON rather than HTML.
+func (h *harness) api(t *testing.T, token string) *genhttp.TestCase {
+	t.Helper()
+
+	return genhttp.NewTestCase(t, h.kernel).
+		WithHeader("Accept", "application/json").
+		WithToken(token)
+}
 
 // visit fetches a page and remembers it as where the browser is, so a
 // form posted next carries the Referer a real submission would.

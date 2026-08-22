@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/database/schema"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/query"
@@ -356,7 +357,15 @@ func identifierAsInt64(value any) (int64, error) {
 
 // tokenableType names the owner's type, so tokens for different models
 // cannot be confused with one another.
+// It is the model's table name, the same value every other polymorphic
+// column in the framework stores. A Go type string would embed the
+// package path, so moving the model to another package would orphan
+// every token ever issued; the type name is the fallback for an owner
+// that is not an ORM model at all.
 func tokenableType(tokenable Authenticatable) string {
+	if table, err := database.TableNameOf(tokenable); err == nil {
+		return table
+	}
 	return fmt.Sprintf("%T", tokenable)
 }
 
