@@ -64,7 +64,7 @@ type Builder struct {
 	grammar  *Grammar
 
 	table    string
-	columns  []string
+	columns  []selectColumn
 	distinct bool
 	joins    []join
 	wheres   []where
@@ -95,7 +95,7 @@ func (b *Builder) Table(table string) *Builder {
 // Clone returns a deep copy of the builder.
 func (b *Builder) Clone() *Builder {
 	clone := *b
-	clone.columns = append([]string(nil), b.columns...)
+	clone.columns = append([]selectColumn(nil), b.columns...)
 	clone.joins = append([]join(nil), b.joins...)
 	clone.wheres = append([]where(nil), b.wheres...)
 	clone.groups = append([]string(nil), b.groups...)
@@ -105,15 +105,40 @@ func (b *Builder) Clone() *Builder {
 	return &clone
 }
 
-// Select sets the columns to retrieve.
+// selectColumn is one entry of the select list: an identifier to quote,
+// or an expression to emit as written.
+type selectColumn struct {
+	expr string
+	raw  bool
+}
+
+// Select sets the columns to retrieve. Each one is quoted as an
+// identifier, so a client-chosen field list cannot become SQL. Use
+// SelectRaw for an expression.
 func (b *Builder) Select(columns ...string) *Builder {
-	b.columns = columns
+	b.columns = nil
+	return b.AddSelect(columns...)
+}
+
+// AddSelect appends columns to the select list, quoted as identifiers.
+func (b *Builder) AddSelect(columns ...string) *Builder {
+	for _, column := range columns {
+		b.columns = append(b.columns, selectColumn{expr: column})
+	}
 	return b
 }
 
-// AddSelect appends columns to the select list.
-func (b *Builder) AddSelect(columns ...string) *Builder {
-	b.columns = append(b.columns, columns...)
+// SelectRaw appends an expression to the select list, emitted as
+// written - Laravel's selectRaw:
+//
+//	builder.Select("customer_id").SelectRaw("SUM(total) AS revenue")
+//
+// The expression is SQL, not data. Never build one from client input;
+// pass values through Where, which binds them.
+func (b *Builder) SelectRaw(expressions ...string) *Builder {
+	for _, expression := range expressions {
+		b.columns = append(b.columns, selectColumn{expr: expression, raw: true})
+	}
 	return b
 }
 
@@ -512,7 +537,7 @@ func (b *Builder) aggregate(expression string) (any, error) {
 		sqlStr = "SELECT " + expression + " AS aggregate FROM (" + innerSQL + ") AS aggregate_table"
 		bindings = innerBindings
 	} else {
-		clone.columns = []string{expression + " AS aggregate"}
+		clone.columns = []selectColumn{{expr: expression + " AS aggregate", raw: true}}
 		sqlStr, bindings = clone.grammar.CompileSelect(clone)
 	}
 

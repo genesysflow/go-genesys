@@ -1,0 +1,19 @@
+<h1>New post</h1>
+
+<form method="POST" action="/posts">
+  {{csrf_field .csrf_token}}
+
+  <label for="title">Title</label>
+  <input id="title" name="title" value="{{.old.Get "title"}}" required>
+  {{if .errors.Has "title"}}<span class="error">{{.errors.First "title"}}</span>{{end}}
+
+  <label for="slug">Slug <small>(left blank, it is derived from the title)</small></label>
+  <input id="slug" name="slug" value="{{.old.Get "slug"}}">
+  {{if .errors.Has "slug"}}<span class="error">{{.errors.First "slug"}}</span>{{end}}
+
+  <label for="body">Body</label>
+  <textarea id="body" name="body" required>{{.old.Get "body"}}</textarea>
+  {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+
+  <button type="submit">Save draft</button>
+</form>

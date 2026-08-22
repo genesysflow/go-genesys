@@ -213,11 +213,13 @@ func sameHostRedirect(target, host string) bool {
 }
 
 // RedirectRoute redirects to a named route.
-// Note: This requires the router to support named routes.
+//
+// Deprecated: a Response holds no router, so it cannot resolve a route
+// name to a path and falls back to treating the name as one. Use
+// ctx.RedirectToRoute(name, params), which resolves the name against the
+// router that matched the request.
 func (r *Response) RedirectRoute(name string, params ...map[string]any) error {
 	r.sent = true
-	// For now, redirect to the name as a path
-	// Full implementation would look up the route by name
 	return r.ctx.Redirect("/" + name)
 }
 

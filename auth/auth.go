@@ -70,3 +70,18 @@ type StatefulGuard interface {
 	// Logout ends the authenticated session.
 	Logout(ctx *http.Context) error
 }
+
+// UserFrom returns the authenticated user the auth middleware (or a
+// guard) stashed on the request, or nil when the request is
+// unauthenticated. It is Laravel's `$request->user()` for guard-resolved
+// users:
+//
+//	user := auth.UserFrom(ctx)
+//	if user == nil { ... }
+func UserFrom(ctx *http.Context) Authenticatable {
+	user, ok := ctx.User().(Authenticatable)
+	if !ok {
+		return nil
+	}
+	return user
+}

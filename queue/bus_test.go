@@ -58,7 +58,7 @@ func TestChainRunsSequentiallyOnWorker(t *testing.T) {
 	))
 
 	// Only the chain head is on the queue; each link enqueues the next.
-	assert.Equal(t, 1, q.Size(""))
+	assert.Equal(t, 1, queueSize(t, q, ""))
 
 	worker := queue.NewWorker(q)
 	require.NoError(t, worker.Drain())
@@ -117,7 +117,7 @@ func TestBatchCallbacks(t *testing.T) {
 		&stepJob{Step: "b2"},
 		&stepJob{Step: "b3"},
 	))
-	assert.Equal(t, 3, q.Size(""))
+	assert.Equal(t, 3, queueSize(t, q, ""))
 
 	settled, total := batch.Progress()
 	assert.Equal(t, 0, settled)

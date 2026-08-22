@@ -11,6 +11,7 @@ import (
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/session"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/utils"
 )
@@ -57,6 +58,11 @@ type KernelConfig struct {
 	// connections from TrustedProxies. Defaults to X-Forwarded-For when
 	// TrustedProxies is set.
 	ProxyHeader string
+
+	// DisableSession stops the kernel installing the registered session
+	// manager's middleware, for an application that places it itself -
+	// a different store per route group, say.
+	DisableSession bool
 }
 
 // DefaultKernelConfig returns the default kernel configuration.
@@ -126,6 +132,15 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 
 	// Create router
 	kernel.router = NewRouter(app, fiberApp)
+
+	// Sessions, when the application registered a manager. An
+	// application that has to remember this itself is one whose login
+	// flow works in tests and fails in production.
+	if !cfg.DisableSession {
+		if manager, err := container.Resolve[*session.Manager](app); err == nil && manager != nil {
+			kernel.UseFiber(manager.Middleware())
+		}
+	}
 
 	return kernel
 }

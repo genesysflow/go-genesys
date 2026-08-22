@@ -41,6 +41,24 @@ type originalHolder interface {
 func (m *Model) getOriginal() map[string]any       { return m.original }
 func (m *Model) setOriginal(values map[string]any) { m.original = values }
 
+// ServerOwned is implemented by *Model and promoted to every model that
+// embeds it. It marks the columns the database owns - the primary key
+// and the timestamps - which a request must never be able to choose.
+//
+// http.Bind resets them after binding, so filling a model straight from
+// a request body cannot hand a client someone else's row.
+type ServerOwned interface {
+	// ResetServerOwned clears the columns the server assigns.
+	ResetServerOwned()
+}
+
+// ResetServerOwned clears the id and timestamps.
+func (m *Model) ResetServerOwned() {
+	m.ID = 0
+	m.CreatedAt = time.Time{}
+	m.UpdatedAt = time.Time{}
+}
+
 // SoftDeletes adds a deleted_at column to a model, switching the ORM to
 // soft deletion: Delete marks the row instead of removing it, and queries
 // exclude trashed rows unless WithTrashed/OnlyTrashed is used.
@@ -205,6 +223,29 @@ func TableNameFor[T any]() string {
 		panic(err)
 	}
 	return meta.table
+}
+
+// TableNameOf returns the table a value's model maps to, where
+// TableNameFor needs a type. A polymorphic column is written from an
+// interface, where the concrete type is only known at runtime.
+func TableNameOf(value any) (string, error) {
+	if value == nil {
+		return "", fmt.Errorf("database: cannot name the table of a nil value")
+	}
+
+	typ := reflect.TypeOf(value)
+	for typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	if typ.Kind() != reflect.Struct {
+		return "", fmt.Errorf("database: %s is not a model", typ)
+	}
+
+	meta, err := metaFor(typ)
+	if err != nil {
+		return "", err
+	}
+	return meta.table, nil
 }
 
 // values extracts column -> value pairs from a model, optionally skipping

@@ -29,7 +29,7 @@ func TestQueuedListenerReplaysOnWorker(t *testing.T) {
 	// Dispatch queues the work instead of running it inline.
 	require.NoError(t, d.Dispatch(queuedOrderShipped{OrderID: 42}))
 	assert.EqualValues(t, 0, handled.Load(), "nothing runs until a worker drains")
-	assert.Equal(t, 1, q.Size(""))
+	assertQueued(t, q, 1)
 
 	require.NoError(t, queue.NewWorker(q).Drain())
 	assert.EqualValues(t, 42, handled.Load(), "the worker replayed the event with its payload")
@@ -60,4 +60,13 @@ func TestSubscriberRegistersItsListeners(t *testing.T) {
 	require.NoError(t, d.Dispatch(namedEvent("user.login")))
 	require.NoError(t, d.Dispatch(namedEvent("user.logout")))
 	assert.Equal(t, []string{"login", "logout"}, log)
+}
+
+// assertQueued checks how many jobs are waiting, failing on a driver
+// error rather than reading it as an empty queue.
+func assertQueued(t *testing.T, q *queue.MemoryQueue, expected int64) {
+	t.Helper()
+	size, err := q.Size("")
+	require.NoError(t, err)
+	assert.Equal(t, expected, size)
 }

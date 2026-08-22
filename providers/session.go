@@ -53,7 +53,7 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 			sessionConfig.Storage = driver
 		}
 		if files := cfg.GetString("session.files"); files != "" {
-			sessionConfig.Path = files
+			sessionConfig.Path = basePathFor(app, files)
 		}
 		if table := cfg.GetString("session.table"); table != "" {
 			sessionConfig.Table = table
@@ -82,6 +82,16 @@ func (p *SessionServiceProvider) Register(app contracts.Application) error {
 			conn := dbManager.Connection()
 			return session.NewDatabaseStorage(conn.Driver(), conn, table), nil
 		})
+	}
+
+	// A session cookie sent over plain http is readable by anyone on the
+	// network path and replayable as the account. That is a deployment
+	// mistake rather than a code one, so it is reported loudly rather
+	// than refused - an internal http-only service is unusual but real.
+	if app.IsProduction() && !sessionConfig.CookieSecure {
+		if logger := app.GetLogger(); logger != nil {
+			logger.Warn("session cookies are not Secure in production: they will travel over plain http and can be replayed as the account (set session.secure)")
+		}
 	}
 
 	manager := session.NewManager(sessionConfig)

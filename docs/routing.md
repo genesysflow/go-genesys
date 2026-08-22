@@ -72,6 +72,35 @@ router.GET("/users/:user", func(ctx *http.Context) error {
 post, err := http.BindModelBy[models.Post](ctx, "slug", "slug")
 ```
 
+## JSON responses
+
+```go
+ctx.Resource(user)                    // {"data": {...}}
+ctx.ResourceWith(users, meta)         // {"data": [...], "meta": {...}}
+ctx.Paginated(page)                   // splits a paginator into data and meta
+ctx.CreatedResource(user)             // 201 with the same data envelope
+ctx.Created(payload)                  // 201, unwrapped
+```
+
+`CreatedResource` is the one to reach for after writing a record, so a
+client reads `data.*` whether it just created the resource or fetched it.
+`Created` sends the body as-is, for a payload that is not a resource -
+the plaintext of a freshly issued token, say.
+
+## Redirects that came from the request
+
+`RedirectTo` names a target you chose, so an external one is fine. A
+target the request supplied is not:
+
+```go
+ctx.Intended("/dashboard")   // where a guest was headed, if it is on this host
+ctx.Back("/posts")           // the Referer, if it is on this host
+```
+
+The auth middleware records the destination when it sends a guest to the
+login page, so `Intended` is what a login handler returns. Writing
+`ctx.RedirectTo(ctx.Query("next"))` instead is an open redirect.
+
 ## Resource controllers
 
 ```go
@@ -95,3 +124,44 @@ router.Domain("{account}.example.com", func(r *http.Router) {
 
 router.GET("/dashboard", apexDashboard) // example.com keeps working
 ```
+
+## Request helpers
+
+Inside a handler the context carries the request's identity, so nothing
+has to be re-resolved:
+
+```go
+func Show(ctx *http.Context) error {
+    user, ok := http.UserAs[models.User](ctx)  // set by auth.Middleware
+    sess := ctx.Session()                      // nil without session middleware
+    email := ctx.Old("email")                  // input flashed last request
+
+    if ctx.RouteIs("users.*") {
+        // ctx.Route() / ctx.RouteName() describe the matched route
+    }
+    _ = user
+    _ = ok
+    _ = sess
+    _ = email
+    return nil
+}
+```
+
+## Redirects
+
+```go
+ctx.RedirectTo("/dashboard").Send()
+ctx.RedirectToRoute("users.show", map[string]any{"user": 42}).Send()
+
+ctx.Back("/users/create").
+    WithErrors(err).      // map[string][]string, *errors.ValidationError, or any error
+    WithInput().          // repopulates the form; password fields are dropped
+    With("status", "Saved!").
+    Status(303).
+    Send()
+```
+
+`Back` honours the `Referer` only when it points at this host, so a
+handler redirecting back is never an open redirect. Flashed values are
+read back with `ctx.Errors()`, `ctx.Old()`, and the session, and are
+shared with views automatically.

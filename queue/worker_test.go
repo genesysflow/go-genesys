@@ -54,12 +54,12 @@ func TestMemoryQueueRoundTrip(t *testing.T) {
 
 	require.NoError(t, q.Push(&CountJob{Label: "one"}))
 	require.NoError(t, q.Push(&CountJob{Label: "two"}))
-	assert.Equal(t, 2, q.Size(""))
+	assert.Equal(t, 2, queueSize(t, q, ""))
 
 	worker := queue.NewWorker(q)
 	require.NoError(t, worker.Drain())
 	assert.EqualValues(t, 2, handled.Load())
-	assert.Equal(t, 0, q.Size(""))
+	assert.Equal(t, 0, queueSize(t, q, ""))
 }
 
 func TestWorkerRetriesThenFails(t *testing.T) {

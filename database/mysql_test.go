@@ -47,3 +47,29 @@ func TestMySQLGrammarQuoting(t *testing.T) {
 		assert.Equal(t, []any{true, "admin", "editor"}, bindings)
 	}
 }
+
+// Two MySQL DSN parameters decide whether the query layer's protection
+// survives, and both are dangerous by their presence rather than their
+// absence - so this pins them.
+//
+//   - interpolateParams=true moves parameter substitution into the
+//     client, so a query stops using real prepared statements and starts
+//     relying on the driver's escaping being right for the connection's
+//     charset.
+//   - multiStatements=true lets one call run several statements, which
+//     turns any mistake in the SQL into arbitrary execution.
+//
+// Neither is set, and neither should be added for convenience.
+func TestMySQLDSNDoesNotWeakenParameterBinding(t *testing.T) {
+	dsn := buildDSN(ConnectionConfig{
+		Driver:   "mysql",
+		Host:     "127.0.0.1",
+		Database: "app",
+		Username: "root",
+	})
+
+	assert.NotContains(t, dsn, "interpolateParams",
+		"parameters must be bound by the server, not interpolated by the client")
+	assert.NotContains(t, dsn, "multiStatements",
+		"one call must not be able to run several statements")
+}

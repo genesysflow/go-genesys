@@ -1,0 +1,11 @@
+package broadcasting
+
+// {{.Name}} authorizes subscriptions to a private or presence channel.
+//
+// Wire it to the hub at boot:
+//
+//	hub.Authorize(broadcasting.{{.Name}})
+func {{.Name}}(channel, token string) bool {
+	// Return true when the token may subscribe to this channel.
+	return false
+}

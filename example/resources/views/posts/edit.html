@@ -1,0 +1,20 @@
+<h1>Edit post</h1>
+
+<form method="POST" action="/posts/{{.post.Slug}}">
+  {{csrf_field .csrf_token}}
+  {{method_field "PUT"}}
+
+  <label for="title">Title</label>
+  <input id="title" name="title" value="{{.old.Get "title" .post.Title}}" required>
+  {{if .errors.Has "title"}}<span class="error">{{.errors.First "title"}}</span>{{end}}
+
+  <label for="slug">Slug</label>
+  <input id="slug" name="slug" value="{{.old.Get "slug" .post.Slug}}" required>
+  {{if .errors.Has "slug"}}<span class="error">{{.errors.First "slug"}}</span>{{end}}
+
+  <label for="body">Body</label>
+  <textarea id="body" name="body" required>{{.old.Get "body" .post.Body}}</textarea>
+  {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+
+  <button type="submit">Save changes</button>
+</form>

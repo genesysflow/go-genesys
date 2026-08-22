@@ -56,10 +56,33 @@ func relatedID(value any) any {
 	return v.FieldByIndex(meta.fields[meta.pkIndex].index).Interface()
 }
 
+// pivotQuery starts a query against the relation's pivot table, scoped
+// to this parent. A polymorphic pivot is shared by every model that uses
+// it, so the type column is part of "this parent" - without it a write
+// or a delete would reach into another model's links.
+func pivotQuery(driver string, executor query.Executor, rel *relation, parentKey any, parentTable string) *query.Builder {
+	builder := query.New(driver, executor).Table(rel.pivotTable).Where(rel.pivotFK, parentKey)
+	if rel.kind == relMorphToMany {
+		builder = builder.Where(rel.morphTypeCol(), parentTable)
+	}
+	return builder
+}
+
+// pivotRow renders the columns identifying one link.
+func pivotRow(rel *relation, parentKey, relatedID any, parentTable string) map[string]any {
+	row := map[string]any{
+		rel.pivotFK: parentKey,
+		rel.pivotRK: relatedID,
+	}
+	if rel.kind == relMorphToMany {
+		row[rel.morphTypeCol()] = parentTable
+	}
+	return row
+}
+
 // pivotState loads the currently attached related keys.
-func pivotState(driver string, executor query.Executor, rel *relation, parentKey any) (map[string]any, error) {
-	rows, err := query.New(driver, executor).Table(rel.pivotTable).
-		Where(rel.pivotFK, parentKey).Get()
+func pivotState(driver string, executor query.Executor, rel *relation, parentKey any, parentTable string) (map[string]any, error) {
+	rows, err := pivotQuery(driver, executor, rel, parentKey, parentTable).Get()
 	if err != nil {
 		return nil, err
 	}
@@ -70,20 +93,31 @@ func pivotState(driver string, executor query.Executor, rel *relation, parentKey
 	return attached, nil
 }
 
-func belongsToManyOn[T any](parent *T, relationName string, scope []*TxScope) (*relation, any, string, query.Executor, error) {
+func belongsToManyOn[T any](parent *T, relationName string, scope []*TxScope) (*relation, any, string, string, query.Executor, error) {
 	rel, err := relationOn(reflect.TypeOf(parent).Elem(), relationName)
 	if err != nil {
-		return nil, nil, "", nil, err
+		return nil, nil, "", "", nil, err
 	}
-	if rel.kind != relBelongsToMany {
-		return nil, nil, "", nil, fmt.Errorf("database: relation %q is not belongsToMany", relationName)
+	// morphToMany is the same pivot with a type column, so it is written
+	// through the same helpers.
+	if rel.kind != relBelongsToMany && rel.kind != relMorphToMany {
+		return nil, nil, "", "", nil, fmt.Errorf("database: relation %q is not belongsToMany or morphToMany", relationName)
 	}
 	parentKey, err := ownerKeyValue(parent, rel)
 	if err != nil {
-		return nil, nil, "", nil, err
+		return nil, nil, "", "", nil, err
 	}
+
+	// A polymorphic pivot stores what kind of parent each link belongs
+	// to; that is the parent's table name, the same value the reads
+	// filter on.
+	meta, err := metaFor(reflect.TypeOf(parent).Elem())
+	if err != nil {
+		return nil, nil, "", "", nil, err
+	}
+
 	driver, executor := executorFor[T](scope)
-	return rel, parentKey, driver, executor, nil
+	return rel, parentKey, meta.table, driver, executor, nil
 }
 
 // Attach links related models (or raw ids) through the pivot table,
@@ -98,11 +132,11 @@ func Attach[T any](parent *T, relationName string, related ...any) error {
 // AttachScoped is Attach inside a transaction scope (nil scope uses the
 // default connection).
 func AttachScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) error {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
+	rel, parentKey, parentTable, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return err
 	}
-	attached, err := pivotState(driver, executor, rel, parentKey)
+	attached, err := pivotState(driver, executor, rel, parentKey, parentTable)
 	if err != nil {
 		return err
 	}
@@ -111,10 +145,8 @@ func AttachScoped[T any](tx *TxScope, parent *T, relationName string, related ..
 		if _, exists := attached[keyString(id)]; exists {
 			continue
 		}
-		if err := query.New(driver, executor).Table(rel.pivotTable).Insert(map[string]any{
-			rel.pivotFK: parentKey,
-			rel.pivotRK: id,
-		}); err != nil {
+		if err := query.New(driver, executor).Table(rel.pivotTable).
+			Insert(pivotRow(rel, parentKey, id, parentTable)); err != nil {
 			return err
 		}
 		attached[keyString(id)] = id
@@ -130,11 +162,11 @@ func Detach[T any](parent *T, relationName string, related ...any) (int64, error
 
 // DetachScoped is Detach inside a transaction scope.
 func DetachScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) (int64, error) {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
+	rel, parentKey, parentTable, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return 0, err
 	}
-	builder := query.New(driver, executor).Table(rel.pivotTable).Where(rel.pivotFK, parentKey)
+	builder := pivotQuery(driver, executor, rel, parentKey, parentTable)
 	if len(related) > 0 {
 		ids := make([]any, len(related))
 		for i, item := range related {
@@ -153,11 +185,11 @@ func Sync[T any](parent *T, relationName string, related ...any) error {
 
 // SyncScoped is Sync inside a transaction scope.
 func SyncScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) error {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
+	rel, parentKey, parentTable, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return err
 	}
-	attached, err := pivotState(driver, executor, rel, parentKey)
+	attached, err := pivotState(driver, executor, rel, parentKey, parentTable)
 	if err != nil {
 		return err
 	}
@@ -172,10 +204,8 @@ func SyncScoped[T any](tx *TxScope, parent *T, relationName string, related ...a
 		if _, exists := attached[key]; exists {
 			continue
 		}
-		if err := query.New(driver, executor).Table(rel.pivotTable).Insert(map[string]any{
-			rel.pivotFK: parentKey,
-			rel.pivotRK: id,
-		}); err != nil {
+		if err := query.New(driver, executor).Table(rel.pivotTable).
+			Insert(pivotRow(rel, parentKey, id, parentTable)); err != nil {
 			return err
 		}
 	}
@@ -183,8 +213,8 @@ func SyncScoped[T any](tx *TxScope, parent *T, relationName string, related ...a
 		if _, keep := wanted[key]; keep {
 			continue
 		}
-		if _, err := query.New(driver, executor).Table(rel.pivotTable).
-			Where(rel.pivotFK, parentKey).Where(rel.pivotRK, id).Delete(); err != nil {
+		if _, err := pivotQuery(driver, executor, rel, parentKey, parentTable).
+			Where(rel.pivotRK, id).Delete(); err != nil {
 			return err
 		}
 	}
@@ -199,27 +229,25 @@ func Toggle[T any](parent *T, relationName string, related ...any) error {
 
 // ToggleScoped is Toggle inside a transaction scope.
 func ToggleScoped[T any](tx *TxScope, parent *T, relationName string, related ...any) error {
-	rel, parentKey, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
+	rel, parentKey, parentTable, driver, executor, err := belongsToManyOn(parent, relationName, scopeSlice(tx))
 	if err != nil {
 		return err
 	}
-	attached, err := pivotState(driver, executor, rel, parentKey)
+	attached, err := pivotState(driver, executor, rel, parentKey, parentTable)
 	if err != nil {
 		return err
 	}
 	for _, item := range related {
 		id := relatedID(item)
 		if _, exists := attached[keyString(id)]; exists {
-			if _, err := query.New(driver, executor).Table(rel.pivotTable).
-				Where(rel.pivotFK, parentKey).Where(rel.pivotRK, id).Delete(); err != nil {
+			if _, err := pivotQuery(driver, executor, rel, parentKey, parentTable).
+				Where(rel.pivotRK, id).Delete(); err != nil {
 				return err
 			}
 			continue
 		}
-		if err := query.New(driver, executor).Table(rel.pivotTable).Insert(map[string]any{
-			rel.pivotFK: parentKey,
-			rel.pivotRK: id,
-		}); err != nil {
+		if err := query.New(driver, executor).Table(rel.pivotTable).
+			Insert(pivotRow(rel, parentKey, id, parentTable)); err != nil {
 			return err
 		}
 	}

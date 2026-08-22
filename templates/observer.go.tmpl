@@ -1,0 +1,19 @@
+package observers
+
+import (
+	"github.com/genesysflow/go-genesys/database"
+)
+
+// Register{{.Name}} wires the observer to its model. Call it at boot:
+//
+//	observers.Register{{.Name}}[models.User]()
+func Register{{.Name}}[T any]() {
+	database.Observe(database.Observer[T]{
+		Creating: func(model *T) error { return nil },
+		Created:  func(model *T) error { return nil },
+		Updating: func(model *T) error { return nil },
+		Updated:  func(model *T) error { return nil },
+		Deleting: func(model *T) error { return nil },
+		Deleted:  func(model *T) error { return nil },
+	})
+}

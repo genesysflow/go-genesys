@@ -125,3 +125,25 @@ func TestResourceHelpers(t *testing.T) {
 	assert.Equal(t, float64(10), meta["total"])
 	assert.Equal(t, float64(1), meta["current_page"])
 }
+
+// A resource that was just created is enveloped like every other, so a
+// client reads data.* whether it just wrote the record or fetched it.
+func TestCreatedResourceIsEnveloped(t *testing.T) {
+	app := foundation.New()
+	require.NoError(t, app.Boot())
+	k := genhttp.NewKernel(app, genhttp.KernelConfig{DisableStartupMessage: true})
+
+	k.POST("/posts", func(ctx *genhttp.Context) error {
+		return ctx.CreatedResource(map[string]any{"id": 7, "slug": "ada"})
+	})
+
+	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/posts", nil), -1)
+	require.NoError(t, err)
+	require.Equal(t, 201, resp.StatusCode)
+
+	var created map[string]any
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&created))
+	data, ok := created["data"].(map[string]any)
+	require.True(t, ok, "a created resource should carry a data envelope")
+	assert.Equal(t, "ada", data["slug"])
+}

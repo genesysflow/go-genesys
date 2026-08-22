@@ -50,7 +50,7 @@ func TestQueuedNotificationRoundTrip(t *testing.T) {
 
 	// Nothing delivered until a worker runs; one job per channel.
 	mailer.AssertNothingSent(t)
-	assert.Equal(t, 2, q.Size(""))
+	assertQueued(t, q, 2)
 
 	worker := queue.NewWorker(q)
 	require.NoError(t, worker.Drain())
@@ -68,7 +68,7 @@ func TestSendQueuedRequiresRegistration(t *testing.T) {
 	manager := notifications.New()
 	err := manager.SendQueued(q, &customer{ID: 1, Email: "a@x.io"}, &unregisteredNote{})
 	assert.ErrorContains(t, err, "not registered for queueing")
-	assert.Equal(t, 0, q.Size(""))
+	assertQueued(t, q, 0)
 }
 
 func TestSendQueuedSkipsUnroutedNotifiables(t *testing.T) {
@@ -78,7 +78,7 @@ func TestSendQueuedSkipsUnroutedNotifiables(t *testing.T) {
 
 	// A notifiable that routes neither channel dispatches nothing.
 	require.NoError(t, manager.SendQueued(q, notifications.Route("sms", "+1555"), &paymentReceived{}))
-	assert.Equal(t, 0, q.Size(""))
+	assertQueued(t, q, 0)
 }
 
 func TestQueuedJobFailsWithoutDefaultManager(t *testing.T) {
@@ -147,4 +147,13 @@ func TestQueuedChannelsRetryIndependently(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, failed, 1)
 	assert.Contains(t, failed[0].Exception, "database")
+}
+
+// assertQueued checks how many jobs are waiting, failing on a driver
+// error rather than reading it as an empty queue.
+func assertQueued(t *testing.T, q *queue.MemoryQueue, expected int64) {
+	t.Helper()
+	size, err := q.Size("")
+	require.NoError(t, err)
+	assert.Equal(t, expected, size)
 }

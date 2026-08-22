@@ -1,7 +1,12 @@
 package providers
 
 import (
+	"fmt"
+
+	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/database"
+	"github.com/genesysflow/go-genesys/query"
 	"github.com/genesysflow/go-genesys/validation"
 )
 
@@ -31,6 +36,23 @@ func (p *ValidationServiceProvider) Register(app contracts.Application) error {
 	if len(p.AttributeNames) > 0 {
 		v.SetAttributeNames(p.AttributeNames)
 	}
+
+	// The database-backed rules (unique, exists) resolve their connection
+	// when they run, not now: the database provider may be registered
+	// after this one, and a reconnect must be picked up.
+	v.SetDatabaseResolver(func() (string, query.Executor, error) {
+		manager, err := container.Resolve[*database.Manager](app)
+		if err != nil {
+			return "", nil, fmt.Errorf("validation: no database configured for unique/exists rules: %w", err)
+		}
+
+		conn := manager.Connection()
+		if connErr := conn.Error(); connErr != nil {
+			return "", nil, fmt.Errorf("validation: no database connection for unique/exists rules: %w", connErr)
+		}
+
+		return conn.Driver(), conn, nil
+	})
 
 	app.InstanceType(v)
 	app.BindValue("validator", v)

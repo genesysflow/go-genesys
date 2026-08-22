@@ -102,6 +102,14 @@ func SetDefaultMailer(mailer Mailer) {
 	defaultMailer = mailer
 }
 
+// DefaultMailer returns the mailer queued messages and notifications
+// deliver through, or nil when none was installed.
+func DefaultMailer() Mailer {
+	defaultMailerMu.RLock()
+	defer defaultMailerMu.RUnlock()
+	return defaultMailer
+}
+
 // queuedMailJob delivers a serialized message on a worker.
 type queuedMailJob struct {
 	Message *Message `json:"message"`

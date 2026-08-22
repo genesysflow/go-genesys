@@ -19,6 +19,7 @@ type Validator struct {
 	customMessages map[string]string
 	attributeNames map[string]string
 	translator     Translator
+	database       DatabaseResolver
 	mu             sync.RWMutex
 }
 
@@ -35,11 +36,14 @@ func New() *Validator {
 		return name
 	})
 
-	return &Validator{
+	instance := &Validator{
 		validate:       v,
 		customMessages: make(map[string]string),
 		attributeNames: make(map[string]string),
 	}
+	instance.registerLaravelRules()
+
+	return instance
 }
 
 // Validate validates the given struct.
@@ -67,6 +71,18 @@ func (v *Validator) ValidateMap(data map[string]any, rules map[string]string) *V
 			wildcards[k] = val
 			continue
 		}
+
+		// An attribute that was not submitted has no value to describe,
+		// so only the rules about presence itself apply to it. Without
+		// this the underlying library fails every rule on a missing key,
+		// reporting that a field nobody filled in is too long.
+		if _, present := data[k]; !present {
+			val = presenceRulesIn(val)
+			if val == "" {
+				continue
+			}
+		}
+
 		rulesAny[k] = val
 	}
 
@@ -278,6 +294,22 @@ func (v *Validator) defaultMessage(fe validator.FieldError, fieldNameOverride st
 	switch fe.Tag() {
 	case "required":
 		return field + " is required"
+	case "required_if":
+		return field + " is required when " + humanCondition(fe.Param())
+	case "required_unless":
+		return field + " is required unless " + humanCondition(fe.Param())
+	case "required_with", "required_with_all":
+		return field + " is required when " + humanList(fe.Param()) + " is present"
+	case "required_without", "required_without_all":
+		return field + " is required when " + humanList(fe.Param()) + " is not present"
+	case "confirmed":
+		return field + " confirmation does not match"
+	case "prohibited":
+		return field + " is prohibited"
+	case "unique":
+		return field + " has already been taken"
+	case "exists":
+		return field + " is invalid"
 	case "email":
 		return field + " must be a valid email address"
 	case "min":
@@ -579,4 +611,99 @@ func (e *ValidationErrors) Error() string {
 		}
 	}
 	return strings.Join(msgs, "; ")
+}
+
+// WithOverrides returns a validator that layers per-call messages and
+// attribute names over this one's, leaving the receiver untouched.
+//
+// Form requests carry their own Messages()/Attributes(); applying those
+// to the shared container-resolved validator would both race with
+// concurrent requests and leak one endpoint's wording into every other.
+// The clone shares the underlying *validator.Validate, so custom rules
+// registered on the original still apply.
+func (v *Validator) WithOverrides(messages, attributes map[string]string) *Validator {
+	if len(messages) == 0 && len(attributes) == 0 {
+		return v
+	}
+
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+
+	return &Validator{
+		validate:       v.validate,
+		customMessages: mergedStrings(v.customMessages, messages),
+		attributeNames: mergedStrings(v.attributeNames, attributes),
+		translator:     v.translator,
+		database:       v.database,
+	}
+}
+
+// mergedStrings returns base overlaid with overrides.
+func mergedStrings(base, overrides map[string]string) map[string]string {
+	merged := make(map[string]string, len(base)+len(overrides))
+	for key, value := range base {
+		merged[key] = value
+	}
+	for key, value := range overrides {
+		merged[key] = value
+	}
+	return merged
+}
+
+// humanCondition renders a required_if/required_unless param
+// ("Kind company") as "Kind is company".
+func humanCondition(param string) string {
+	parts := strings.Fields(param)
+	if len(parts) < 2 {
+		return param
+	}
+	return parts[0] + " is " + strings.Join(parts[1:], " or ")
+}
+
+// humanList renders a space-separated field list as "a, b".
+func humanList(param string) string {
+	return strings.Join(strings.Fields(param), ", ")
+}
+
+// presenceRules are the rules that describe whether an attribute is
+// there at all, rather than what it holds. They are the only ones that
+// mean anything for an attribute that was not submitted.
+var presenceRules = map[string]bool{
+	"required":               true,
+	"required_if":            true,
+	"required_unless":        true,
+	"required_with":          true,
+	"required_with_all":      true,
+	"required_without":       true,
+	"required_without_all":   true,
+	"excluded_if":            true,
+	"excluded_unless":        true,
+	"excluded_with":          true,
+	"excluded_with_all":      true,
+	"excluded_without":       true,
+	"excluded_without_all":   true,
+	"isdefault":              true,
+	"prohibited":             true,
+	"prohibited_if":          true,
+	"prohibited_unless":      true,
+	"prohibited_with":        true,
+	"prohibited_with_all":    true,
+	"prohibited_without":     true,
+	"prohibited_without_all": true,
+}
+
+// presenceRulesIn keeps only the presence rules from a rule string,
+// returning "" when none remain.
+func presenceRulesIn(rule string) string {
+	kept := make([]string, 0, 2)
+	for _, part := range strings.Split(rule, ",") {
+		name := part
+		if index := strings.IndexAny(name, "=:"); index >= 0 {
+			name = name[:index]
+		}
+		if presenceRules[strings.TrimSpace(name)] {
+			kept = append(kept, part)
+		}
+	}
+	return strings.Join(kept, ",")
 }

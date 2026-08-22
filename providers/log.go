@@ -30,7 +30,7 @@ func (p *LogServiceProvider) Register(app contracts.Application) error {
 
 	switch channel {
 	case "file":
-		logPath := cfg.GetString("logging.channels.file.path")
+		logPath := basePathFor(app, cfg.GetString("logging.channels.file.path"))
 		if logPath == "" {
 			logPath = filepath.Join(app.StoragePath(), "logs", "app.log")
 		}

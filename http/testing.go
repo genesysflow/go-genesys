@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 )
 
 // TestRequest represents a test HTTP request.
@@ -82,16 +83,15 @@ func (r *TestRequest) WithJSON(v any) *TestRequest {
 	return r
 }
 
-// WithForm sets the request body as form data.
+// WithForm sets the request body as form data. Keys and values are
+// encoded, so a field carrying a space, an ampersand or a plus sign
+// arrives as it was written rather than truncated at the punctuation.
 func (r *TestRequest) WithForm(data map[string]string) *TestRequest {
-	values := ""
+	values := make(url.Values, len(data))
 	for k, v := range data {
-		if values != "" {
-			values += "&"
-		}
-		values += k + "=" + v
+		values.Set(k, v)
 	}
-	r.body = []byte(values)
+	r.body = []byte(values.Encode())
 	r.headers["Content-Type"] = "application/x-www-form-urlencoded"
 	return r
 }
@@ -255,4 +255,15 @@ func (r *TestResponse) IsClientError() bool {
 // IsServerError returns true if status is a server error (5xx).
 func (r *TestResponse) IsServerError() bool {
 	return r.resp.StatusCode >= 500
+}
+
+// hasCookie reports whether the request already carries a cookie, so a
+// test case's jar never overrides one set explicitly.
+func (r *TestRequest) hasCookie(name string) bool {
+	for _, cookie := range r.cookies {
+		if cookie.Name == name {
+			return true
+		}
+	}
+	return false
 }

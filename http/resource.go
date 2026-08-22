@@ -12,6 +12,14 @@ func (c *Context) Resource(data any) error {
 	return c.JSONResponse(map[string]any{"data": data})
 }
 
+// CreatedResource sends a 201 with the same "data" envelope Resource
+// uses, so a client reads data.* whether it just wrote the record or
+// fetched it. Created sends an unwrapped body, for payloads that are not
+// resources.
+func (c *Context) CreatedResource(data any) error {
+	return c.Status(201).JSONResponse(map[string]any{"data": data})
+}
+
 // ResourceWith sends data with additional top-level metadata:
 //
 //	{"data": {...}, "meta": {...}}

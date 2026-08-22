@@ -65,6 +65,16 @@ type CSRFConfig struct {
 	// trusted.
 	TrustedOrigins []string
 
+	// Except lists path prefixes exempt from verification, for endpoints
+	// that do not authenticate with a cookie: a bearer-token API carries
+	// no cookie, so it cannot carry a double-submit token either, and
+	// there is no cross-site request to forge without one.
+	//
+	// Entries are prefixes, matched against the request path. Exempt only
+	// what genuinely does not use cookies - an exempt path that does is an
+	// unguarded one.
+	Except []string
+
 	// ErrorHandler renders the rejection. Defaults to a 403 JSON response.
 	ErrorHandler func(ctx *http.Context) error
 }
@@ -155,6 +165,13 @@ func CSRF(config ...CSRFConfig) http.MiddlewareFunc {
 	secret := slices.Clone(cfg.Secret)
 
 	return func(ctx *http.Context, next func() error) error {
+		// An exempt path still gets a token issued, so a form rendered by
+		// one can post to a guarded path.
+		if csrfExempt(ctx.Path(), cfg.Except) {
+			ctx.Set(CSRFContextKey, csrfEnsureToken(ctx, cfg, secret))
+			return next()
+		}
+
 		if slices.Contains(csrfSafeMethods, ctx.Method()) {
 			token := csrfEnsureToken(ctx, cfg, secret)
 			ctx.Set(CSRFContextKey, token)
@@ -186,6 +203,18 @@ func CSRF(config ...CSRFConfig) http.MiddlewareFunc {
 
 		return next()
 	}
+}
+
+// csrfExempt reports whether a path is exempt from verification. The
+// match is a prefix, not a substring: /evil/api/ must not inherit the
+// exemption granted to /api/.
+func csrfExempt(path string, except []string) bool {
+	for _, prefix := range except {
+		if prefix != "" && strings.HasPrefix(path, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // CSRFToken returns the token issued for this request, for rendering into

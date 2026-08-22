@@ -198,3 +198,36 @@ genesys queue:work --queue=high,default   # high drains first
 Programmatically, set `worker.Queues = []string{"high", "default"}`.
 The memory, database, and redis drivers all support named queues; the
 sync driver runs everything inline.
+
+## Monitoring and restarts
+
+```
+genesys queue:monitor high,default --max 100
+genesys queue:restart
+```
+
+`queue:monitor` reports how many jobs are waiting per queue and flags
+anything above `--max`. A driver that cannot count (the sync driver has
+no backlog) says so rather than reporting an empty queue - which would
+read as the opposite of the truth.
+
+`queue:restart` leaves a timestamp in the cache. Workers that watch for
+it stop once they finish the job in hand, and their supervisor starts
+them again - which is how a deploy gets new code onto the queue without
+killing a job mid-flight:
+
+```go
+worker := queue.NewWorker(driver)
+worker.WatchRestart(cacheStore)
+
+if err := worker.Run(ctx); errors.Is(err, queue.ErrRestartRequested) {
+    // exit; the supervisor starts a fresh worker
+}
+```
+
+A worker only honours a signal issued after it started, so the signal
+from an earlier deploy does not stop the worker that replaced it.
+
+Laravel's `queue:listen`, which runs a subprocess per job so code
+changes are picked up, has no analogue here: this is a compiled binary,
+and `queue:restart` covers the deploy case.

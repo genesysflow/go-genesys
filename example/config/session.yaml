@@ -1,0 +1,18 @@
+# Session Configuration
+
+# memory keeps sessions in the process, which is fine for one local
+# instance. Use file, database or redis once there is more than one.
+driver: ${SESSION_DRIVER:-file}
+files: ${SESSION_FILES:-storage/framework/sessions}
+table: sessions
+
+cookie: genesys_session
+path: /
+same_site: Lax
+http_only: true
+
+# A session cookie sent over plain http is readable by anyone on the
+# network path and replayable as a full account takeover, so this
+# defaults on. Local development over http:// turns it off in .env,
+# which is the one place it is safe to.
+secure: ${SESSION_SECURE:-true}

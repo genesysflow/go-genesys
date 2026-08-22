@@ -1,2 +1,12 @@
+# View Configuration
+
 path: resources/views
+
+# Re-parse templates on every render, so an edit shows up without a
+# restart. Turn it off in production.
 reload: ${VIEW_RELOAD:-true}
+
+# The view every page is wrapped in, rendering it through {{.content}}.
+# A page that needs different chrome names its own with ctx.ViewIn, and
+# a fragment opts out with an empty layout.
+layout: layouts.blog

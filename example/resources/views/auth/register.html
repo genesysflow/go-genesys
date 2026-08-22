@@ -1,0 +1,22 @@
+<!-- Create an account -->
+<form method="POST" action="/register">
+  {{csrf_field .csrf_token}}
+
+  <label for="name">Name</label>
+  <input id="name" name="name" type="text" value="{{.old.Get "name"}}" required>
+  {{if .errors.Has "name"}}<span class="error">{{.errors.First "name"}}</span>{{end}}
+
+  <label for="email">Email</label>
+  <input id="email" name="email" type="email" value="{{.old.Get "email"}}" required>
+  {{if .errors.Has "email"}}<span class="error">{{.errors.First "email"}}</span>{{end}}
+
+  <label for="password">Password</label>
+  <input id="password" name="password" type="password" required>
+  {{if .errors.Has "password"}}<span class="error">{{.errors.First "password"}}</span>{{end}}
+
+  <label for="password_confirmation">Confirm password</label>
+  <input id="password_confirmation" name="password_confirmation" type="password" required>
+
+  <button type="submit">Create account</button>
+  <a href="/login">Already registered?</a>
+</form>

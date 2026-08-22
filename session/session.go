@@ -100,6 +100,12 @@ func DefaultConfig() Config {
 	}
 }
 
+// Config returns the manager's configuration, so a caller can see what
+// it resolved to - which store, which cookie, which directory.
+func (m *Manager) Config() Config {
+	return m.config
+}
+
 // NewManager creates a new session manager.
 func NewManager(config ...Config) *Manager {
 	cfg := DefaultConfig()
@@ -187,12 +193,18 @@ func (m *Manager) Middleware() fiber.Handler {
 		c.Locals("session", sess)
 
 		// Continue to next handler
-		if err := c.Next(); err != nil {
-			return err
+		handlerErr := c.Next()
+
+		// The session is saved whatever the handler returned. A handler
+		// that fails still needs what it wrote to survive: a validation
+		// failure flashes its errors and old input on the way out, and
+		// dropping them here would land the user on a form with an empty
+		// error bag.
+		if saveErr := sess.Save(); saveErr != nil && handlerErr == nil {
+			return saveErr
 		}
 
-		// Save session
-		return sess.Save()
+		return handlerErr
 	}
 }
 
@@ -369,6 +381,20 @@ func (s *Session) Old(key string, defaultValue ...string) string {
 		return defaultValue[0]
 	}
 	return ""
+}
+
+// HasOld reports whether input was flashed for a specific key.
+//
+// Answered by key rather than by comparing the value against a sentinel,
+// so a flashed empty string is still input and no real value can be
+// mistaken for absence.
+func (s *Session) HasOld(key string) bool {
+	input, ok := s.Get("_old_input").(map[string]any)
+	if !ok {
+		return false
+	}
+	_, present := input[key]
+	return present
 }
 
 // HasOldInput reports whether any input was flashed on the previous request.

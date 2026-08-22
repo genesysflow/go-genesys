@@ -31,7 +31,7 @@ func (p *LangServiceProvider) Boot(app contracts.Application) error {
 		appCfg := app.GetConfig()
 		cfg.Locale = appCfg.GetString("app.locale")
 		cfg.Fallback = appCfg.GetString("app.fallback_locale")
-		cfg.Path = appCfg.GetString("lang.path")
+		cfg.Path = basePathFor(app, appCfg.GetString("lang.path"))
 	}
 
 	translator := lang.New(cfg)

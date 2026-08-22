@@ -1,0 +1,25 @@
+package mail
+
+import (
+	genesysmail "github.com/genesysflow/go-genesys/mail"
+)
+
+// {{.Name}} builds a mail message. Send it with:
+//
+//	mailfacade.Send(mail.New{{.Name}}(user.Email).Message())
+type {{.Name}} struct {
+	To string
+}
+
+// New{{.Name}} creates the mailable for a recipient.
+func New{{.Name}}(to string) *{{.Name}} {
+	return &{{.Name}}{To: to}
+}
+
+// Message renders the message this mailable represents.
+func (m *{{.Name}}) Message() *genesysmail.Message {
+	return genesysmail.NewMessage().
+		To(m.To).
+		Subject("{{.Name}}").
+		HTML("<p>Edit app/mail/{{.LowerName}}.go to write this message.</p>")
+}

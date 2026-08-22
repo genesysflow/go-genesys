@@ -867,7 +867,6 @@ func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
 		case "modify":
 			stmts, err := g.CompileModifyColumn(bp.table, *cmd.Column)
-			//lint:ignore SA4023 the stub always errors today; keep uniform propagation for when SQLite gains table-rebuild support
 			if err != nil {
 				return nil, err
 			}
@@ -876,14 +875,12 @@ func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 			statements = append(statements, g.CompileDropIndex(bp.table, cmd.Columns))
 		case "dropUnique":
 			stmts, err := g.CompileDropUnique(bp.table, cmd.Columns)
-			//lint:ignore SA4023 the stub always errors today; keep uniform propagation
 			if err != nil {
 				return nil, err
 			}
 			statements = append(statements, stmts...)
 		case "dropPrimary":
 			stmt, err := g.CompileDropPrimary(bp.table)
-			//lint:ignore SA4023 the stub always errors today; keep uniform propagation
 			if err != nil {
 				return nil, err
 			}

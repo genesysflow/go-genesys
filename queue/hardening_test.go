@@ -29,7 +29,7 @@ func TestRedisReservationReclaim(t *testing.T) {
 	hidden, err := q.Pop("")
 	require.NoError(t, err)
 	assert.Nil(t, hidden)
-	assert.Equal(t, 1, q.Size(""), "reserved jobs still count toward size")
+	assert.Equal(t, 1, queueSize(t, q, ""), "reserved jobs still count toward size")
 
 	// The worker "crashes" (never settles). After retry_after the job
 	// is reclaimed with its attempt counted.
@@ -40,7 +40,7 @@ func TestRedisReservationReclaim(t *testing.T) {
 	assert.Equal(t, 2, reclaimed.Attempts)
 
 	require.NoError(t, q.Delete(reclaimed))
-	assert.Equal(t, 0, q.Size(""))
+	assert.Equal(t, 0, queueSize(t, q, ""))
 }
 
 func TestRedisSettledJobIsGone(t *testing.T) {
@@ -208,7 +208,7 @@ func TestOverlapBlockedJobIsPostponedNotFailed(t *testing.T) {
 	failed, err := q.ListFailed()
 	require.NoError(t, err)
 	assert.Empty(t, failed, "an overlap-blocked job must not be recorded as failed")
-	assert.Equal(t, 1, q.Size(""), "the job is back on the queue")
+	assert.Equal(t, 1, queueSize(t, q, ""), "the job is back on the queue")
 	assert.EqualValues(t, 0, postponedRuns.Load())
 
 	// Sibling finishes; the postponed job runs with a full attempt budget.

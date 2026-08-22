@@ -136,7 +136,7 @@ func countRelation(driver string, executor query.Executor, parentMeta *modelMeta
 	}
 
 	rows, err := builder.
-		Select(groupCol, "COUNT(*) as aggregate").
+		Select(groupCol).SelectRaw("COUNT(*) as aggregate").
 		GroupBy(groupCol).
 		Get()
 	if err != nil {

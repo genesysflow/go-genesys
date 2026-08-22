@@ -1,6 +1,7 @@
 package session_test
 
 import (
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -167,4 +168,34 @@ func TestPersistentDataAndHelpers(t *testing.T) {
 	h.get("/set")
 	h.get("/flush")
 	assert.Equal(t, "missing", h.get("/read"), "Flush cleared the session")
+}
+
+// Presence is asked by key, not inferred by comparing against a
+// sentinel: a flashed value that happens to equal the sentinel would
+// otherwise report absent.
+func TestHasOldAnswersByKey(t *testing.T) {
+	h := newFlashHarness(t, func(app *fiber.App, _ *session.Manager) {
+		app.Get("/flash", func(c *fiber.Ctx) error {
+			sess := session.GetFromContext(c)
+			sess.FlashInput(map[string]any{
+				"email":    "ada@example.com",
+				"empty":    "",
+				"sentinel": "\x00missing",
+			})
+			return c.SendString("flashed")
+		})
+		app.Get("/read", func(c *fiber.Ctx) error {
+			sess := session.GetFromContext(c)
+			return c.SendString(fmt.Sprintf("%v|%v|%v|%v",
+				sess.HasOld("email"),
+				sess.HasOld("empty"),
+				sess.HasOld("sentinel"),
+				sess.HasOld("never-flashed")))
+		})
+	})
+
+	h.get("/flash")
+
+	// A flashed empty string is still input, and any value is a value.
+	assert.Equal(t, "true|true|true|false", h.get("/read"))
 }

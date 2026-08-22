@@ -1,0 +1,30 @@
+package notifications
+
+import (
+	genesysmail "github.com/genesysflow/go-genesys/mail"
+	"github.com/genesysflow/go-genesys/notifications"
+)
+
+// {{.Name}} is a multi-channel notification. Send it with:
+//
+//	notify.Send(user, &notifications.{{.Name}}{})
+type {{.Name}} struct {
+	// Add the data the notification needs.
+}
+
+// Via lists the channels this notification is delivered on.
+func (n *{{.Name}}) Via(notifiable notifications.Notifiable) []string {
+	return []string{"mail", "database"}
+}
+
+// ToMail builds the mail representation.
+func (n *{{.Name}}) ToMail(notifiable notifications.Notifiable) *genesysmail.Message {
+	return genesysmail.NewMessage().
+		Subject("{{.Name}}").
+		HTML("<p>Edit app/notifications/{{.LowerName}}.go to write this notification.</p>")
+}
+
+// ToDatabase builds the payload stored in the notifications table.
+func (n *{{.Name}}) ToDatabase(notifiable notifications.Notifiable) map[string]any {
+	return map[string]any{"message": "{{.Name}}"}
+}

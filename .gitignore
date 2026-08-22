@@ -1,0 +1,9 @@
+# Local environment: never committed, since it holds this machine's keys
+# and credentials. Copy .env.example and fill it in.
+.env
+
+# Runtime state the application writes, not source.
+example/storage/database.sqlite-shm
+example/storage/database.sqlite-wal
+example/storage/framework/sessions/
+example/storage/logs/

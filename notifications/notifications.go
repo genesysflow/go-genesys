@@ -21,7 +21,9 @@ package notifications
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"reflect"
+	"sync"
 	"time"
 
 	"github.com/genesysflow/go-genesys/mail"
@@ -88,6 +90,14 @@ type Manager struct {
 	driver   string
 	executor query.Executor
 	table    string
+
+	// broadcast and webhook channel dependencies (optional)
+	broadcaster Broadcaster
+	httpClient  *http.Client
+
+	// channels registered with Extend
+	custom map[string]ChannelFunc
+	mu     sync.RWMutex
 }
 
 // Option configures a Manager.
@@ -136,13 +146,47 @@ func (m *Manager) sendOn(channel string, notifiable Notifiable, notification Not
 		return m.sendMail(notifiable, notification)
 	case "database":
 		return m.sendDatabase(notifiable, notification)
+	case "broadcast":
+		return m.sendBroadcast(notifiable, notification)
+	case "webhook":
+		return m.sendWebhook(notifiable, notification)
 	default:
-		return fmt.Errorf("unknown channel (register mail or database)")
+		if fn, ok := m.customChannel(channel); ok {
+			return fn(notifiable, notification)
+		}
+		// A channel nobody handles means a notification nobody receives,
+		// which is worse than one that fails loudly.
+		return fmt.Errorf("unknown channel (built in: mail, database, broadcast, webhook; register others with Extend)")
 	}
 }
 
+// SetMailer replaces the mailer the mail channel delivers through.
+//
+// A manager built at boot holds the mailer that existed then; a test
+// that swaps in an array mailer needs what the application sends to land
+// in it, notifications included.
+func (m *Manager) SetMailer(mailer mail.Mailer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.mailer = mailer
+}
+
+// mailerFor returns the mailer to deliver through: this manager's, or
+// the application's default when it was built without one.
+func (m *Manager) mailerFor() mail.Mailer {
+	m.mu.RLock()
+	mailer := m.mailer
+	m.mu.RUnlock()
+
+	if mailer != nil {
+		return mailer
+	}
+	return mail.DefaultMailer()
+}
+
 func (m *Manager) sendMail(notifiable Notifiable, notification Notification) error {
-	if m.mailer == nil {
+	mailer := m.mailerFor()
+	if mailer == nil {
 		return fmt.Errorf("no mailer configured (use notifications.WithMailer)")
 	}
 	mailable, ok := notification.(MailNotification)
@@ -164,7 +208,7 @@ func (m *Manager) sendMail(notifiable Notifiable, notification Notification) err
 	if len(message.Recipients()) == 0 {
 		message.To(email)
 	}
-	return m.mailer.Send(message)
+	return mailer.Send(message)
 }
 
 func (m *Manager) sendDatabase(notifiable Notifiable, notification Notification) error {

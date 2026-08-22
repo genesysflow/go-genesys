@@ -2,6 +2,11 @@
 
 Laravel-style docs, one topic per file.
 
+For how the pieces fit together, read [the example
+application](../example/README.md): a small blog that uses every feature
+documented here, with feature tests driving it through its real routes,
+middleware and database.
+
 ## Getting Started
 - [Getting Started](getting-started.md) — installation, lifecycle, container, providers
 
@@ -16,7 +21,8 @@ Laravel-style docs, one topic per file.
 - [Database](database.md) — query builder, ORM, migrations, seeders, factories
 
 ## Security
-- [Authentication & Authorization](auth.md) — guards, gates, policies
+- [Security](security.md) — what is handled for you, the escape hatches, the settings that decide
+- [Authentication & Authorization](auth.md) — guards, gates, policies, API tokens
 - [Encryption & Signed URLs](encryption.md)
 
 ## Digging Deeper
@@ -32,3 +38,4 @@ Laravel-style docs, one topic per file.
 - [Collections](collections.md)
 - [Console](console.md) — commands and generators
 - [Testing](testing.md) — HTTP test DSL, fakes, fake data
+- [Dev Tools](devtools.md) — the request and query panel

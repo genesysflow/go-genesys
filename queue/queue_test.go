@@ -7,7 +7,17 @@ import (
 	"github.com/genesysflow/go-genesys/queue"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// queueSize reports a memory queue's size, failing the test on a driver
+// error rather than reading it as an empty queue.
+func queueSize(t *testing.T, q queue.SizeProvider, name string) int {
+	t.Helper()
+	size, err := q.Size(name)
+	require.NoError(t, err)
+	return int(size)
+}
 
 // MockJob is a mock implementation of the Job interface.
 type MockJob struct {

@@ -67,6 +67,7 @@ const (
 	relMorphOne
 	relMorphMany
 	relMorphToMany
+	relMorphTo
 	relHasOneThrough
 	relHasManyThrough
 )
@@ -169,6 +170,8 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 		rel.kind = relMorphMany
 	case "morphToMany":
 		rel.kind = relMorphToMany
+	case "morphTo":
+		rel.kind = relMorphTo
 	case "hasOneThrough":
 		rel.kind = relHasOneThrough
 	case "hasManyThrough":
@@ -177,11 +180,20 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 		return nil, fmt.Errorf("database: field %s.%s: unknown relation kind %q", parent.Name(), field.Name, parts[0])
 	}
 
-	related, err := relatedStructType(field.Type)
-	if err != nil {
-		return nil, fmt.Errorf("database: field %s.%s: %w", parent.Name(), field.Name, err)
+	// morphTo points at a different type per row, so its field is an
+	// interface and the related type is resolved from the type column
+	// at load time (see morphto.go).
+	if rel.kind == relMorphTo {
+		if field.Type.Kind() != reflect.Interface {
+			return nil, fmt.Errorf("database: field %s.%s: morphTo relations need an `any` field", parent.Name(), field.Name)
+		}
+	} else {
+		related, err := relatedStructType(field.Type)
+		if err != nil {
+			return nil, fmt.Errorf("database: field %s.%s: %w", parent.Name(), field.Name, err)
+		}
+		rel.related = related
 	}
-	rel.related = related
 
 	switch rel.kind {
 	case relHasMany, relBelongsToMany, relMorphMany, relMorphToMany, relHasManyThrough:
@@ -194,16 +206,20 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 		}
 	}
 
-	// Convention defaults.
+	// Convention defaults. morphTo has no single related type, so the
+	// related-name defaults do not apply to it.
 	parentKey := support.ToSnakeCase(parent.Name()) + "_id"
-	relatedKey := support.ToSnakeCase(related.Name()) + "_id"
+	relatedKey := ""
+	if rel.related != nil {
+		relatedKey = support.ToSnakeCase(rel.related.Name()) + "_id"
+	}
 	switch rel.kind {
 	case relHasOne, relHasMany:
 		rel.foreignKey = parentKey // on the related table
 	case relBelongsTo:
 		rel.foreignKey = support.ToSnakeCase(field.Name) + "_id" // on the parent table
 	case relBelongsToMany:
-		names := []string{support.ToSnakeCase(parent.Name()), support.ToSnakeCase(related.Name())}
+		names := []string{support.ToSnakeCase(parent.Name()), support.ToSnakeCase(rel.related.Name())}
 		sort.Strings(names)
 		rel.pivotTable = names[0] + "_" + names[1]
 		rel.pivotFK = parentKey
@@ -252,6 +268,11 @@ func parseRelation(parent reflect.Type, field reflect.StructField, index []int, 
 			return nil, fmt.Errorf("database: field %s.%s: %s needs an as:<morph name> option", parent.Name(), field.Name, parts[0])
 		}
 		rel.foreignKey = rel.morphIDCol() // on the related table
+	case relMorphTo:
+		if rel.morphName == "" {
+			return nil, fmt.Errorf("database: field %s.%s: morphTo needs an as:<morph name> option", parent.Name(), field.Name)
+		}
+		rel.foreignKey = rel.morphIDCol() // on this table
 	case relMorphToMany:
 		if rel.morphName == "" {
 			return nil, fmt.Errorf("database: field %s.%s: morphToMany needs an as:<morph name> option", parent.Name(), field.Name)
@@ -335,6 +356,8 @@ func loadRelation(driver string, executor query.Executor, models reflect.Value, 
 		return loadBelongsTo(driver, executor, models, rel, nested)
 	case relBelongsToMany, relMorphToMany:
 		return loadBelongsToMany(driver, executor, models, rel, nested)
+	case relMorphTo:
+		return loadMorphTo(driver, executor, models, rel, nested)
 	case relHasOneThrough, relHasManyThrough:
 		return loadThrough(driver, executor, models, rel, nested)
 	}

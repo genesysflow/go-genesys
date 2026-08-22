@@ -5,6 +5,299 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Security - round 8: an adversarial pass over the framework
+
+Most of what was probed held: operators are allowlisted, identifiers are
+quoted, `Back` refuses to leave the host, tokens are hashed and compared
+in constant time, templates escape by default, CORS panics on the
+wildcard-plus-credentials combination, and the dev panel refuses to
+mount in production. Six things did not.
+
+- **`Select` emitted client SQL.** A column containing parentheses was
+  passed through as an expression, so a query built from a client-chosen
+  field list could smuggle in a subquery. `Select`/`AddSelect` now quote
+  every column as the identifier it is; **`SelectRaw` is the explicit
+  door for an expression**, and the aggregates use it. A caller passing
+  `COUNT(*)` to `Select` must move it to `SelectRaw`.
+- **A component slot rendered a plain string as raw HTML**, which is
+  stored XSS behind an invisible opt-in: a slot is usually filled from a
+  handler, and a handler's data is a request's data. A string is now
+  escaped; markup says so by arriving as `template.HTML`, which is what
+  `raw` produces. A template passing literal markup to a slot needs
+  `(raw "...")`.
+- **`ctx.Bind` filled a model's primary key and timestamps from the
+  request** - enough to write over another row. Those columns are
+  cleared after binding, through the new `database.ServerOwned`.
+- **The scaffolded login was unthrottled.** `make:auth` now rate-limits
+  the endpoints that check a credential, keyed by address as well as IP
+  so one attacker cannot lock every account out and one office NAT is
+  not one bucket. `Controller.Limiter` takes the shared cache store.
+- **There was no safe way to honour a "next" URL**, so applications
+  write `RedirectTo(ctx.Query("next"))` and ship an open redirect.
+  **`ctx.Intended(fallback)`** is Laravel's answer: the auth middleware
+  records where a guest was headed, and Intended honours it only when it
+  stays on this host.
+- **`APP_DEBUG` could not be turned on.** The flag was read from the
+  environment before configuration existed, so `debug: true` in
+  `config/app.yaml` did nothing and the debug error page was
+  unreachable. Configuration now wins where it says something, with the
+  environment variable as the fallback and off as the default.
+
+The session provider warns when a production application hands out a
+cookie that is not Secure. The example gains the security headers it was
+not sending, scopes CORS to the JSON API rather than the session-backed
+HTML site, and defaults both `session.secure` and `app.debug` to the
+safe value so a deployment that forgets to say is not the one that
+leaks.
+
+Parameter binding - the SQL feature that actually stops injection - was
+already used for every value the query layer sends, and is now pinned by
+tests: seven injection payloads round-trip as data through every value
+clause, an INSERT and an UPDATE; the MySQL DSN is asserted not to carry
+`interpolateParams` (which replaces server-side binding with client-side
+escaping) or `multiStatements` (which lets one call run several). The
+tests also record what binding does *not* buy: `modernc.org/sqlite`
+executes a trailing statement even when the call has bindings, so a
+mistake in the SQL runs rather than misreads - which is the reason
+identifiers are quoted instead of trusted.
+
+Forty security tests cover all of it, and the classes that already held:
+IDOR across every write route, mass assignment through both the form and
+the JSON API, session fixation on login and logout, cookie flags,
+account enumeration, token forgery, traversal, and what an error page
+and a 403 are allowed to say.
+
+### Added - round 7: an example application, and what it exposed
+
+The framework had grown a lot of Laravel-shaped surface with no
+application exercising it end to end. `example/` is now a small blog -
+authentication, policies, form requests, morph relations, a queued job,
+a token API, a console command and scheduled tasks - with fifty-seven
+feature tests driving it through its real routes, middleware and database.
+Building it found seventeen defects. Everything below is one of them.
+
+- **View layouts**: `view.Manager.SetLayout` (and `view.layout` in
+  configuration) wraps every rendered page in a layout, which receives
+  the page as `{{.content}}`. `ctx.ViewIn(layout, name, data)` picks a
+  different one, and an empty layout opts out - a fragment has no
+  business carrying the site's chrome. Composition was `{{template}}`
+  includes before this, which cannot wrap a page in anything.
+- **The kernel installs the session middleware** from the registered
+  session manager. Every application had to remember
+  `kernel.UseFiber(manager.Middleware())` itself, which is how a login
+  flow ends up working under test and failing in the browser.
+  `KernelConfig.DisableSession` turns it off for an application that
+  places the middleware itself.
+- **`auth.ResolveUser(guard)`**: the user a public page still needs to
+  know about - to greet a reader, show an edit link, or let a policy see
+  a draft its author is entitled to - without requiring one. Guarding a
+  route is still `auth.Middleware`'s job.
+- **`auth.CanBy[T](gate, ability, param, column)`**: the `can` middleware
+  for a route addressed by a slug, uuid or email rather than by its
+  primary key.
+- **`ctx.CreatedResource(data)`**: a 201 with the same `data` envelope
+  `ctx.Resource` uses, so a client reads `data.*` whether it just wrote
+  the record or fetched it.
+- **`database.TableNameOf(value)`**: the table a value's model maps to,
+  where `TableNameFor[T]` needs a type - which is what a polymorphic
+  column has when all it holds is an interface.
+- **`Manager.SetMailer`** on the notification manager, and a fallback to
+  the application's default mailer when it was built without one. A
+  manager built at boot held the mailer that existed then, so swapping in
+  an array mailer for a test never reached the mail channel.
+- **`console.Option.TakesValue`**: an option that takes a value but has
+  no sensible default. Without it `--since 2020-01-01` parsed the date as
+  a positional argument, because an empty default meant "boolean flag".
+- **`middleware.CSRFConfig.Except`**: paths exempt from verification, for
+  an endpoint authenticated by bearer token rather than cookie - without
+  a cookie there is no cross-site request to forge. An exempt path still
+  gets a token issued, so a form rendered by one can post to a guarded
+  path.
+- **Every `make:*` Go stub is compiled against the framework in a test.**
+  Only `make:auth` was, which is how a policy stub teaching a fragile
+  comparison and a resource stub whose own doc example did not match its
+  signature both survived.
+- **`Session.HasOld(key)`**, answering by key rather than by comparing a
+  value against a sentinel.
+- **`mail.SendDefault(mailable)`**: sends through the application's
+  mailer, resolved when the message is sent rather than when the handler
+  was wired - the same reason the notification manager needed
+  `SetMailer`.
+- **`devtools.RegisterRoutes(router, recorder, path)`**: mounts the panel
+  on a router, which is where applications register routes. It refuses in
+  production for the same reason `Register` does.
+
+### Fixed - round 7
+
+- **A validation rule was applied to an attribute that was not
+  submitted.** `ValidateMap` failed every rule on a key absent from the
+  data, so `unique=posts.slug` reported "has already been taken" for a
+  field nobody filled in. Rules about a value are now skipped for an
+  absent attribute, as they are in Laravel; rules about presence still
+  apply.
+- **Form-request `Rules()` ran against the raw input**, so a value
+  `PrepareForValidation` derived - a slug from a title - was never
+  checked. They now run against the prepared request, with input the
+  struct does not bind still visible to them.
+- **Configured paths were resolved against the working directory**
+  rather than the application root, so `resources/views` only worked when
+  the binary ran from that directory. Views, translations, session files
+  and the log file now all resolve against the base path; an absolute
+  path is left alone.
+- **`TestRequest.WithForm` concatenated fields instead of encoding
+  them**, truncating any value containing a space, an ampersand or a plus
+  sign - which is most form values worth testing.
+- **A token's `tokenable_type` held a Go type string**, package path and
+  all, so moving the model to another package would orphan every token
+  ever issued. It now holds the model's table name, like every other
+  polymorphic column in the framework.
+- **`Attach`/`Detach`/`Sync` refused a `morphToMany` relation**, so a
+  polymorphic pivot could be read but never written.
+- **`OldInput.Has` compared against a sentinel string**, so a flashed
+  value equal to that sentinel reported absent. It asks the session by
+  key now.
+- **The `make:policy` stub compared an `int64` id with the `any` an
+  identifier is.** That compiles, and is false forever when the two hold
+  different numeric types - a policy that denies everything with no
+  error to find. The stub asserts the identifier instead, and says why.
+- **The `make:resource` stub's doc example did not match its own
+  signature**, so the first thing a developer copied out of it failed.
+- **The scaffolded password reset did not reset the password.** The
+  generated controller left the two things the flow exists for - mailing
+  the link and storing the new password - as `TODO` comments, so a
+  reset reported success and changed nothing. `Controller.SendLink` and
+  `Controller.UpdatePassword` are now hooks the application fills in,
+  like `Create` for registration, and `UpdatePassword` runs inside
+  `Consume` so a token is spent only when the password really changed.
+
+### Added - round 6: console, authorization, and the surrounding tooling
+
+- **Console command base**: `console.Command` declares arguments and
+  options; the handler talks to the user through a context carrying
+  output helpers (`Line`/`Info`/`Warn`/`Error`/`Table`/`WithProgressBar`),
+  prompts (`Ask`/`Secret`/`Confirm`/`Choice`), and `Call` for invoking
+  another command. Output goes through the command's streams, so commands
+  are testable; colour is suppressed off-terminal and under `NO_COLOR`;
+  prompts honour `--no-interaction`, so a command in cron never blocks on
+  input that will not arrive; `Secret` disables terminal echo.
+- **New commands**: `migrate:refresh`, `db:wipe` (refuses production
+  without `--force`), `db:show`, `db:table`, `cache:clear`,
+  `cache:forget`, `storage:link`, `config:show` (credentials masked
+  unless `--show-secrets`), `schedule:test`, `event:list`.
+- **Fourteen `make:` generators** - mail, notification, factory,
+  resource, rule, observer, cast, scope, channel, exception, enum, test,
+  view, component - plus `make:auth`, which scaffolds the login,
+  registration and password-reset flows. Every generated Go stub is
+  compiled against the framework in a test, not just parsed.
+- **Policies**: `auth.RegisterPolicy[Post](gate, &PostPolicy{})` binds a
+  policy struct to a model type; the gate answers by model, kebab-casing
+  method names so `ViewAny` answers `"view-any"`. Registration rejects a
+  bool-returning method with the wrong arguments, since that typo would
+  otherwise deny silently forever.
+- **Request authorization**: `ctx.Can`/`Cannot`/`Authorize` and
+  `auth.GateMiddleware`, plus the `auth.Can[T]`/`auth.CanAny[T]` route
+  middleware. With no gate bound the request fails closed. Views receive
+  the gate as `.gate`.
+- **Personal access tokens**: a Sanctum-shaped table, repository and
+  guard. Only the SHA-256 of the secret is stored, compared in constant
+  time; abilities, expiry, `RevokeAll` and `PruneExpired` included, with
+  `auth.RequireAbility` for guarding a route.
+- **Scheduler**: more frequencies, `Timezone`/`In`, `When`/`Skip`/
+  `Between`/`UnlessBetween`/`Environments`, `Exec` for shell commands
+  (with output capture), `Job` for queue dispatch, before/after/success/
+  failure hooks, and `OnOneServer` backed by a shared cache lock.
+- **Mailables**: `mail.Mailable` (Envelope/Content/Attachments) with
+  `mail.Send`, `mail.SendWith`, and `mail.To(...).Send(mailable)`.
+- **Notification channels**: broadcast and webhook (a Slack or Teams
+  incoming webhook is a URL to POST to), `Manager.Extend` for channels of
+  your own, and `notifications.NewFake` with assertions.
+- **Model layer**: `morphTo` with a morph registry, `ToMap`/`ToMapSlice`
+  honouring Hidden/Visible/Appends, `Fresh`/`Refresh`/`Replicate`/`Is`,
+  and factory `State`/`Sequence`.
+- **Testing**: `TestCase.ActingAs`/`ActingAsGuest`, a cookie jar so a
+  session survives a redirect, `AssertJsonMissing`/`AssertHeaderMissing`/
+  `AssertCookie`/`AssertLocationContains`, and `testutil/dbtest` database
+  assertions.
+- **Support**: a fluent `Str.Of` chain and two dozen string helpers,
+  slice/map helpers (MapSlice, Filter, Reduce, Unique, Chunk, GroupBy,
+  KeyBy, Only, Except, Partition, ...), `Num` formatting, and
+  `support.Pipe`.
+- **Dev panel**: `devtools` records requests and queries in a ring buffer
+  and serves them at `/_genesys`. It refuses to mount in production, does
+  not record itself, and withholds query bindings unless asked.
+
+- **Queue operations**: `queue:monitor` reports queue sizes and flags a
+  backlog above `--max`; `queue:restart` leaves a signal that workers
+  watching for it honour between jobs, so a deploy replaces workers
+  without killing a job mid-flight.
+
+### Changed - round 6
+
+- **`Queue.Size` returns `(int64, error)`** on every driver. The memory
+  and redis drivers returned a bare `int`, swallowing errors - a monitor
+  reading an unreachable queue as empty is worse than one that says it
+  cannot tell - and the inconsistency made a common `SizeProvider`
+  interface impossible.
+
+### Fixed - round 6
+
+- **`Response.RedirectRoute`** cannot resolve route names (it holds no
+  router) and is documented as deprecated in favour of
+  `ctx.RedirectToRoute`.
+- **`make:policy`** generated `gate.Define` calls rather than a policy,
+  and did not suffix the type name.
+
+### Added - round 5: the web request lifecycle
+
+- **Request ergonomics**: `ctx.User()`/`SetUser()`/`HasUser()` with the
+  typed `http.UserAs[T]` and `auth.UserFrom(ctx)`; `ctx.Session()`,
+  `ctx.Old()`, `ctx.Errors()`; and `ctx.Route()`/`RouteName()`/`RouteIs()`
+  with `users.*` wildcards. `auth.Middleware` resolves the user once per
+  request instead of every handler re-resolving it.
+- **Fluent redirects**: `ctx.Back()`/`RedirectTo()`/`RedirectToRoute()`
+  return a builder with `WithErrors()`, `WithInput()`, `With()`, and
+  `Status()`. `WithErrors` accepts `map[string][]string`, an
+  `*errors.ValidationError`, a `*support.MessageBag`, or a plain error;
+  `WithInput()` never flashes password fields.
+- **Validation failures branch on the client**: API clients keep the 422
+  envelope, browsers are redirected back to the form with the messages and
+  their old input flashed. Without a session the 422 shape is kept rather
+  than a redirect that loses the errors.
+- **Shared view data**: `ctx.View` layers `errors`, `old`, `session`,
+  `user`, and `csrf_token` under the handler's own data.
+- **Form request lifecycle**: optional `PrepareForValidation`,
+  `Authorize`, `Rules`, `Messages`, `Attributes`, and `AfterValidation`.
+  Authorization runs before validation; per-request messages go through
+  `Validator.WithOverrides` rather than mutating the shared validator.
+- **Database and conditional rules**: `unique=users.email` (with Laravel's
+  ignore argument, `unique=users.email.42[.column]`), `exists=users.email`,
+  `confirmed`, `prohibited`, and Laravel-shaped messages for
+  `required_if`/`unless`/`with`/`without`. Both database rules fail closed
+  when no connection is available, and only accept plain identifiers.
+- **View helpers and composers**: `route`, `url`, `asset`, `config`,
+  `trans`, `csrf_field`, `method_field`, plus
+  `Manager.Composer("partials.*", fn)`. Helpers resolve their dependency
+  at render time, so provider order does not matter, and degrade to empty
+  rather than failing to parse when unwired.
+- **`support.MessageBag`**: `Has`/`First`/`Get`/`All`/`Any`/`Keys`, the
+  bag flashed on validation failure and shared with views.
+
+### Fixed - round 5
+
+- **Route middleware chained after registration never ran**:
+  `GET(path, h).Middleware(auth.Middleware(guard))` captured the middleware
+  slice by value at registration, so appending to it silently left the
+  route unprotected. Route middleware is now read at request time.
+- **Sessions were discarded when a handler returned an error**: the
+  middleware returned early without saving, so anything written while
+  handling a failing request was lost.
+- **`Request.All()`/`Input()` ignored JSON bodies**: for a JSON API
+  request - where the body is all the input there is - they reported no
+  input at all.
+- **`Response.RedirectRoute` cannot resolve route names** (it holds no
+  router) and is documented as deprecated in favour of
+  `ctx.RedirectToRoute`.
+
 ### Added - round 4: closing the core parity gaps
 
 - **Polymorphic relations**: `morphOne`/`morphMany`/`morphToMany` via

@@ -1,0 +1,26 @@
+package exceptions
+
+import (
+	"net/http"
+)
+
+// {{.Name}} is an application error carrying its own status code, so the
+// framework error handler renders it instead of a generic 500.
+type {{.Name}} struct {
+	Reason string
+}
+
+// Error implements the error interface.
+func (e *{{.Name}}) Error() string {
+	return e.Reason
+}
+
+// StatusCode is the HTTP status this error renders as.
+func (e *{{.Name}}) StatusCode() int {
+	return http.StatusBadRequest
+}
+
+// Message is the client-facing text.
+func (e *{{.Name}}) Message() string {
+	return e.Reason
+}

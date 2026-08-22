@@ -6,8 +6,11 @@ package schedule
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sync"
 	"time"
+
+	"github.com/genesysflow/go-genesys/cache"
 )
 
 // Event is a scheduled task.
@@ -20,12 +23,35 @@ type Event struct {
 	overlapping bool // allow overlapping runs (default: prevented)
 	running     sync.Mutex
 	err         error // deferred parse error, surfaced on run
+
+	// Constraints, all checked when the event comes due.
+	location     *time.Location
+	filters      []func() bool
+	rejects      []func() bool
+	timeFilters  []func(time.Time) bool
+	environments []string
+	environment  string
+
+	// Hooks.
+	beforeHooks  []func()
+	afterHooks   []func(error)
+	successHooks []func()
+	failureHooks []func(error)
+
+	// Exec output and single-instance coordination.
+	mu          sync.Mutex
+	lastOutput  string
+	outputPath  string
+	onOneServer bool
+	cache       cache.Store
 }
 
 // Schedule holds the application's scheduled events.
 type Schedule struct {
-	events []*Event
-	mu     sync.Mutex
+	events      []*Event
+	environment string
+	cache       cache.Store
+	mu          sync.Mutex
 }
 
 // New creates an empty schedule.
@@ -40,9 +66,13 @@ func New() *Schedule {
 func (s *Schedule) Call(fn func() error) *Event {
 	event := &Event{run: fn}
 	event.Cron("* * * * *")
+
 	s.mu.Lock()
+	event.environment = s.environment
+	event.cache = s.cache
 	s.events = append(s.events, event)
 	s.mu.Unlock()
+
 	return event
 }
 
@@ -137,23 +167,93 @@ func (e *Event) AllowOverlapping() *Event {
 	return e
 }
 
-// IsDue reports whether the event should run at the given time.
+// IsDue reports whether the event should run at the given time, taking
+// its timezone and every constraint into account.
 func (e *Event) IsDue(t time.Time) bool {
-	return e.err == nil && e.spec != nil && e.spec.matches(t)
+	if e.err != nil || e.spec == nil {
+		return false
+	}
+
+	if e.location != nil {
+		t = t.In(e.location)
+	}
+
+	if !e.spec.matches(t) {
+		return false
+	}
+
+	for _, within := range e.timeFilters {
+		if !within(t) {
+			return false
+		}
+	}
+	for _, allow := range e.filters {
+		if !allow() {
+			return false
+		}
+	}
+	for _, reject := range e.rejects {
+		if reject() {
+			return false
+		}
+	}
+
+	if len(e.environments) > 0 && !slices.Contains(e.environments, e.environment) {
+		return false
+	}
+
+	return true
 }
 
-// Run executes the event.
+// Run executes the event, honouring overlap prevention, single-instance
+// coordination, and the before/after hooks.
 func (e *Event) Run() error {
 	if e.err != nil {
 		return e.err
 	}
+	if e.run == nil {
+		return fmt.Errorf("schedule: event %q has nothing to run", e.label())
+	}
+
 	if !e.overlapping {
 		if !e.running.TryLock() {
 			return nil // previous run still in progress
 		}
 		defer e.running.Unlock()
 	}
-	return safeRun(e.run)
+
+	// When several instances share this schedule, only the one that takes
+	// the lock runs this firing; the others treat it as not their turn,
+	// not a failure. The lock is not released here - see oneServerLockTTL.
+	if lock := e.oneServerLock(); lock != nil {
+		acquired, err := lock.Get()
+		if err != nil {
+			return fmt.Errorf("schedule: acquiring the single-instance lock: %w", err)
+		}
+		if !acquired {
+			return nil
+		}
+	}
+
+	for _, hook := range e.beforeHooks {
+		hook()
+	}
+
+	err := safeRun(e.run)
+
+	for _, hook := range e.afterHooks {
+		hook(err)
+	}
+	if err != nil {
+		for _, hook := range e.failureHooks {
+			hook(err)
+		}
+		return err
+	}
+	for _, hook := range e.successHooks {
+		hook()
+	}
+	return nil
 }
 
 func safeRun(fn func() error) (err error) {

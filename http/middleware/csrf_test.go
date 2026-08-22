@@ -238,3 +238,70 @@ func TestCSRFCookieInsecureOptsOut(t *testing.T) {
 	_, cookie := issueToken(t, k)
 	assert.False(t, cookie.Secure)
 }
+
+// The http package duplicates CSRFContextKey to share the token with
+// views without importing this package. If the key ever drifts, forms
+// silently render an empty token and every POST starts failing.
+func TestCSRFTokenReachesViewData(t *testing.T) {
+	require.Equal(t, "csrf_token", middleware.CSRFContextKey)
+
+	k := csrfKernel(t)
+	k.GET("/token-in-data", func(ctx *genhttp.Context) error {
+		token, _ := ctx.ViewData()["csrf_token"].(string)
+		require.NotEmpty(t, token, "csrf token should be shared with views")
+		assert.Equal(t, middleware.CSRFToken(ctx), token)
+		return ctx.String("ok")
+	}, middleware.CSRF(middleware.CSRFConfig{Secret: csrfSecret, CookieInsecure: true}))
+
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/token-in-data", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+}
+
+// An application with both a cookie-authenticated site and a token API
+// needs the API exempt: a bearer-token request carries no cookie, so it
+// cannot carry a double-submit token either.
+func TestCSRFExceptPaths(t *testing.T) {
+	k := newKernel(t)
+	k.Use(middleware.CSRF(middleware.CSRFConfig{
+		Secret:         csrfSecret,
+		CookieInsecure: true,
+		Except:         []string{"/api/"},
+	}))
+
+	k.POST("/api/posts", func(ctx *genhttp.Context) error {
+		return ctx.String("api ok")
+	})
+	k.POST("/posts", func(ctx *genhttp.Context) error {
+		return ctx.String("web ok")
+	})
+
+	// The exempt path goes through without a token.
+	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/api/posts", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+
+	// Everything else is still guarded.
+	resp, err = k.Fiber().Test(httptest.NewRequest("POST", "/posts", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode, "a non-exempt path must still require a token")
+}
+
+// An exemption is a prefix, and must not be read as a substring: an
+// attacker-chosen path like /evil/api/ must stay guarded.
+func TestCSRFExceptMatchesPrefixOnly(t *testing.T) {
+	k := newKernel(t)
+	k.Use(middleware.CSRF(middleware.CSRFConfig{
+		Secret:         csrfSecret,
+		CookieInsecure: true,
+		Except:         []string{"/api/"},
+	}))
+
+	k.POST("/evil/api/posts", func(ctx *genhttp.Context) error {
+		return ctx.String("should not be reachable")
+	})
+
+	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/evil/api/posts", nil), -1)
+	require.NoError(t, err)
+	assert.Equal(t, 403, resp.StatusCode)
+}

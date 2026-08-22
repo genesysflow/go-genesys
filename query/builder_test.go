@@ -63,7 +63,7 @@ func TestCompileNestedWhere(t *testing.T) {
 
 func TestCompileJoinsGroupsHaving(t *testing.T) {
 	b := query.New("mysql", nil).Table("users").
-		Select("users.name", "COUNT(posts.id) as post_count").
+		Select("users.name").SelectRaw("COUNT(posts.id) as post_count").
 		Join("posts", "users.id", "=", "posts.user_id").
 		GroupBy("users.name").
 		Having("post_count", ">", 3)

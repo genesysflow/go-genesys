@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"github.com/genesysflow/go-genesys/broadcast"
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/database"
@@ -40,6 +41,11 @@ func (p *NotificationServiceProvider) Boot(app contracts.Application) error {
 		if conn := dbManager.Connection(); conn.Error() == nil {
 			options = append(options, notifications.WithDatabase(conn.Driver(), conn, p.Table))
 		}
+	}
+	// The broadcast channel needs the application's websocket hub; an
+	// app without one simply does not have that channel.
+	if hub, err := container.Resolve[*broadcast.Hub](app); err == nil && hub != nil {
+		options = append(options, notifications.WithBroadcaster(hub))
 	}
 
 	manager := notifications.New(options...)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
+	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/validation"
 	"github.com/genesysflow/go-genesys/view"
 	"github.com/gofiber/fiber/v2"
@@ -88,9 +89,24 @@ func (c *Context) JSON(v any) error {
 	return c.request.JSON(v)
 }
 
-// Bind binds the request body to a struct (alias for JSON).
+// Bind binds the request body to a struct.
+//
+// A model's server-owned columns - its primary key and timestamps - are
+// cleared afterwards. Binding a request straight into a model is the
+// shortest path a handler can take, and it must not be the one that
+// lets a client choose which row it is writing.
+//
+// Prefer a form request (ValidateRequest) for anything a client sends:
+// it binds only the fields the request type declares, which is the same
+// protection for every other column.
 func (c *Context) Bind(v any) error {
-	return c.fiberCtx.BodyParser(v)
+	if err := c.fiberCtx.BodyParser(v); err != nil {
+		return err
+	}
+	if model, ok := v.(database.ServerOwned); ok {
+		model.ResetServerOwned()
+	}
+	return nil
 }
 
 // Validate validates the request data against the given rules.
@@ -199,11 +215,27 @@ func (c *Context) View(name string, data ...map[string]any) error {
 	if err != nil {
 		return fmt.Errorf("http: view manager not available - register the ViewServiceProvider: %w", err)
 	}
+	return c.renderView(manager, manager.Layout(), name, data...)
+}
+
+// ViewIn renders a template inside a specific layout. An empty layout
+// renders the view on its own, for a fragment that has no business
+// carrying the site's chrome.
+func (c *Context) ViewIn(layout, name string, data ...map[string]any) error {
+	manager, err := container.Resolve[*view.Manager](c.app)
+	if err != nil {
+		return fmt.Errorf("http: view manager not available - register the ViewServiceProvider: %w", err)
+	}
+	return c.renderView(manager, layout, name, data...)
+}
+
+// renderView renders a view with the request's shared data and sends it.
+func (c *Context) renderView(manager *view.Manager, layout, name string, data ...map[string]any) error {
 	var viewData map[string]any
 	if len(data) > 0 {
 		viewData = data[0]
 	}
-	html, err := manager.RenderString(name, viewData)
+	html, err := manager.RenderStringIn(layout, name, c.shareViewData(viewData))
 	if err != nil {
 		return err
 	}

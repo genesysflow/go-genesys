@@ -185,11 +185,11 @@ func (q *MemoryQueue) ForgetFailed(id int64) error {
 }
 
 // Size returns the number of pending jobs on a queue.
-func (q *MemoryQueue) Size(queue string) int {
+func (q *MemoryQueue) Size(queue string) (int64, error) {
 	if queue == "" {
 		queue = "default"
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	return len(q.jobs[queue])
+	return int64(len(q.jobs[queue])), nil
 }

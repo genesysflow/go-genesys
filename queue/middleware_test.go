@@ -107,7 +107,7 @@ func TestWithoutOverlapping(t *testing.T) {
 			worker.Tries = 100
 			worker.Backoff = time.Millisecond
 			deadline := time.Now().Add(5 * time.Second)
-			for q.Size("") > 0 && time.Now().Before(deadline) {
+			for queueSize(t, q, "") > 0 && time.Now().Before(deadline) {
 				worker.RunOnce()
 				time.Sleep(time.Millisecond)
 			}
@@ -144,7 +144,7 @@ func TestDispatchUnique(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, pushed)
 
-	assert.Equal(t, 2, q.Size(""))
+	assert.Equal(t, 2, queueSize(t, q, ""))
 }
 
 // --- database-backed batches ---
