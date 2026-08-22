@@ -23,6 +23,47 @@ routes.
 | Account enumeration | Login and password-reset answer the same way whether or not the address is registered. |
 | Error disclosure | Debug is off unless asked for; without it, a 500 says nothing about SQL, paths or versions. |
 
+## What bind parameters do, and where they stop
+
+Every value the query layer sends is a bind parameter: it travels apart
+from the statement, so the database parses the SQL first and only then
+receives the data. A value can never add a clause, close a quote or
+start a second statement, whatever it spells.
+
+```go
+builder.Where("name", "'; DROP TABLE users; --")
+// SELECT * FROM "users" WHERE "name" = ?   ["'; DROP TABLE users; --"]
+```
+
+That holds for every clause that takes a value - `Where`, `OrWhere`,
+`WhereIn`, `WhereNotIn`, `WhereBetween`, `Having`, `WhereGroup` - and for
+the values in `Insert` and `Update`. `WhereRaw` binds its values too: the
+SQL is yours, the values are still parameters.
+
+**Bind parameters cannot cover the statement itself.** No database lets
+you bind a table name, a column name, a sort direction or a keyword -
+those are parsed, not fetched, so there is nothing to substitute. That is
+a property of SQL, not a gap in the framework, and it is why the layer
+quotes identifiers instead:
+
+```go
+builder.Select(clientChosenColumn)      // quoted as an identifier
+builder.OrderBy(clientChosenColumn)     // quoted; direction normalised to ASC/DESC
+builder.Where("age", clientOperator, v) // operator checked against an allowlist
+```
+
+Treat that as the dividing line. Anything that names *what* to query is
+structure and must come from your code or an allowlist you wrote;
+anything that is *data* goes through a value clause and is bound.
+
+Do not assume a prepared statement stops at the first statement, either.
+`modernc.org/sqlite` executes what follows a semicolon even when the call
+has bindings, so a mistake in the SQL is not "reads the wrong column" but
+"runs anything". The MySQL DSN deliberately omits `multiStatements` and
+`interpolateParams` for the same reason - the first would allow it, the
+second would replace real binding with client-side escaping. A test pins
+both.
+
 ## The places you have to type the safe thing
 
 These are the escape hatches. Each one exists because it is sometimes

@@ -299,6 +299,11 @@ builder.Select("customer_id").SelectRaw("SUM(total) AS revenue")
 Never build one from client input; pass values through `Where`, which
 binds them.
 
+Values are always bind parameters - they travel apart from the statement,
+so a value can never become SQL. Identifiers cannot be bound (no database
+allows it), which is why they are quoted instead. See
+[Security](security.md) for where that line falls.
+
 `database.TableNameOf(value)` returns the table a value's model maps to,
 where `TableNameFor[T]` needs a type - which is what a polymorphic column
 has when all it holds is an interface.

@@ -50,6 +50,17 @@ HTML site, and defaults both `session.secure` and `app.debug` to the
 safe value so a deployment that forgets to say is not the one that
 leaks.
 
+Parameter binding - the SQL feature that actually stops injection - was
+already used for every value the query layer sends, and is now pinned by
+tests: seven injection payloads round-trip as data through every value
+clause, an INSERT and an UPDATE; the MySQL DSN is asserted not to carry
+`interpolateParams` (which replaces server-side binding with client-side
+escaping) or `multiStatements` (which lets one call run several). The
+tests also record what binding does *not* buy: `modernc.org/sqlite`
+executes a trailing statement even when the call has bindings, so a
+mistake in the SQL runs rather than misreads - which is the reason
+identifiers are quoted instead of trusted.
+
 Forty security tests cover all of it, and the classes that already held:
 IDOR across every write route, mass assignment through both the form and
 the JSON API, session fixation on login and logout, cookie flags,
