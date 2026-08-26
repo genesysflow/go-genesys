@@ -5,6 +5,225 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-08-26
+
+### Added - round 9: method spoofing, pre-routing, and test coverage
+
+An HTML form can only be submitted as GET or POST, so every PUT,
+PATCH and DELETE route the framework could register was reachable by
+a script and unreachable by the pages the application renders. That
+is what most of this round is about; the rest is four packages whose
+public surface had never been under test, and what testing them
+found.
+
+- **`middleware.MethodOverride()`** honours the `_method` field the
+  `method_field` helper already rendered, so a form's POST is
+  dispatched as the verb it declares. The rules are narrow on
+  purpose, because this is a request-forging surface: only a POST is
+  rewritten, so a link, a prefetch or a crawler can never delete
+  anything; only to a verb `view.SpoofedMethod` allows; and the field
+  is read from the body alone - never from the query string, where a
+  redirect, a referrer or a log would carry it around. The
+  `X-HTTP-Method-Override` header does the same for a client behind a
+  proxy that refuses the verb outright, under the same allowlist and
+  the same POST-only rule; `MethodOverrideConfig.DisableHeader`
+  removes that surface for operators who would rather it did not
+  exist, and `FieldName`/`HeaderName` rename either input.
+- **`KernelConfig.PreRouting`**: Fiber handlers that run before the
+  router matches, which is the only point at which a request's verb
+  or path can still be changed. A `MiddlewareFunc` runs inside the
+  handler the router already chose, by which time a POST that meant
+  DELETE has matched the wrong route or been answered 405, and there
+  is nothing left to correct. They are deliberately typed as
+  `fiber.Handler` rather than `MiddlewareFunc` so they cannot be
+  tidied into the ordinary stack, where they would silently stop
+  working. Because they run first - before the session, too -
+  everything downstream sees the verb that will actually be
+  dispatched: the CSRF check keys off the method, and the logger
+  records it.
+- **`view.SpoofedMethod(declared)`** normalises a verb declared by a
+  form and reports whether a form may legitimately declare it, so the
+  side writing `_method` and the side honouring it cannot disagree: a
+  renderer emitting a verb the server will not act on produces a
+  button that answers 405, and a server acting on a verb no form may
+  write is a forging surface. The allowlist is PUT, PATCH and DELETE.
+  GET is deliberately absent, and `method_field` now asks the same
+  function.
+- **`schema.Grammar.CompileComments(bp)`**: a column's `Comment(...)`
+  was recorded on the definition and never reached the database.
+  MySQL now writes an inline `COMMENT`; PostgreSQL, which has no
+  inline form, emits `COMMENT ON COLUMN` - run by `Builder.Create`
+  after the `CREATE TABLE` and by `CompileAlter` after an `ADD
+  COLUMN`; SQLite has no column comments and ignores them. **A
+  `Grammar` implemented outside the framework has to add the
+  method.**
+
+Four packages had their public surface untested and now do not:
+`container` (67.1%) and `log` (60.0%), both now at 100%; the `http`
+package's own `TestRequest`/`TestResponse` toolkit together with most
+of `request.go` and the file, stream, redirect and cookie helpers in
+`response.go`, 67.3% to 90.5%; and `database/schema`, where only the
+SQLite grammar had ever been exercised - golden-SQL tests now cover
+every `Compile*` method of all three grammars, the blueprint column
+helpers, the builder's failure paths and the dumper, 49.6% to 97.1%.
+Nearly everything under **Fixed** is something they turned up. The
+example application gains the stylesheet, templates and `/assets`
+route it was missing, and its edit, delete and revoke controls are
+plain HTML forms carrying `method_field`, wired through
+`routes.PreRouting()`.
+
+### Fixed - round 9
+
+- **A component was wrapped in the site's layout.** Components were
+  rendered through `RenderString`, which applies the configured
+  default layout, so every tag, badge and alert arrived carrying a
+  second copy of the page's chrome. A component is a fragment of the
+  page that calls it and is now rendered with no layout at all.
+- **A connection that broke before it sent a request was reported as
+  a failed request.** Fiber funnels the fasthttp server's
+  connection-level failures - a read timeout on a socket that never
+  spoke, a peer that vanishes mid-header - into the application's
+  error handler with an entirely empty context, whose `Path()` and
+  `Method()` answer with fasthttp's stand-ins. A browser abandoning a
+  speculative preconnect therefore logged an application error
+  against a `GET /` nobody ever made, continuously on a public site.
+  The kernel now recognises them - fasthttp's `ConnRequestNum` is
+  still zero and no headers were parsed - logs them at debug with
+  only the peer and the cause, and answers with 408 or the
+  `fiber.Error` code instead of running the application's error
+  handler.
+- **`Request.IPs()` believed `X-Forwarded-For` from anyone**, while
+  `IP()` honoured `KernelConfig.TrustedProxies` - so a handler that
+  rate-limited or allowlisted on `IPs()[0]` was reading an address
+  the client chose. It now returns the connecting address unless the
+  request arrived through a declared trusted proxy, so `IPs()[0]` and
+  `IP()` always agree. It checks Fiber's `EnableTrustedProxyCheck`
+  first, because `IsProxyTrusted()` answers true when the check is
+  off.
+- **`Request.Has` could not tell "sent empty" from "absent"**: it was
+  `Input(key) != ""`, so a field the user cleared reported missing -
+  which for a PATCH is the difference between leaving a column alone
+  and blanking it. It is now presence-based across route parameters,
+  query string, form body, multipart values and files, and a JSON
+  object body. **A caller that meant "has a value" wants `Filled`**,
+  which still treats whitespace as empty.
+- **A middleware calling `ctx.Next()` skipped the rest of the
+  stack.** The router never populated `ctx.next`, so the call fell
+  through to Fiber's own chain instead of the framework's, dropping
+  every remaining `MiddlewareFunc` and the route handler with no
+  error - and `ctx.Next()` and `next()` are indistinguishable at a
+  glance. `executeMiddleware` publishes the continuation on the
+  context now, and clears it before the handler so a handler calling
+  `ctx.Next()` cannot re-enter itself.
+- **`Response.RedirectRoute` ignored named routes** and redirected to
+  `/<name>`, producing a 404 the caller could not tell from a real
+  one; it was documented as deprecated for exactly that reason. The
+  router that dispatched the request is now recorded as a Fiber
+  local, so the name resolves against the same table
+  `ctx.RedirectToRoute` reads, params are substituted, and an unknown
+  name is an error rather than a redirect. `Context.router()` gained
+  the same fallback, so a fallback handler - which matched no route -
+  can resolve names too. The deprecation is lifted;
+  `ctx.RedirectToRoute` is still preferable where a `Context` is at
+  hand, because it returns a redirector that can flash input and
+  errors.
+- **`NewCookie` returned a type `Response.Cookie` would not accept.**
+  The builder handed back `*http.Cookie` and the setter took
+  `*contracts.Cookie` - two identical structs in two packages, with
+  no conversion, so a cookie built by the framework had to be copied
+  field by field by the caller. `http.Cookie` is now an alias for
+  `contracts.Cookie` and the builder methods (`WithPath`,
+  `WithDomain`, `WithMaxAge`, `WithSecure`, `WithHTTPOnly`,
+  `WithSameSite`) live there, so both spellings are one type.
+- **`TestRequest.WithBasicAuth` sent the credentials unencoded**, so
+  every test of a Basic-auth endpoint exercised a header no client
+  sends. It base64-encodes them now, as RFC 7617 requires.
+- **`Container.Shutdown` and `ShutdownWithContext` returned an error
+  on success.** They handed back samber/do's `*ShutdownReport`
+  verbatim, and that is non-nil even when every hook succeeded, so
+  `if err := c.Shutdown(); err != nil` fired on every clean shutdown.
+  They return nil on success now, and the report - which describes
+  the failing services - only when something failed. **An application
+  working around this by discarding the error can stop.**
+- **`Container.Has` disagreed with `Make`.** It consulted a parallel
+  bindings map that the generic `Provide*`/`Override*` helpers never
+  wrote and `Shutdown` never cleared, so a service registered
+  generically reported absent and a torn-down one reported present.
+  It asks the injector directly now and the map is gone; the
+  container's mutex is kept only to serialise the check-then-register
+  sequence in `Bind`, `Singleton` and `Instance`, which `do` panics
+  on if two goroutines race it.
+- **`Logger.Fatal` did not exit and `Logger.Panic` did not panic.**
+  Both went through zerolog's `WithLevel`, which writes the record
+  and does nothing else, so a fatal condition logged and the program
+  carried on. `Fatal` now writes and then exits with status 1
+  (through an unexported seam tests can stub), `Panic` writes and
+  then panics with the message, and `LogManager` delegates to its
+  default channel so the exit or panic happens once. As with
+  zerolog's own, both act even when the configured level filters the
+  record out. **Code that called `Fatal` expecting to continue will
+  now terminate.**
+- **`LogManager.Stack` wrote to the first channel only** - a stack of
+  `daily` and `stderr` quietly dropped one of them. It fans out to
+  every named channel now: `WithField`/`WithFields`/`WithContext`/
+  `WithError` derive each member, `Level` reports the most verbose
+  member (a record is emitted if any channel accepts it), `SetLevel`
+  sets them all, and `Fatal`/`Panic` write everywhere before exiting
+  or panicking exactly once. Unknown names fall back to the default
+  channel, matching `Channel`; names that collapse onto one channel
+  are not duplicated, and a stack of one returns that channel itself.
+- **MySQL `MODIFY COLUMN` asserted a `NOT NULL` nobody asked for.**
+  MySQL replaces the whole column definition, so a migration that
+  only widened a type was silently rewriting the column as `NOT
+  NULL` - and failing against the NULLs already stored. Nullability
+  is now emitted on the modify path only when the caller set it
+  (`Nullable()` records `NullableExplicitlySet`), mirroring what the
+  Postgres grammar already did; `CREATE TABLE` and `ADD COLUMN` still
+  default to `NOT NULL`, where there is nothing prior to preserve.
+- **Two columns flagged `Primary()` produced SQL no driver
+  accepts**: an inline `PRIMARY KEY` on each column *and* the
+  table-level `PRIMARY KEY (a, b)` clause. All three grammars now
+  suppress the inline form when more than one column is flagged, and
+  declare the key once as a table constraint.
+- **Postgres `CompileTableExists` matched any schema in the
+  database**, so `HasTable("users")` reported true for an
+  `archive.users` the connection cannot reach. It is scoped to
+  `current_schema()` now, matching the MySQL grammar's
+  `table_schema = DATABASE()`.
+- **`DropIndex` is idempotent on MariaDB now**, as it already was on
+  SQLite and PostgreSQL. `DROP INDEX IF EXISTS` is MariaDB-only
+  syntax - MySQL's grammar has never had it, through 8.x and 9.x - so
+  emitting it for both would have made every `DropIndex` migration a
+  syntax error on MySQL. `MySQLGrammar` gains a `MariaDB` flag, set
+  by `NewGrammar("mariadb")` (which no longer returns the same
+  grammar as `NewGrammar("mysql")`), and only that dialect gets `IF
+  EXISTS`. Dropping an index that is already gone still fails on
+  MySQL; a migration that must tolerate it has to consult
+  `information_schema.STATISTICS` itself.
+- **The Postgres test container was intermittently unreachable from
+  the host.** `testutil.SetupPostgresContainer` published on
+  `127.0.0.1:0`, and docker allocates those ports sequentially from
+  32768 - inside the kernel's ephemeral range. On engines whose
+  forwarder binds in another network namespace (Docker Desktop on
+  WSL2 and macOS) that bind fails silently when a local socket
+  already holds the port as its source port, which a full `go test
+  ./...` opening hundreds of connections makes happen now and then:
+  the container is healthy, `docker port` reports the mapping, and
+  every host connection is refused for the container's whole
+  lifetime. The old readiness probe could not notice, because it ran
+  `psql` inside the container, on a path the tests never take. Setup
+  now picks the host port itself - at random below the ephemeral
+  range and verified free, so the collision cannot happen by
+  construction - waits for readiness from the host with a real
+  `SELECT 1` through the published port, which also covers the
+  image's temporary unix-socket-only server and its "starting up"
+  window, and treats "refused from the host while postgres answers
+  inside the container" as a dead forward, replacing the container on
+  a fresh port up to three times with a message naming the symptom.
+  The probe pulls in `lib/pq`, a database driver; the package still
+  drives docker through its CLI and carries no container-runtime
+  dependency.
+
 ### Security - round 8: an adversarial pass over the framework
 
 Most of what was probed held: operators are allowlisted, identifiers are
