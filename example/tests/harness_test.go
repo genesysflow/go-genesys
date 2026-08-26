@@ -331,8 +331,9 @@ func (h *harness) form(t *testing.T, action string, fields map[string]string) *g
 }
 
 // formRequest builds a form submission with a method other than POST -
-// the PUT and DELETE a REST route wants, which a browser reaches through
-// a method-override field but a test can send directly.
+// the PUT and DELETE a REST route wants, sent as the verb itself. This is
+// the script's way in; a browser cannot send it, and reaches the same
+// route through browserForm below.
 func (h *harness) formRequest(t *testing.T, method, action string, fields map[string]string) *genhttp.TestRequest {
 	t.Helper()
 
@@ -347,6 +348,31 @@ func (h *harness) formRequest(t *testing.T, method, action string, fields map[st
 		request.WithHeader("Referer", testOrigin+h.page)
 	}
 	return request
+}
+
+// browserForm posts a form the way a browser actually does: as a POST,
+// with the verb declared in the _method field that method_field renders,
+// the CSRF token, and the Referer of the page the form was on.
+//
+// It exists because formRequest sends the real verb, which no browser
+// can - so a route reachable only through a form was, for a long time,
+// covered by tests that never took the path a reader takes.
+func (h *harness) browserForm(t *testing.T, method, action string, fields map[string]string) *genhttp.TestResponse {
+	t.Helper()
+
+	values := make(map[string]string, len(fields)+2)
+	for key, value := range fields {
+		values[key] = value
+	}
+	values["_method"] = method
+	values[middleware.DefaultCSRFConfig().FieldName] = h.csrfToken(t)
+
+	request := genhttp.Post(action).WithForm(values)
+	if h.page != "" {
+		request.WithHeader("Referer", testOrigin+h.page)
+	}
+
+	return h.tc.Do(request)
 }
 
 // editForm opens a post's edit page and saves it, which is the gesture

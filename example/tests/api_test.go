@@ -1,6 +1,9 @@
 package tests
 
 import (
+	"html"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/genesysflow/go-genesys/example/app/models"
@@ -10,20 +13,22 @@ import (
 )
 
 // A token is issued from the session-authenticated site, and is the only
-// time the plaintext exists.
+// time the plaintext exists. A browser is sent back to the token page
+// with it flashed for that one render.
 func TestIssuingAnAPIToken(t *testing.T) {
 	h := boot(t)
 	author := h.signIn(t, h.author(t))
 
-	response := h.form(t, "/api-tokens", map[string]string{
+	h.visit(t, "/api-tokens").AssertOK()
+	h.form(t, "/api-tokens", map[string]string{
 		"name":      "reader",
 		"abilities": "profile:read",
-	}).AssertCreated()
+	}).AssertRedirect()
 
-	var payload map[string]any
-	require.NoError(t, response.JSON(&payload))
+	// Following the redirect is where the plaintext is shown, once.
+	page := h.visit(t, "/api-tokens").AssertOK().BodyString()
 
-	plaintext, _ := payload["token"].(string)
+	plaintext := newTokenFrom(t, page)
 	require.NotEmpty(t, plaintext)
 
 	// The database holds a hash, never the token itself.
@@ -33,6 +38,93 @@ func TestIssuingAnAPIToken(t *testing.T) {
 		"tokenable_id":   author.ID,
 		"tokenable_type": "users",
 	})
+
+	// And it is a working token, not just a string on a page.
+	h.api(t, plaintext).Get("/api/blog/me").
+		AssertOK().
+		AssertJsonPath("data.user.email", author.Email)
+}
+
+// newTokenFrom reads the one-time plaintext out of the rendered token
+// page, which is the only place a browser ever sees it.
+func newTokenFrom(t *testing.T, page string) string {
+	t.Helper()
+
+	_, after, found := strings.Cut(page, `id="new-token">`)
+	require.True(t, found, "the token page does not show a new token: %s", page)
+
+	raw, _, found := strings.Cut(after, "</code>")
+	require.True(t, found, "the new token is not closed off: %s", page)
+
+	return html.UnescapeString(raw)
+}
+
+// A token outlives its reason, so it can be taken back - and the API
+// stops recognising it the moment it is.
+func TestRevokingAToken(t *testing.T) {
+	h := boot(t)
+	author := h.author(t)
+	plaintext := h.token(t, author, "profile:read")
+
+	// It opens the API before.
+	h.api(t, plaintext).Get("/api/blog/me").AssertOK()
+
+	token, err := h.tokens.Find(plaintext)
+	require.NoError(t, err)
+
+	h.signIn(t, author)
+	h.visit(t, "/api-tokens").AssertOK()
+	h.tc.Do(h.formRequest(t, "DELETE", "/api-tokens/"+strconv.FormatInt(token.ID, 10), nil)).
+		AssertRedirect("/api-tokens")
+
+	dbtest.AssertDatabaseMissing(t, "personal_access_tokens", map[string]any{"id": token.ID})
+
+	// And nothing after.
+	h.api(t, plaintext).Get("/api/blog/me").AssertUnauthorized()
+}
+
+// The Revoke button on the token page is an HTML form, so it declares
+// DELETE rather than sending it. This is the gesture a reader makes, and
+// the one the page was rendering a dead button for.
+func TestRevokingThroughTheBrowsersForm(t *testing.T) {
+	h := boot(t)
+	author := h.author(t)
+	plaintext := h.token(t, author, "profile:read")
+
+	h.api(t, plaintext).Get("/api/blog/me").AssertOK()
+
+	token, err := h.tokens.Find(plaintext)
+	require.NoError(t, err)
+
+	h.signIn(t, author)
+	h.visit(t, "/api-tokens").AssertOK()
+
+	h.browserForm(t, "DELETE", "/api-tokens/"+strconv.FormatInt(token.ID, 10), nil).
+		AssertRedirect("/api-tokens")
+
+	dbtest.AssertDatabaseMissing(t, "personal_access_tokens", map[string]any{"id": token.ID})
+	h.api(t, plaintext).Get("/api/blog/me").AssertUnauthorized()
+}
+
+// A token id in a URL is not authority over the token. Someone else's
+// answers 404 rather than 403: a 403 would confirm the id exists, which
+// is what walking the id space is for.
+func TestRevokingSomeoneElsesTokenIsNotFound(t *testing.T) {
+	h := boot(t)
+	owner := h.author(t)
+	plaintext := h.token(t, owner, "profile:read")
+
+	token, err := h.tokens.Find(plaintext)
+	require.NoError(t, err)
+
+	h.signIn(t, h.author(t))
+	h.visit(t, "/api-tokens").AssertOK()
+	h.tc.Do(h.formRequest(t, "DELETE", "/api-tokens/"+strconv.FormatInt(token.ID, 10), nil)).
+		AssertNotFound()
+
+	// Untouched, and still the owner's way in.
+	dbtest.AssertDatabaseHas(t, "personal_access_tokens", map[string]any{"id": token.ID})
+	h.api(t, plaintext).Get("/api/blog/me").AssertOK()
 }
 
 // The API authenticates with the token rather than the session.

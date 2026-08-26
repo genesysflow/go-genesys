@@ -109,6 +109,13 @@ func App(basePath ...string) *foundation.Application {
 		ReadTimeout:       60 * time.Second,
 		WriteTimeout:      60 * time.Second,
 		EnablePrintRoutes: false,
+
+		// What has to run before the router matches. Carried on the
+		// config rather than registered against a kernel, because this
+		// application builds three of them - serve, the smoke test and
+		// the test harness - and a browser's forms working in one but
+		// not the others is worse than them not working at all.
+		PreRouting: routes.PreRouting(),
 	}
 	app.InstanceType(kernelConfig)
 

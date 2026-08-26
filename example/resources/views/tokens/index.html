@@ -1,0 +1,96 @@
+<div class="page">
+  <div class="page-head">
+    <p class="eyebrow">Personal access tokens</p>
+    <h1 class="page-title">API tokens</h1>
+    <p class="page-sub">The bridge from this session to the JSON API. A token carries only the abilities you grant it.</p>
+  </div>
+
+  {{if .session}}{{with .session.GetString "new_token"}}
+    <div class="callout">
+      <p><strong>Copy this now.</strong> The database keeps only a hash, so this is the one time it is shown.</p>
+      <code class="token__value" id="new-token">{{.}}</code>
+      <p class="small muted">Use it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+    </div>
+  {{end}}{{end}}
+
+  <form class="form" method="POST" action="{{route "tokens.store"}}">
+    {{csrf_field .csrf_token}}
+
+    <div class="field{{if .errors.Has "name"}} has-error{{end}}">
+      <label for="token-name">What is it for</label>
+      <input id="token-name" name="name" type="text" value="{{.old.Get "name"}}" placeholder="laptop" required>
+      <span class="hint">A name you will recognise later, when deciding whether to revoke it.</span>
+      {{if .errors.Has "name"}}<span class="error">{{.errors.First "name"}}</span>{{end}}
+    </div>
+
+    <fieldset class="field">
+      <legend>Abilities</legend>
+      {{range .abilities}}
+        <label class="check">
+          <input name="abilities" type="checkbox" value="{{.}}" checked>
+          <span><code>{{.}}</code></span>
+        </label>
+      {{end}}
+      <span class="hint">Only what the token needs. A token holding <code>*</code> may do anything you may.</span>
+    </fieldset>
+
+    <div class="actions">
+      <button class="btn btn--primary" type="submit">Create token</button>
+    </div>
+  </form>
+
+  <h2>Your tokens</h2>
+
+  {{if not .tokens}}
+    <div class="empty">
+      <p class="empty__title">No tokens yet</p>
+      <p>Create one above, then call the API with it.</p>
+    </div>
+  {{end}}
+
+  <div class="token-list">
+    {{range .tokens}}
+      <div class="token">
+        <p class="mono">{{.Name}}</p>
+        <p class="small muted">
+          {{range $i, $a := .Abilities}}{{if $i}} &middot; {{end}}{{$a}}{{end}}
+        </p>
+        <p class="small muted">
+          Created {{.CreatedAt.Format "Jan 2, 2006"}} &middot;
+          {{with .LastUsedAt}}last used {{.Format "Jan 2, 2006"}}{{else}}never used{{end}}
+        </p>
+        <form method="POST" action="/api-tokens/{{.ID}}">
+          {{csrf_field $.csrf_token}}
+          {{method_field "DELETE"}}
+          <button class="btn btn--danger btn--sm" type="submit">Revoke</button>
+        </form>
+      </div>
+    {{end}}
+  </div>
+
+  <h2>Calling the API</h2>
+  <div class="terminal">
+    <p class="terminal__line">curl -H "Authorization: Bearer $TOKEN" {{config "app.url"}}/api/blog/me</p>
+    <p class="terminal__line">curl -H "Authorization: Bearer $TOKEN" {{config "app.url"}}/api/blog/posts</p>
+  </div>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /api-tokens <em>tokens.index</em></p>
+  <dl>
+    <dt>Repository</dt>
+    <dd><code>TokenRepository.ListFor(user)</code> reads the caller's tokens; <code>Create</code> returns the plaintext once and stores its hash.<span class="path">auth/tokens.go</span></dd>
+
+    <dt>Response</dt>
+    <dd>The same <code>POST /api-tokens</code> answers a browser with a redirect and a script with 201 JSON, decided by what the request accepts.</dd>
+
+    <dt>Guard</dt>
+    <dd>The API authenticates with <code>PersonalAccessTokenGuard</code> instead of the session, so no cookie is involved and CSRF does not apply.</dd>
+
+    <dt>Abilities</dt>
+    <dd><code>RequireAbility("posts:write")</code> sits on the routes that write.<span class="path">auth/tokens.go</span></dd>
+
+    <dt>CSRF</dt>
+    <dd><code>/api/</code> is exempt because a bearer token is not sent automatically by a browser.<span class="path">routes/routes.go</span></dd>
+  </dl>
+</aside>

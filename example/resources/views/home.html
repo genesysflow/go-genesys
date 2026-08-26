@@ -1,0 +1,105 @@
+<div class="page">
+  <section class="hero">
+    <p class="eyebrow">Go-Genesys &middot; example application</p>
+    <h1 class="hero__title">A blog that shows<br>its own wiring.</h1>
+    <p class="hero__lede">
+      Every page here is annotated in the margin with the controller, policy, form
+      request or queued job that produced it, and the file it lives in. Read it as a
+      blog, or turn on <em>Explain</em> and read it as a map of the framework.
+    </p>
+
+    <div class="hero__cta actions">
+      <a class="btn btn--primary" href="{{route "posts.index"}}">Read the blog</a>
+      {{if not .user}}<a class="btn btn--ghost" href="/login">Sign in</a>{{end}}
+      <a class="btn btn--ghost" href="/_genesys">Open the dev panel</a>
+    </div>
+
+    <div class="stat-row">
+      <p class="stat"><span class="stat__value">{{.counts.posts}}</span><span class="stat__label">Posts</span></p>
+      <p class="stat"><span class="stat__value">{{.counts.comments}}</span><span class="stat__label">Comments</span></p>
+      <p class="stat"><span class="stat__value">{{.counts.users}}</span><span class="stat__label">Accounts</span></p>
+      <p class="stat"><span class="stat__value">{{.env}}</span><span class="stat__label">Environment</span></p>
+    </div>
+  </section>
+
+  {{if not .counts.posts}}
+    <section>
+      <h2>Start here</h2>
+      <p>The database is empty. Four commands fill it and bring the site up.</p>
+      <div class="terminal">
+        <p class="terminal__line">go run . key:generate <span class="terminal__comment"># without APP_KEY, CSRF stays off</span></p>
+        <p class="terminal__line">go run . migrate</p>
+        <p class="terminal__line">go run . db:seed</p>
+        <p class="terminal__line">go run . serve</p>
+      </div>
+      <p class="small muted">The seeded editor is <code>editor@example.com</code> / <code>password123</code>. Authors write; editors publish.</p>
+    </section>
+  {{else}}
+    <section>
+      <h2>Latest</h2>
+      <div class="post-list">
+        {{range .posts}}
+          <article class="post-card">
+            <h3 class="post-card__title"><a href="{{route "posts.show" (dict "post" .Slug)}}">{{.Title}}</a></h3>
+            <p class="post-card__meta">
+              {{with .Author}}<span>{{.Name}}</span>{{end}}
+              {{with .PublishedAt}}<span>{{.Format "Jan 2, 2006"}}</span>{{end}}
+            </p>
+            <p class="post-card__excerpt">{{.Body}}</p>
+          </article>
+        {{end}}
+      </div>
+      <p class="small muted">Sign in as <code>editor@example.com</code> / <code>password123</code> to publish and edit.</p>
+    </section>
+  {{end}}
+
+  <section>
+    <h2>What each part is here to show</h2>
+    <div class="feature-grid">
+      <div class="feature">
+        <p class="feature__name">Routing &amp; policies</p>
+        <p class="feature__note">Every writing route carries the policy that governs it, so a handler never runs for a caller who may not.<span class="path">routes/blog.go</span></p>
+      </div>
+      <div class="feature">
+        <p class="feature__name">Form requests</p>
+        <p class="feature__note">Prepare, authorize, rules, messages, after — a browser gets its input back, a JSON client gets a 422.<span class="path">app/http/blog/requests.go</span></p>
+      </div>
+      <div class="feature">
+        <p class="feature__name">ORM &amp; relations</p>
+        <p class="feature__note">A post belongs to an author, has comments, carries tags polymorphically and can have files attached.<span class="path">app/models/blog.go</span></p>
+      </div>
+      <div class="feature">
+        <p class="feature__name">Queues &amp; mail</p>
+        <p class="feature__note">Publishing dispatches an event; the listener queues the job that notifies the author.<span class="path">app/jobs/publish_post.go</span></p>
+      </div>
+      <div class="feature">
+        <p class="feature__name">Token API</p>
+        <p class="feature__note">The same posts served as JSON, authenticated with personal access tokens and their abilities.<span class="path">app/http/blog/api.go</span></p>
+      </div>
+      <div class="feature">
+        <p class="feature__name">Console &amp; schedule</p>
+        <p class="feature__note"><code>blog:stats</code> for the numbers, a nightly prune and a queued weekly digest.<span class="path">app/console/blog_stats.go</span></p>
+      </div>
+    </div>
+  </section>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> / <em>home</em></p>
+  <dl>
+    <dt>Handler</dt>
+    <dd>A closure rather than a controller, because one page with three counts does not need one.<span class="path">routes/web.go</span></dd>
+
+    <dt>Layout</dt>
+    <dd><code>layouts.blog</code>, set once as the default in config rather than named by every page.<span class="path">config/view.yaml</span></dd>
+
+    <dt>Helpers</dt>
+    <dd><code>route</code>, <code>asset</code>, <code>config</code> and <code>csrf_field</code> come from the view manager; <code>errors</code>, <code>old</code> and <code>user</code> are shared with every template per request.<span class="path">http/view_data.go</span></dd>
+
+    <dt>Assets</dt>
+    <dd>One stylesheet, served from <code>public/</code> at <code>/assets</code>. No build step.<span class="path">routes/routes.go</span></dd>
+
+    <dt>This rail</dt>
+    <dd>Plain markup in each template. Nothing generates it, which is why it cannot drift silently — if it is wrong, the page is wrong.</dd>
+  </dl>
+</aside>

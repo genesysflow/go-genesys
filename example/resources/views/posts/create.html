@@ -1,19 +1,58 @@
-<h1>New post</h1>
+<div class="page">
+  <div class="page-head">
+    <p class="eyebrow">New draft</p>
+    <h1 class="page-title">Write a post</h1>
+    <p class="page-sub">Saved as a draft. An editor decides when it goes out.</p>
+  </div>
 
-<form method="POST" action="/posts">
-  {{csrf_field .csrf_token}}
+  <form class="form" method="POST" action="/posts">
+    {{csrf_field .csrf_token}}
 
-  <label for="title">Title</label>
-  <input id="title" name="title" value="{{.old.Get "title"}}" required>
-  {{if .errors.Has "title"}}<span class="error">{{.errors.First "title"}}</span>{{end}}
+    <div class="field{{if .errors.Has "title"}} has-error{{end}}">
+      <label for="title">Title</label>
+      <input id="title" name="title" type="text" value="{{.old.Get "title"}}" required>
+      {{if .errors.Has "title"}}<span class="error">{{.errors.First "title"}}</span>{{end}}
+    </div>
 
-  <label for="slug">Slug <small>(left blank, it is derived from the title)</small></label>
-  <input id="slug" name="slug" value="{{.old.Get "slug"}}">
-  {{if .errors.Has "slug"}}<span class="error">{{.errors.First "slug"}}</span>{{end}}
+    <div class="field{{if .errors.Has "slug"}} has-error{{end}}">
+      <label for="slug">Slug</label>
+      <input id="slug" name="slug" type="text" value="{{.old.Get "slug"}}">
+      <span class="hint">Leave it blank and the title becomes one.</span>
+      {{if .errors.Has "slug"}}<span class="error">{{.errors.First "slug"}}</span>{{end}}
+    </div>
 
-  <label for="body">Body</label>
-  <textarea id="body" name="body" required>{{.old.Get "body"}}</textarea>
-  {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+    <div class="field{{if .errors.Has "body"}} has-error{{end}}">
+      <label for="body">Body</label>
+      <textarea id="body" name="body" required>{{.old.Get "body"}}</textarea>
+      {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+    </div>
 
-  <button type="submit">Save draft</button>
-</form>
+    <div class="actions">
+      <button class="btn btn--primary" type="submit">Save draft</button>
+      <a class="btn btn--ghost" href="{{route "posts.drafts"}}">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /drafts/new <em>posts.create</em></p>
+  <dl>
+    <dt>Form request</dt>
+    <dd><code>StorePostRequest</code> runs the whole lifecycle before the handler sees anything.<span class="path">app/http/blog/requests.go</span></dd>
+
+    <dt>Prepare</dt>
+    <dd><code>PrepareForValidation</code> derives the slug from the title when the field is left empty.</dd>
+
+    <dt>Authorize</dt>
+    <dd><code>Authorize</code> refuses a caller who may not write at all, before a single rule runs.</dd>
+
+    <dt>Rules</dt>
+    <dd><code>unique:posts,slug</code> asks the database the one question no struct tag can answer.<span class="path">validation/rules.go</span></dd>
+
+    <dt>After</dt>
+    <dd><code>AfterValidation</code> makes the cross-field check — a body that only repeats its title is rejected here.</dd>
+
+    <dt>On failure</dt>
+    <dd>A browser comes back to this form with its input and messages; a JSON client gets a 422.<span class="path">http/redirect.go</span></dd>
+  </dl>
+</aside>

@@ -1,15 +1,93 @@
-<h1>Posts</h1>
+<div class="page">
+  <div class="page-head">
+    <p class="eyebrow">Published</p>
+    <h1 class="page-title">Posts</h1>
+    <p class="page-sub">Everything an editor has sent out. Drafts stay with their author until then.</p>
+  </div>
 
-{{if not .posts}}<p class="empty">Nothing published yet.</p>{{end}}
-
-<ul class="posts">
-  {{range .posts}}
-    <li>
-      <a href="{{route "posts.show" (dict "post" .Slug)}}">{{.Title}}</a>
-      <span class="meta">{{.CommentsCount}} comments</span>
-      {{range .Tags}}{{component "tag" (dict "name" .Name "slug" .Slug)}}{{end}}
-    </li>
+  {{if .tags}}
+    <div class="tags" aria-label="Filter by tag">
+      <a class="tag{{if not .tag}} tag--all{{end}}" href="{{route "posts.index"}}"{{if not .tag}} aria-current="page"{{end}}>All</a>
+      {{range .tags}}{{component "tag" (dict "name" .Name "slug" .Slug "active" (eq $.tag .Slug))}}{{end}}
+    </div>
   {{end}}
-</ul>
 
-<p class="pagination">Page {{.page}} of {{.total}} posts</p>
+  {{if not .posts}}
+    <div class="empty">
+      <p class="empty__title">Nothing here yet</p>
+      {{if .tag}}
+        <p>No published post carries that tag.</p>
+        <a class="btn btn--ghost" href="{{route "posts.index"}}">Show every post</a>
+      {{else}}
+        <p>Seed the blog with <code>go run . db:seed</code>, or write the first one.</p>
+        {{if .user}}<a class="btn btn--primary" href="{{route "posts.create"}}">Write a post</a>
+        {{else}}<a class="btn btn--primary" href="/register">Create an account</a>{{end}}
+      {{end}}
+    </div>
+  {{end}}
+
+  <div class="post-list">
+    {{range .posts}}
+      <article class="post-card">
+        <h2 class="post-card__title">
+          <a href="{{route "posts.show" (dict "post" .Slug)}}">{{.Title}}</a>
+        </h2>
+
+        <p class="post-card__meta">
+          {{with .Author}}<span>{{.Name}}</span>{{end}}
+          {{with .PublishedAt}}<span>{{.Format "Jan 2, 2006"}}</span>{{end}}
+          <span>{{.CommentsCount}} comment{{if ne .CommentsCount 1}}s{{end}}</span>
+        </p>
+
+        <p class="post-card__excerpt">{{.Body}}</p>
+
+        {{if .Tags}}
+          <div class="tags">
+            {{range .Tags}}{{component "tag" (dict "name" .Name "slug" .Slug)}}{{end}}
+          </div>
+        {{end}}
+      </article>
+    {{end}}
+  </div>
+
+  {{if gt .last_page 1}}
+    <nav class="pagination" aria-label="Pagination">
+      {{if gt .page 1}}
+        <a href="{{route "posts.index"}}?page={{sub .page 1}}{{if .tag}}&tag={{.tag}}{{end}}" rel="prev">Newer</a>
+      {{else}}
+        <span class="is-disabled">Newer</span>
+      {{end}}
+
+      <span class="pagination__count">Page {{.page}} of {{.last_page}} &middot; {{.total}} posts</span>
+
+      {{if lt .page .last_page}}
+        <a href="{{route "posts.index"}}?page={{add .page 1}}{{if .tag}}&tag={{.tag}}{{end}}" rel="next">Older</a>
+      {{else}}
+        <span class="is-disabled">Older</span>
+      {{end}}
+    </nav>
+  {{end}}
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /posts <em>posts.index</em></p>
+  <dl>
+    <dt>Handler</dt>
+    <dd><code>blog.Controller.Index</code><span class="path">app/http/blog/controller.go</span></dd>
+
+    <dt>Query</dt>
+    <dd><code>Query[Post]().WhereNotNull("published_at")</code><span class="path">database/orm.go</span></dd>
+
+    <dt>Eager loads</dt>
+    <dd><code>With("Author", "Tags")</code> and <code>WithCount("Comments")</code>, so a list of ten posts is four queries rather than thirty.</dd>
+
+    <dt>Filter</dt>
+    <dd><code>WhereHas("Tags", ...)</code> when <code>?tag=</code> is set — an existence subquery, not a join.<span class="path">database/has.go</span></dd>
+
+    <dt>Paging</dt>
+    <dd><code>Paginate(page, 10)</code> returns the rows and the counts this footer reads.</dd>
+
+    <dt>View</dt>
+    <dd><code>ctx.View("posts.index", ...)</code><span class="path">resources/views/posts/index.html</span></dd>
+  </dl>
+</aside>

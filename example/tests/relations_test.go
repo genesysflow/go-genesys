@@ -181,5 +181,28 @@ func TestTagsRenderThroughTheComponent(t *testing.T) {
 	require.NoError(t, database.Attach(post, "Tags", tag.ID))
 
 	body := h.visit(t, "/posts").AssertOK().BodyString()
-	assert.Contains(t, body, `<span class="tag tag-go">Go</span>`)
+	assert.Contains(t, body, `class="tag tag-go"`)
+	assert.Contains(t, body, `>Go</a>`)
+}
+
+// A tag is also a filter: ?tag= narrows the listing through the relation
+// rather than a join written into the handler.
+func TestTheIndexFiltersByTag(t *testing.T) {
+	h := boot(t)
+	author := h.author(t)
+	tagged := h.published(t, author)
+	untagged := h.published(t, author)
+
+	tag, err := factories.Tags.CreateOne(func(tag *models.Tag) {
+		tag.Name, tag.Slug = "Go", "go"
+	})
+	require.NoError(t, err)
+	require.NoError(t, database.Attach(tagged, "Tags", tag.ID))
+
+	body := h.visit(t, "/posts?tag=go").AssertOK().BodyString()
+	assert.Contains(t, body, tagged.Title)
+	assert.NotContains(t, body, untagged.Title)
+
+	// A tag nothing wears is an empty listing, not an error.
+	h.visit(t, "/posts?tag=rust").AssertOK()
 }

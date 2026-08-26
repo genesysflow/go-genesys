@@ -1,0 +1,1076 @@
+/* ============================================================================
+   Go-Genesys example blog — hand-authored, no build step, no remote assets.
+   Concept: the blog annotates its own machinery. Every page carries a spec
+   rail naming the controller, policy or job that produced what you see.
+   ============================================================================ */
+
+/* ============================================================================
+   1. Reset
+   ========================================================================= */
+
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+/* Zeroed through :where() so the reset carries no specificity of its own.
+   An element selector here would score 0,0,1 and quietly outrank the
+   0,0,0 flow rule in the layout section - every bare <h2> and <p> that is
+   a direct child of .page would lose its rhythm and sit against whatever
+   precedes it. */
+:where(body,
+  h1, h2, h3, h4, h5, h6,
+  p, figure, blockquote, dl, dd, ul, ol, pre) { margin: 0; }
+
+:where(ul, ol) { padding: 0; }
+
+img, svg { max-width: 100%; height: auto; display: block; }
+
+button, input, textarea, select { font: inherit; color: inherit; }
+
+button { background: none; border: 0; cursor: pointer; }
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+/* ============================================================================
+   2. Tokens
+   ========================================================================= */
+
+:root {
+  /* Cool chalk paper, blue-black ink, deep teal accent. */
+  --paper:        #F1F2ED;
+  --paper-raised: #FBFCF8;
+  --ink:          #14161C;
+  --ink-soft:     #454B57;
+  --muted:        #6E7480;
+  --line:         #DCDED6;
+  --accent:       #0B6E75;
+  --accent-ink:   #064B50;
+  --amber:        #A2560B;
+  --rose:         #A02334;
+
+  /* The terminal is a dark surface in both schemes, so it carries a frozen
+     copy of the light palette's ink/paper instead of following the page
+     tokens — otherwise it would invert to a bright block on a dark page. */
+  --term-bg:     #14161C;
+  --term-fg:     #F1F2ED;
+  --term-accent: #3FBFB5;
+  --term-muted:  #838A96;
+
+  --font-display: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-display);
+
+  --fs-hero:  clamp(2.2rem, 5vw, 3.4rem);
+  --fs-title: clamp(1.7rem, 3.2vw, 2.3rem);
+  --fs-h2:    1.25rem;
+  --fs-body:  1rem;
+  --fs-sm:    .8125rem;
+  --fs-util:  .72rem;
+  --measure:  68ch;
+
+  --s:   .5rem;
+  --s-2: .75rem;
+  --s-3: 1rem;
+  --s-4: 1.5rem;
+  --s-5: 2rem;
+  --s-6: 3rem;
+
+  --r:    4px;
+  --r-sm: 2px;
+
+  --shell-max: 1160px;
+  --shell-pad: clamp(1rem, 4vw, 2.5rem);
+  --rail: 260px;
+
+  /* The one shadow in the whole sheet. */
+  --shadow: 0 1px 2px rgba(11, 13, 18, .05), 0 8px 20px -14px rgba(11, 13, 18, .22);
+
+  /* Lets the UA pick native scrollbars and form widgets per scheme, so the
+     dark block below never has to touch a component. */
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper:        #101318;
+    --paper-raised: #171B22;
+    --ink:          #E8EAE4;
+    --ink-soft:     #A8AEB8;
+    --muted:        #838A96;
+    --line:         #262B34;
+    --accent:       #3FBFB5;
+    --accent-ink:   #6FD8CF;
+    --amber:        #D9944A;
+    --rose:         #E0808C;
+  }
+}
+
+/* ============================================================================
+   3. Base / typography
+   ========================================================================= */
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.65;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The display voice is code — justified here because the subject is code. */
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
+
+h1 { font-size: var(--fs-title); letter-spacing: -.03em; }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: 1.05rem; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection { background: var(--accent); color: var(--paper); }
+
+/* Third voice: mono, small, uppercase. Eyebrows, dt labels, meta rows. */
+.eyebrow,
+.badge,
+.field label,
+fieldset.field > legend,
+.post-card__meta,
+.comment__head,
+.spec dt,
+.stat__label,
+.byline {
+  font-family: var(--font-mono);
+  font-size: var(--fs-util);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+/* ============================================================================
+   4. Layout
+   ========================================================================= */
+
+.shell {
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding-inline: var(--shell-pad);
+  padding-block: var(--s-6);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--rail);
+  /* Row gap is its own, smaller value: the clamp is a column gutter, and
+     using it vertically would strand page-level flashes far from content. */
+  gap: var(--s-4) clamp(1.5rem, 4vw, 3.5rem);
+  align-items: start;
+  flex: 1 0 auto;
+  width: 100%;
+}
+
+/* Auth and other rail-less pages must not reserve an empty 260px column. */
+.shell:not(:has(.spec)) { grid-template-columns: minmax(0, 1fr); }
+
+/* Feedback is page-level, so it spans both tracks and auto-placement resumes
+   on the next row — which is where .page and the rail meet. */
+.shell > .flash,
+.shell > .errors { grid-column: 1 / -1; }
+.shell > .page { grid-column: 1; }
+.shell > .spec { grid-column: 2; }
+
+/* The single flow rule, including the sectioning wrappers a page nests inside
+   itself. :where() holds it at zero specificity, so any component rhythm below
+   simply wins instead of needing a louder selector to fight it. */
+:where(.page, .page > article, .page > section) > * + * { margin-block-start: var(--s-5); }
+.page > .hr + *,
+.page > .tags { margin-block-start: var(--s-3); }
+
+.page-head { max-width: var(--measure); }
+.page-head > * + * { margin-block-start: var(--s); }
+.eyebrow { color: var(--muted); }
+.page-title { font-size: var(--fs-title); }
+.page-sub { color: var(--ink-soft); }
+
+.hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin-block: var(--s-5);
+}
+
+/* ============================================================================
+   5. Chrome
+   ========================================================================= */
+
+.skip-link {
+  position: absolute;
+  inset-inline-start: -9999px;
+  top: var(--s);
+  z-index: 10;
+  background: var(--paper-raised);
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  padding: var(--s) var(--s-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.skip-link:focus { inset-inline-start: var(--s); }
+
+.topbar { border-bottom: 1px solid var(--line); }
+
+.topbar__inner {
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding: var(--s-2) var(--shell-pad);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3) var(--s-4);
+}
+
+/* A .shell used as a plain width container inside chrome must not grid. */
+.topbar .shell,
+.footer .shell { display: block; padding: 0; }
+
+.brand {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1rem;
+  letter-spacing: -.02em;
+  color: var(--ink);
+  text-decoration: none;
+  margin-inline-end: auto;
+}
+
+.brand .muted { font-weight: 400; }
+
+.nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+}
+
+.nav a {
+  color: var(--ink-soft);
+  text-decoration: none;
+  font-size: var(--fs-sm);
+  padding-block: 2px;
+  border-bottom: 2px solid transparent;
+}
+
+.nav a:hover { color: var(--ink); }
+
+.nav a[aria-current="page"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: 50%;
+  background: var(--line);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: var(--fs-util);
+  text-transform: uppercase;
+  flex: none;
+}
+
+.spec-toggle {
+  font-family: var(--font-mono);
+  font-size: var(--fs-util);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: .3rem .5rem;
+}
+
+.spec-toggle:hover { color: var(--accent); border-color: var(--accent); }
+.spec-toggle[aria-pressed="true"] { color: var(--accent-ink); border-color: var(--accent); }
+
+.footer {
+  border-top: 1px solid var(--line);
+  margin-block-start: var(--s-6);
+  padding: var(--s-4) var(--shell-pad);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+/* The rule spans the viewport like the topbar's; the content inside lines up
+   with the shell instead. */
+.footer > * { max-width: var(--shell-max); margin-inline: auto; }
+
+.footer__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3) var(--s-4);
+  align-items: center;
+}
+
+.footer__links a { color: var(--ink-soft); text-decoration: none; }
+.footer__links a:hover { color: var(--accent); text-decoration: underline; }
+
+/* ============================================================================
+   6. Feedback
+   ========================================================================= */
+
+.flash {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-inline-start: 2px solid var(--muted);
+  border-radius: var(--r);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.flash--status { border-inline-start-color: var(--accent); }
+.flash--error { border-inline-start-color: var(--rose); color: var(--rose); }
+
+.errors {
+  list-style: none;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-inline-start: 2px solid var(--rose);
+  border-radius: var(--r);
+  padding: var(--s-2) var(--s-3);
+  color: var(--rose);
+  font-size: var(--fs-sm);
+}
+
+.errors li + li { margin-block-start: var(--s); }
+
+.empty {
+  border: 1px dashed var(--line);
+  border-radius: var(--r);
+  padding: var(--s-6) var(--s-4);
+  text-align: center;
+  color: var(--muted);
+}
+
+.empty__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-h2);
+  letter-spacing: -.02em;
+  color: var(--ink);
+}
+
+.empty > * + * { margin-block-start: var(--s-3); }
+
+/* ============================================================================
+   7. Posts
+   ========================================================================= */
+
+.post-list {
+  display: grid;
+  gap: var(--s-3);
+}
+
+.post-card {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: var(--s-4);
+}
+
+.post-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.post-card > * + * { margin-block-start: var(--s-2); }
+
+.post-card__title {
+  font-size: var(--fs-h2);
+  line-height: 1.3;
+}
+
+.post-card__title a {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.post-card__title a:hover { color: var(--accent); text-decoration: underline; }
+
+.post-card__meta,
+.byline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s);
+  color: var(--muted);
+}
+
+/* Separator lives in CSS: the meta row inserts its own middots, so templates
+   ship bare spans. A template that emits explicit .dot spans opts out. */
+.post-card__meta > * + *::before,
+.comment__head > * + *::before,
+.byline > * + *::before {
+  content: "·";
+  color: var(--line);
+  margin-inline-end: var(--s);
+}
+
+.post-card__meta:has(.dot) > * + *::before,
+.byline:has(.dot) > * + *::before,
+.comment__head > .avatar + *::before { content: none; }
+
+.dot { color: var(--line); }
+
+.post-card__excerpt {
+  color: var(--ink-soft);
+  max-width: var(--measure);
+  /* Excerpts arrive as raw post bodies; clamp them so a long draft cannot
+     turn the listing into a wall. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* -- tags ---------------------------------------------------------------- */
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s);
+}
+
+/* Renders as <a> in listings and <span> elsewhere — identical either way. */
+.tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-util);
+  letter-spacing: .04em;
+  line-height: 1.6;
+  color: var(--ink-soft);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: .1rem .4rem;
+  text-decoration: none;
+}
+
+a.tag:hover { color: var(--accent); border-color: var(--accent); }
+
+.tag[aria-current="page"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+/* -- state badges -------------------------------------------------------- */
+
+.badge {
+  display: inline-block;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: .05rem .35rem;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
+.badge--draft { color: var(--amber); border-color: var(--amber); }
+.badge--live  { color: var(--accent); border-color: var(--accent); }
+.badge--muted { color: var(--muted); border-color: var(--line); }
+
+/* -- pagination ---------------------------------------------------------- */
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  border-top: 1px solid var(--line);
+  padding-block-start: var(--s-3);
+}
+
+.pagination a { text-decoration: none; }
+.pagination a:hover { text-decoration: underline; }
+.pagination .is-disabled { color: var(--line); }
+.pagination__count { color: var(--muted); margin-inline: auto; }
+
+/* ============================================================================
+   8. Prose
+   ========================================================================= */
+
+/* Bodies are stored as plain text, so newlines have to survive. Any real
+   markup that does appear still needs to look deliberate. */
+.prose {
+  white-space: pre-wrap;
+  max-width: var(--measure);
+  color: var(--ink);
+  font-size: 1.0625rem;
+  line-height: 1.7;
+}
+
+.prose > * + * { margin-block-start: var(--s-4); }
+.prose p { max-width: var(--measure); }
+.prose h2 { font-size: var(--fs-h2); margin-block-start: var(--s-5); }
+.prose h3 { font-size: 1.05rem; margin-block-start: var(--s-4); }
+.prose ul, .prose ol { padding-inline-start: 1.25rem; }
+.prose li + li { margin-block-start: var(--s); }
+
+.prose a { color: var(--accent); }
+.prose a:hover { color: var(--accent-ink); }
+
+.prose blockquote {
+  border-inline-start: 2px solid var(--accent);
+  padding-inline-start: var(--s-3);
+  color: var(--ink-soft);
+}
+
+.prose code,
+code {
+  font-family: var(--font-mono);
+  font-size: .875em;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: .05em .3em;
+}
+
+.prose pre,
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: var(--s-3);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.prose pre code,
+pre code { background: none; border: 0; padding: 0; font-size: inherit; }
+
+/* ============================================================================
+   9. Comments
+   ========================================================================= */
+
+.comments > * + * { margin-block-start: var(--s-4); }
+
+/* A thread of hairlines, not a stack of cards. */
+.comment {
+  border-top: 1px solid var(--line);
+  padding-block-start: var(--s-3);
+}
+
+.comment__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--muted);
+  margin-block-end: var(--s);
+}
+
+.comment__head .avatar { inline-size: 1.5rem; block-size: 1.5rem; }
+.comment__body { color: var(--ink-soft); max-width: var(--measure); white-space: pre-wrap; }
+
+/* ============================================================================
+   10. Forms
+   ========================================================================= */
+
+.form { max-width: 34rem; }
+.form > * + * { margin-block-start: var(--s-4); }
+
+.field {
+  display: grid;
+  gap: var(--s);
+}
+
+/* A group of related controls is still a field. The UA's border and the
+   notch it cuts for the legend are the one piece of native chrome in the
+   form, so they go, and the legend is dressed as the label it is. */
+fieldset.field {
+  border: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+fieldset.field > legend {
+  padding: 0;
+  margin-block-end: var(--s);
+}
+
+.field label,
+fieldset.field > legend { color: var(--muted); }
+
+.field input:not([type]),
+.field input[type="text"],
+.field input[type="email"],
+.field input[type="password"],
+.field input[type="url"],
+.field input[type="search"],
+.field textarea,
+.field select {
+  inline-size: 100%;
+  background: var(--paper-raised);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: .5rem .65rem;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+}
+
+.field textarea {
+  min-height: 14rem;
+  resize: vertical;
+  line-height: 1.7;
+}
+
+/* The global :focus-visible outline is the ring; the control only warms its
+   border to meet it. */
+.field input:focus,
+.field textarea:focus,
+.field select:focus { border-color: var(--accent); }
+
+.field .hint { color: var(--muted); font-size: var(--fs-sm); }
+
+.field .error {
+  color: var(--rose);
+  font-size: var(--fs-sm);
+  font-family: var(--font-mono);
+}
+
+.field.has-error input,
+.field.has-error textarea,
+.field.has-error select { border-color: var(--rose); }
+
+/* .check is itself the <label> wrapping the box, so it has to out-rank the
+   utility voice that .field label would otherwise impose on it. */
+.check,
+.field .check {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-body);
+  font-size: var(--fs-sm);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.check input[type="checkbox"] { inline-size: 1rem; block-size: 1rem; accent-color: var(--accent); flex: none; }
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* Buttons live inside their own <form> for CSRF; the form must not become a
+   layout box of its own inside the row. */
+.actions form { display: contents; }
+.actions--split > *:last-child,
+.actions--split > form:last-child > * { margin-inline-start: auto; }
+
+/* ============================================================================
+   11. Buttons
+   ========================================================================= */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.2;
+  text-decoration: none;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: .5rem .85rem;
+  min-height: 2.25rem;
+}
+
+.btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.btn:active { transform: none; }
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.btn--primary:hover { background: var(--accent-ink); border-color: var(--accent-ink); color: var(--paper); }
+
+.btn--ghost { background: none; }
+
+.btn--danger { color: var(--rose); border-color: var(--rose); background: none; }
+.btn--danger:hover {
+  color: var(--rose);
+  border-color: var(--rose);
+  background: color-mix(in oklab, var(--rose) 12%, var(--paper-raised));
+}
+
+.btn--sm { font-size: var(--fs-util); padding: .35rem .6rem; min-height: 0; }
+
+/* ============================================================================
+   12. Auth
+   ========================================================================= */
+
+.auth {
+  min-height: 70vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-block: var(--s-6);
+}
+
+.auth-card {
+  inline-size: 100%;
+  max-width: 26rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+  padding: var(--s-5);
+}
+
+.auth-card > * + * { margin-block-start: var(--s-4); }
+.auth-card__head > * + * { margin-block-start: var(--s); }
+.auth-card__title { font-family: var(--font-display); font-size: 1.4rem; }
+.auth-card .form { max-width: none; }
+
+.auth-card__foot {
+  border-top: 1px solid var(--line);
+  padding-block-start: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  justify-content: space-between;
+}
+
+/* ============================================================================
+   13. Landing
+   ========================================================================= */
+
+.hero { padding-block: var(--s-6) var(--s-5); }
+.hero > * + * { margin-block-start: var(--s-4); }
+
+.hero__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--fs-hero);
+  letter-spacing: -.03em;
+  line-height: 1.05;
+  max-width: 20ch;
+}
+
+.hero__lede { color: var(--ink-soft); max-width: 60ch; font-size: 1.0625rem; }
+.hero__cta { margin-block-start: var(--s-5); }
+
+.stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5) var(--s-6);
+  border-block: 1px solid var(--line);
+  padding-block: var(--s-4);
+}
+
+.stat { display: grid; gap: .15rem; }
+
+.stat__value {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.1;
+}
+
+.stat__label { color: var(--muted); }
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--s-4);
+}
+
+.feature {
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: var(--s-4);
+}
+
+.feature__name {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .9375rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--accent);
+  margin-block-end: var(--s);
+}
+.feature__note { color: var(--ink-soft); font-size: var(--fs-sm); }
+
+.terminal {
+  background: var(--term-bg);
+  color: var(--term-fg);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: var(--s-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.8;
+  overflow-x: auto;
+}
+
+.terminal__line { white-space: pre; }
+.terminal__line::before { content: "$ "; color: var(--term-accent); }
+.terminal__comment { color: var(--term-muted); }
+.terminal__comment::before { content: none; }
+
+/* ============================================================================
+   14. Tokens page
+   ========================================================================= */
+
+.token-list { display: grid; }
+
+.token {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s) var(--s-3);
+  border-top: 1px solid var(--line);
+  padding-block: var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.token > .mono,
+.token > strong {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Revoke sits at the far end whether it is wrapped in .actions or bare. */
+.token > form,
+.token > .actions { margin-inline-start: auto; }
+
+.token__value {
+  display: block;
+  inline-size: 100%;
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  user-select: all;
+  word-break: break-all;
+}
+
+.callout {
+  background: var(--paper-raised);
+  border: 1px solid var(--line);
+  border-inline-start: 2px solid var(--accent);
+  border-radius: var(--r);
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.callout > * + * { margin-block-start: var(--s-2); }
+
+/* ============================================================================
+   15. Spec rail — the signature
+   ========================================================================= */
+
+/* Mono and small throughout; the uppercase half of the utility voice is kept
+   for dt and .verb so that paths and code stay readable. */
+.spec {
+  position: sticky;
+  top: var(--s-5);
+  align-self: start;
+  border-inline-start: 1px solid var(--line);
+  padding-inline-start: var(--s-3);
+  font-family: var(--font-mono);
+  font-size: var(--fs-util);
+  line-height: 1.7;
+  color: var(--ink-soft);
+  max-height: calc(100vh - var(--s-6));
+  overflow-y: auto;
+}
+
+.spec-route {
+  color: var(--ink);
+  padding-block-end: var(--s-2);
+  margin-block-end: var(--s-2);
+  border-bottom: 1px solid var(--line);
+  word-break: break-word;
+}
+
+.spec-route .verb {
+  color: var(--accent);
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+  letter-spacing: .08em;
+  margin-inline-end: .35em;
+}
+
+.spec-route em { font-style: normal; color: var(--muted); }
+
+.spec dl { display: grid; gap: var(--s); }
+.spec dt { color: var(--muted); }
+
+.spec dd {
+  margin-inline-start: 0;
+  color: var(--ink-soft);
+  margin-block-end: var(--s-2);
+}
+
+.spec code {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: .78rem;
+  background: none;
+  border: 0;
+  padding: 0;
+  word-break: break-word;
+}
+
+/* A source path is its own line wherever it appears - the spec rail names
+   one under most entries, and the landing page's feature notes end with
+   one. Left inline it reads as the last word of the sentence above it. */
+.path {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: .68rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.feature__note .path { margin-block-start: var(--s); }
+
+body.spec-off .spec { display: none; }
+body.spec-off .shell { grid-template-columns: minmax(0, 1fr); }
+
+@media (max-width: 959px) {
+  .shell,
+  body.spec-off .shell { grid-template-columns: minmax(0, 1fr); }
+  .shell > .spec { grid-column: 1; }
+
+  .spec {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    border-inline-start: 0;
+    padding-inline-start: 0;
+    border-top: 1px solid var(--line);
+    padding-block-start: var(--s-3);
+  }
+}
+
+/* ============================================================================
+   16. Utilities
+   ========================================================================= */
+
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--muted); }
+.small { font-size: var(--fs-sm); }
+
+.visually-hidden {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Touch viewports: nav and buttons clear 40px without changing desktop. */
+@media (pointer: coarse) {
+  .nav a,
+  .pagination a,
+  .footer__links a { display: inline-flex; align-items: center; min-height: 40px; }
+  .btn { min-height: 40px; }
+  .btn--sm { min-height: 40px; padding-inline: .75rem; }
+  .spec-toggle { min-height: 40px; }
+}
+
+/* ============================================================================
+   17. Motion
+   ========================================================================= */
+
+@media (prefers-reduced-motion: no-preference) {
+  a,
+  .btn,
+  .tag,
+  .nav a,
+  .spec-toggle,
+  .post-card,
+  .field input,
+  .field textarea,
+  .field select {
+    transition: color 120ms ease, background-color 120ms ease,
+                border-color 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+  }
+
+  @keyframes card-rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* One idea, once, at load: the listing settles into place. Delays are
+     written out because there is no JS to stagger them. */
+  .post-card:nth-child(-n + 8) { animation: card-rise 320ms cubic-bezier(.2, .6, .3, 1) backwards; }
+  .post-card:nth-child(2) { animation-delay: 40ms; }
+  .post-card:nth-child(3) { animation-delay: 80ms; }
+  .post-card:nth-child(4) { animation-delay: 120ms; }
+  .post-card:nth-child(5) { animation-delay: 160ms; }
+  .post-card:nth-child(6) { animation-delay: 200ms; }
+  .post-card:nth-child(7) { animation-delay: 240ms; }
+  .post-card:nth-child(8) { animation-delay: 280ms; }
+}
+
+/* ============================================================================
+   18. Print
+   ========================================================================= */
+
+@media print {
+  .topbar,
+  .spec,
+  .footer,
+  .actions { display: none; }
+
+  body { background: #fff; color: #000; }
+  .shell { display: block; max-width: none; padding: 0; }
+  .post-card { box-shadow: none; break-inside: avoid; }
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/genesysflow/go-genesys/example/app/models"
 	"github.com/genesysflow/go-genesys/example/app/policies"
 	"github.com/genesysflow/go-genesys/queue"
+	"github.com/genesysflow/go-genesys/view"
 )
 
 // BlogServiceProvider wires the blog itself: its authorization policies,
@@ -33,9 +34,19 @@ func (p *BlogServiceProvider) Register(app contracts.Application) error {
 	return nil
 }
 
-// Boot registers the policies and listeners, which need services the
-// framework providers build.
+// Boot registers the policies, the listeners and the view helpers the
+// blog's pages need - all of which depend on services the framework
+// providers build, so none of them can be wired at Register time.
 func (p *BlogServiceProvider) Boot(app contracts.Application) error {
+	// text/template cannot add two numbers, and the pagination links
+	// need the page either side of the current one. Registered here
+	// because the view manager is only built in the view provider's
+	// Boot, which runs before this one.
+	if views, err := container.Resolve[*view.Manager](app); err == nil {
+		views.AddFunc("add", func(a, b int) int { return a + b })
+		views.AddFunc("sub", func(a, b int) int { return a - b })
+	}
+
 	gate, err := container.Resolve[*auth.Gate](app)
 	if err != nil {
 		return fmt.Errorf("blog: no gate available: %w", err)
@@ -48,7 +59,7 @@ func (p *BlogServiceProvider) Boot(app contracts.Application) error {
 	// Editors may do anything: the before hook short-circuits every
 	// check, so the policies do not each have to know about the role.
 	gate.Before(func(user auth.Authenticatable, ability string, args ...any) *bool {
-		editor, ok := user.(*models.User)
+		editor, ok := models.AsUser(user)
 		if !ok || !editor.IsEditor() {
 			return nil
 		}

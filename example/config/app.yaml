@@ -1,4 +1,4 @@
-name: ${APP_NAME:-GenesysExample}
+name: ${APP_NAME:-Genesys}
 env: ${APP_ENV:-local}
 # Off unless asked for: debug puts the underlying error and a stack
 # trace in the response body. .env turns it on for local development.

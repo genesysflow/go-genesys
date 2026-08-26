@@ -63,6 +63,19 @@ type KernelConfig struct {
 	// manager's middleware, for an application that places it itself -
 	// a different store per route group, say.
 	DisableSession bool
+
+	// PreRouting are handlers that run before the router matches, which
+	// is the only point at which a request's verb or path can still be
+	// changed - by the time a MiddlewareFunc runs, the route has already
+	// been chosen, or the request has already been answered 404 or 405.
+	//
+	// It is deliberately typed as Fiber handlers rather than
+	// MiddlewareFunc: what belongs here is not application middleware but
+	// the handful of things that decide what the request even is, and
+	// giving them the ordinary signature would invite them to be
+	// reordered into the ordinary stack, where they would silently stop
+	// working. MethodOverride is the case this exists for.
+	PreRouting []fiber.Handler
 }
 
 // DefaultKernelConfig returns the default kernel configuration.
@@ -133,6 +146,14 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 	// Create router
 	kernel.router = NewRouter(app, fiberApp)
 
+	// Before anything else, including the session: these decide what the
+	// request is, and everything downstream - the router, the session,
+	// every middleware, the logger - should be looking at the answer
+	// rather than at what arrived on the wire.
+	if len(cfg.PreRouting) > 0 {
+		kernel.UseFiber(cfg.PreRouting...)
+	}
+
 	// Sessions, when the application registered a manager. An
 	// application that has to remember this itself is one whose login
 	// flow works in tests and fails in production.
@@ -145,9 +166,60 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 	return kernel
 }
 
+// isPreRequestConnectionError reports whether the error describes a
+// connection that failed before any request arrived on it, rather than a
+// request that failed.
+//
+// Fiber funnels the fasthttp server's connection-level failures - a read
+// timeout on a socket that never spoke, a peer that vanishes mid-header -
+// through the application's ErrorHandler with a freshly acquired and
+// entirely empty context. Nothing was ever parsed, so c.Path() and
+// c.Method() answer with fasthttp's stand-ins, "/" and "GET", and
+// reporting the failure as an application error invents a request nobody
+// made. Browsers preconnect speculatively and routinely abandon the spare
+// sockets, so on a public site that invention is continuous.
+//
+// The discriminator is fasthttp's ConnRequestNum, which the server stamps
+// onto the context only once it holds a parsed request to dispatch: it is
+// still zero while the connection's first request is being read, and one
+// or more for everything that reaches the router - including in-process
+// requests driven by Test, which run through the same serve loop. The
+// header count covers the remaining case, a request whose line and
+// headers arrived and whose body then timed out: that context carries a
+// genuine path and method, and the failure is a genuine request's.
+func isPreRequestConnectionError(c *fiber.Ctx) bool {
+	fctx := c.Context()
+	if fctx == nil {
+		return false
+	}
+	return fctx.ConnRequestNum() == 0 && c.Request().Header.Len() == 0
+}
+
 // createErrorHandler creates the Fiber error handler.
 func createErrorHandler(app contracts.Application) fiber.ErrorHandler {
 	return func(c *fiber.Ctx, err error) error {
+		// A connection that broke before its first request arrived is not
+		// an application error, and passing it down would report it as one
+		// against a path and method the client never sent. Debug keeps it
+		// findable for someone chasing a connection problem without it
+		// counting against the error rate, and the fields say only what is
+		// actually known: the connection's peer and what went wrong.
+		if isPreRequestConnectionError(c) {
+			if logger, resolveErr := container.Resolve[contracts.Logger](app); resolveErr == nil {
+				logger.Debug("Connection closed before a request arrived",
+					"error", err.Error(),
+					"ip", c.IP(),
+				)
+			}
+
+			status := fiber.StatusRequestTimeout
+			var connErr *fiber.Error
+			if errors.As(err, &connErr) {
+				status = connErr.Code
+			}
+			return c.SendStatus(status)
+		}
+
 		// Try to resolve the error handler
 		// We use a local interface to avoid import cycle with errors package
 		type ErrorHandler interface {

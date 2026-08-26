@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/genesysflow/go-genesys/console"
@@ -68,6 +69,18 @@ func TestExampleAppBoots(t *testing.T) {
 		return resp.StatusCode, decoded
 	}
 
+	// `/` is the HTML landing page now, so it is read raw: there is no
+	// JSON body left to decode there.
+	page := func(path string) (int, string, string) {
+		t.Helper()
+		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), -1)
+		if err != nil {
+			t.Fatalf("request %s failed: %v", path, err)
+		}
+		content, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, resp.Header.Get("Content-Type"), string(content)
+	}
+
 	// Maintenance mode leaves a marker file on disk, so the app has to
 	// start from a known-up state. A marker that already exists in the
 	// developer's tree is snapshotted and restored when the test ends.
@@ -81,17 +94,21 @@ func TestExampleAppBoots(t *testing.T) {
 		t.Cleanup(func() { os.Remove(downPath) })
 	}
 
-	// The welcome route responds with the app payload.
-	status, body := get("/")
+	// The landing route renders the HTML landing page, which is where
+	// someone who has just started the server arrives.
+	status, contentType, landing := page("/")
 	if status != 200 {
 		t.Fatalf("GET / returned %d", status)
 	}
-	if body["message"] != "Welcome to Go-Genesys Example!" {
-		t.Fatalf("unexpected welcome payload: %v", body)
+	if !strings.HasPrefix(contentType, "text/html") {
+		t.Fatalf("expected an HTML landing page, got Content-Type %q", contentType)
+	}
+	if !strings.Contains(strings.ToLower(landing), "go-genesys") {
+		t.Fatalf("the landing page does not name the framework: %s", landing)
 	}
 
 	// The health check answers.
-	status, body = get("/health")
+	status, body := get("/health")
 	if status != 200 || body["status"] != "healthy" {
 		t.Fatalf("health check failed: %d %v", status, body)
 	}
@@ -111,6 +128,8 @@ func TestExampleAppBoots(t *testing.T) {
 		t.Fatalf("down command failed: %v", err)
 	}
 
+	// Still JSON while the app is down, landing page or not: the
+	// middleware short-circuits before the handler ever runs.
 	status, body = get("/")
 	if status != 503 {
 		t.Fatalf("expected 503 while in maintenance mode, got %d", status)
@@ -138,7 +157,7 @@ func TestExampleAppBoots(t *testing.T) {
 	if err := cli.Handle([]string{"up"}); err != nil {
 		t.Fatalf("up command failed: %v", err)
 	}
-	status, _ = get("/")
+	status, _, _ = page("/")
 	if status != 200 {
 		t.Fatalf("expected 200 after leaving maintenance mode, got %d", status)
 	}

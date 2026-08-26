@@ -133,12 +133,29 @@ var spoofableMethods = map[string]bool{
 	"DELETE": true,
 }
 
+// SpoofedMethod normalises a verb declared by a form and reports whether
+// a form may legitimately declare it.
+//
+// It exists so that the side writing _method and the side honouring it
+// cannot disagree. A renderer that emits a verb the server will not act
+// on produces a button that answers 405, and a server that acts on a
+// verb no form may write is a request-forging surface; both are the same
+// bug, and this is the one place that decides.
+//
+// The allowlist is deliberately narrow. GET is not on it: a link, a
+// prefetch or a crawler must never be able to perform a destructive
+// action, and a spoofed GET is exactly that.
+func SpoofedMethod(declared string) (string, bool) {
+	verb := strings.ToUpper(strings.TrimSpace(declared))
+	return verb, spoofableMethods[verb]
+}
+
 // methodField renders the hidden input that spoofs the request method,
 // Laravel's @method. Anything that is not a spoofable verb renders
 // nothing rather than smuggling its content into the form.
 func methodField(method string) template.HTML {
-	verb := strings.ToUpper(strings.TrimSpace(method))
-	if !spoofableMethods[verb] {
+	verb, ok := SpoofedMethod(method)
+	if !ok {
 		return ""
 	}
 	return template.HTML(fmt.Sprintf( // #nosec G203 -- verb is from a fixed allowlist

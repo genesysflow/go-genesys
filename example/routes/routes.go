@@ -9,7 +9,35 @@ import (
 	"github.com/genesysflow/go-genesys/foundation"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
+	"github.com/gofiber/fiber/v2"
 )
+
+// PreRouting returns the handlers that run before the router matches a
+// request, and so before every middleware in GlobalMiddleware.
+//
+// Only what has to decide *what the request is* belongs here. Everything
+// else is ordinary middleware and belongs in the stack below, where it is
+// easier to reason about.
+func PreRouting() []fiber.Handler {
+	return []fiber.Handler{
+		// The blog's edit, delete and revoke buttons are HTML forms, and
+		// an HTML form can only be submitted as GET or POST. This turns
+		// the _method field that method_field renders into the verb the
+		// router dispatches on, so those buttons reach the PUT and DELETE
+		// routes a script reaches directly.
+		//
+		// It cannot be moved into GlobalMiddleware: middleware there runs
+		// inside the handler the router already picked, and a POST that
+		// meant DELETE has been answered 405 long before it gets a turn.
+		//
+		// Running before the router also settles the verb before anything
+		// that branches on it - the CSRF check keys off the method, and
+		// the logger records it. Both should be looking at the request
+		// being served rather than at the shape a browser had to send it
+		// in.
+		middleware.MethodOverride(),
+	}
+}
 
 // GlobalMiddleware returns the global middleware stack.
 func GlobalMiddleware(app *foundation.Application) []http.MiddlewareFunc {
@@ -38,6 +66,11 @@ func GlobalMiddleware(app *foundation.Application) []http.MiddlewareFunc {
 	// Forms are protected; the token API is exempt because it
 	// authenticates with a bearer token rather than a cookie, and
 	// without a cookie there is no cross-site request to forge.
+	//
+	// This sees the verb PreRouting settled, not the one on the wire: a
+	// form's POST that declared DELETE is checked as the DELETE it is.
+	// Do not move MethodOverride into this stack to "tidy" the ordering -
+	// it would stop working entirely; see PreRouting above.
 	if secret := csrfSecret(app); len(secret) > 0 {
 		stack = append(stack, middleware.CSRF(middleware.CSRFConfig{
 			Secret:         secret,
@@ -83,6 +116,15 @@ func csrfSecret(app *foundation.Application) []byte {
 
 // Register registers all application routes.
 func Register(r *http.Router) {
+	// Stylesheets and scripts, so {{asset "css/app.css"}} resolves to a
+	// file rather than a 404. The root is taken from the application's
+	// base path rather than the working directory, because the test
+	// suite runs from example/tests and would otherwise look for
+	// public/ inside it.
+	if app := r.App(); app != nil {
+		r.Static("/assets", filepath.Join(app.BasePath(), "public"))
+	}
+
 	// Load web routes
 	Web(r)
 

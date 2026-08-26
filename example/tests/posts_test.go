@@ -183,6 +183,79 @@ func TestADraftIsHiddenFromOtherReaders(t *testing.T) {
 	h.visit(t, "/posts/"+draft.Slug).AssertOK()
 }
 
+// The Edit form is an HTML form, so it reaches PUT the only way a
+// browser can: as a POST declaring the verb. This is the path a reader
+// takes, and until method override existed it answered 405.
+func TestEditingThroughTheBrowsersForm(t *testing.T) {
+	h := boot(t)
+	author := h.author(t)
+	post := h.post(t, author)
+
+	h.signIn(t, author)
+	h.visit(t, "/posts/"+post.Slug+"/edit").AssertOK()
+
+	h.browserForm(t, "PUT", "/posts/"+post.Slug, map[string]string{
+		"title": "Retitled from the browser",
+		"slug":  post.Slug,
+		"body":  "A body long enough to satisfy the rules of the form.",
+	}).AssertRedirect()
+
+	dbtest.AssertDatabaseHas(t, "posts", map[string]any{
+		"id":    post.ID,
+		"title": "Retitled from the browser",
+	})
+}
+
+// And so does the Delete button.
+func TestDeletingThroughTheBrowsersForm(t *testing.T) {
+	h := boot(t)
+	author := h.author(t)
+	post := h.post(t, author)
+
+	h.signIn(t, author)
+	h.visit(t, "/posts/"+post.Slug).AssertOK()
+
+	h.browserForm(t, "DELETE", "/posts/"+post.Slug, nil).
+		AssertRedirect("/posts")
+
+	dbtest.AssertSoftDeleted(t, "posts", map[string]any{"id": post.ID})
+	h.visit(t, "/posts/"+post.Slug).AssertNotFound()
+}
+
+// A draft has somewhere to be found again: its author's own list.
+func TestDraftsListsTheAuthorsOwnUnpublishedPosts(t *testing.T) {
+	h := boot(t)
+	author := h.author(t)
+	mine := h.post(t, author)
+	live := h.published(t, author)
+	theirs := h.post(t, h.author(t))
+
+	h.signIn(t, author)
+
+	body := h.visit(t, "/drafts").AssertOK().BodyString()
+	assert.Contains(t, body, mine.Title)
+	assert.NotContains(t, body, live.Title)
+	assert.NotContains(t, body, theirs.Title)
+}
+
+// An editor is looking at the whole desk, not one author's corner of it.
+func TestDraftsShowsEveryAuthorsWorkToAnEditor(t *testing.T) {
+	h := boot(t)
+	theirs := h.post(t, h.author(t))
+
+	h.signIn(t, h.editor(t))
+
+	assert.Contains(t, h.visit(t, "/drafts").AssertOK().BodyString(), theirs.Title)
+}
+
+// Unpublished work is not for guests, whoever wrote it.
+func TestDraftsSendsAGuestToSignIn(t *testing.T) {
+	h := boot(t)
+	h.post(t, h.author(t))
+
+	h.tc.Get("/drafts").AssertRedirect("/login")
+}
+
 // Comments are written against the post they were posted from.
 func TestCommentingOnAPost(t *testing.T) {
 	h := boot(t)

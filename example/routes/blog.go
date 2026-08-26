@@ -77,7 +77,7 @@ func Blog(app contracts.Application, r *http.Router) error {
 			})
 		},
 		UpdatePassword: func(user genesysauth.Authenticatable, hashedPassword string) error {
-			account, ok := user.(*models.User)
+			account, ok := models.AsUser(user)
 			if !ok {
 				return errNotOurUser
 			}
@@ -103,6 +103,9 @@ func Blog(app contracts.Application, r *http.Router) error {
 	// governs it, so the handler never runs for a caller who may not.
 	authenticated := genesysauth.Middleware(guard, genesysauth.MiddlewareOptions{RedirectTo: "/login"})
 
+	// Where an unpublished post is found again: the author's own, and
+	// every author's for an editor.
+	r.GET("/drafts", controller.Drafts, authenticated).Name("posts.drafts")
 	r.GET("/drafts/new", controller.Create, authenticated).Name("posts.create")
 	r.POST("/posts", controller.Store, authenticated)
 	r.POST("/posts/:post/comments", controller.Comment, authenticated).Name("posts.comment")
@@ -122,8 +125,14 @@ func Blog(app contracts.Application, r *http.Router) error {
 		Middleware(genesysauth.CanBy[models.Post](gate, "publish", "post", "slug")).
 		Name("posts.publish")
 
-	// Issuing an API token is done from the session-authenticated site.
+	// Issuing an API token is done from the session-authenticated site,
+	// on a page that also lists what the caller already holds.
+	r.GET("/api-tokens", api.ShowTokens, authenticated).Name("tokens.index")
 	r.POST("/api-tokens", api.IssueToken, authenticated).Name("tokens.store")
+
+	// A token outlives the reason it was minted, so there has to be a way
+	// to take one back.
+	r.DELETE("/api-tokens/:token", api.RevokeToken, authenticated).Name("tokens.destroy")
 
 	// The JSON API authenticates with those tokens instead.
 	tokenGuard := genesysauth.NewPersonalAccessTokenGuard("api", tokens, genesysauth.NewORMUserProvider[models.User]())

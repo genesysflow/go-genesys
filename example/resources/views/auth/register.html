@@ -1,22 +1,63 @@
-<!-- Create an account -->
-<form method="POST" action="/register">
-  {{csrf_field .csrf_token}}
+<div class="page">
+  <div class="auth">
+    <div class="auth-card">
+      <div class="auth-card__head">
+        <p class="eyebrow">New here</p>
+        <h1 class="auth-card__title">Create an account</h1>
+        <p class="small muted">New accounts write as authors. Publishing is an editor's call.</p>
+      </div>
 
-  <label for="name">Name</label>
-  <input id="name" name="name" type="text" value="{{.old.Get "name"}}" required>
-  {{if .errors.Has "name"}}<span class="error">{{.errors.First "name"}}</span>{{end}}
+      <form class="form" method="POST" action="/register">
+        {{csrf_field .csrf_token}}
 
-  <label for="email">Email</label>
-  <input id="email" name="email" type="email" value="{{.old.Get "email"}}" required>
-  {{if .errors.Has "email"}}<span class="error">{{.errors.First "email"}}</span>{{end}}
+        <div class="field{{if .errors.Has "name"}} has-error{{end}}">
+          <label for="name">Name</label>
+          <input id="name" name="name" type="text" value="{{.old.Get "name"}}" autocomplete="name" required>
+          {{if .errors.Has "name"}}<span class="error">{{.errors.First "name"}}</span>{{end}}
+        </div>
 
-  <label for="password">Password</label>
-  <input id="password" name="password" type="password" required>
-  {{if .errors.Has "password"}}<span class="error">{{.errors.First "password"}}</span>{{end}}
+        <div class="field{{if .errors.Has "email"}} has-error{{end}}">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" value="{{.old.Get "email"}}" autocomplete="email" required>
+          {{if .errors.Has "email"}}<span class="error">{{.errors.First "email"}}</span>{{end}}
+        </div>
 
-  <label for="password_confirmation">Confirm password</label>
-  <input id="password_confirmation" name="password_confirmation" type="password" required>
+        <div class="field{{if .errors.Has "password"}} has-error{{end}}">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="new-password" required>
+          {{if .errors.Has "password"}}<span class="error">{{.errors.First "password"}}</span>{{end}}
+        </div>
 
-  <button type="submit">Create account</button>
-  <a href="/login">Already registered?</a>
-</form>
+        <div class="field">
+          <label for="password_confirmation">Confirm password</label>
+          <input id="password_confirmation" name="password_confirmation" type="password" autocomplete="new-password" required>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn--primary" type="submit">Create account</button>
+        </div>
+      </form>
+
+      <div class="auth-card__foot">
+        <a href="/login">Already registered? Sign in</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /register <em>register</em></p>
+  <dl>
+    <dt>Create hook</dt>
+    <dd>The controller does not know about <code>models.User</code>; the application passes a <code>Create</code> function that does.<span class="path">routes/blog.go</span></dd>
+
+    <dt>Confirmed</dt>
+    <dd>The <code>confirmed</code> rule pairs <code>password</code> with <code>password_confirmation</code>.<span class="path">validation/rules.go</span></dd>
+
+    <dt>Hashing</dt>
+    <dd>bcrypt, before the row is written. The column is in the model's <code>Hidden()</code> list, so it never leaves in a response.<span class="path">app/models/user.go</span></dd>
+
+    <dt>Greeting</dt>
+    <dd>A <code>Welcome</code> mailable is sent as an object, not a message assembled by hand — and a failure to greet is not a failure to register.<span class="path">app/mail/welcome.go</span></dd>
+  </dl>
+</aside>

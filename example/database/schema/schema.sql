@@ -24,12 +24,6 @@ CREATE TABLE "comments" (
 
 CREATE INDEX "comments_post_id_index" ON "comments" ("post_id");
 
-CREATE TABLE "create_user_table" (
-  "id" INTEGER PRIMARY KEY AUTOINCREMENT,
-  "created_at" TIMESTAMP,
-  "updated_at" TIMESTAMP
-);
-
 CREATE TABLE "failed_jobs" (
   "id" INTEGER PRIMARY KEY AUTOINCREMENT,
   "queue" VARCHAR(255) NOT NULL,

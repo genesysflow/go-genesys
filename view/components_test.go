@@ -3,6 +3,7 @@ package view_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/genesysflow/go-genesys/view"
@@ -91,4 +92,27 @@ func TestDictValidation(t *testing.T) {
 	assert.ErrorContains(t, err, "odd number")
 	_, err = m.RenderString("badkey", nil)
 	assert.ErrorContains(t, err, "keys must be strings")
+}
+
+// A component is a fragment of the page that calls it, so it must not
+// pick up the configured default layout on the way out. It used to:
+// every tag, badge and alert arrived wrapped in a second copy of the
+// site's chrome, and only a page that rendered a component below the
+// fold made it obvious.
+func TestComponentsDoNotCarryTheDefaultLayout(t *testing.T) {
+	root := t.TempDir()
+	writeView(t, root, "layouts/app.html",
+		`<html><body><nav>chrome</nav>{{.content}}</body></html>`)
+	writeComponent(t, root, "tag.html", `<span class="tag">{{.name}}</span>`)
+	writeView(t, root, "page.html", `<h1>Page</h1>{{component "tag" (dict "name" "Go")}}`)
+
+	m := view.NewManager(view.Config{Path: root, Layout: "layouts.app"})
+	out, err := m.RenderString("page", nil)
+	require.NoError(t, err)
+
+	assert.Equal(t,
+		`<html><body><nav>chrome</nav><h1>Page</h1><span class="tag">Go</span></body></html>`,
+		out)
+	assert.Equal(t, 1, strings.Count(out, "<nav>chrome</nav>"),
+		"the layout is rendered once, around the page - not again around each component")
 }

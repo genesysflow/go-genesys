@@ -1,30 +1,114 @@
-<article>
-  <h1>{{.post.Title}}</h1>
-  {{if not .post.Published}}<p class="draft">Draft</p>{{end}}
-  <div class="body">{{.post.Body}}</div>
+<div class="page">
+  <article>
+    <div class="page-head">
+      <p class="eyebrow">
+        {{if .post.Published}}<span class="badge badge--live">Published</span>
+        {{else}}<span class="badge badge--draft">Draft</span>{{end}}
+      </p>
 
-  {{if .gate.Allows "update" .post}}
-    <a href="{{route "posts.edit" (dict "post" .post.Slug)}}">Edit</a>
-  {{end}}
+      <h1 class="page-title">{{.post.Title}}</h1>
 
-  {{if .gate.Allows "publish" .post}}
-    <form method="POST" action="/posts/{{.post.Slug}}/publish">
-      {{csrf_field .csrf_token}}
-      <button type="submit">Publish</button>
-    </form>
-  {{end}}
-</article>
+      <p class="byline">
+        {{with .post.Author}}<span>{{.Name}}</span>{{end}}
+        {{with .post.PublishedAt}}<span>{{.Format "January 2, 2006"}}</span>
+        {{else}}<span>Last saved {{.post.UpdatedAt.Format "Jan 2, 2006"}}</span>{{end}}
+      </p>
 
-<section class="comments">
-  <h2>Comments</h2>
-  {{range .comments}}<p>{{.Body}}</p>{{end}}
+      {{if .post.Tags}}
+        <div class="tags">
+          {{range .post.Tags}}{{component "tag" (dict "name" .Name "slug" .Slug)}}{{end}}
+        </div>
+      {{end}}
+    </div>
 
-  {{if .user}}
-    <form method="POST" action="/posts/{{.post.Slug}}/comments">
-      {{csrf_field .csrf_token}}
-      <textarea name="body" required>{{.old.Get "body"}}</textarea>
-      {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
-      <button type="submit">Reply</button>
-    </form>
-  {{end}}
-</section>
+    <div class="prose">{{.post.Body}}</div>
+
+    {{if or (.gate.Allows "update" .post) (.gate.Allows "publish" .post)}}
+      <div class="actions actions--split">
+        {{if .gate.Allows "update" .post}}
+          <a class="btn btn--ghost" href="{{route "posts.edit" (dict "post" .post.Slug)}}">Edit</a>
+        {{end}}
+
+        {{if and (.gate.Allows "publish" .post) (not .post.Published)}}
+          <form method="POST" action="/posts/{{.post.Slug}}/publish">
+            {{csrf_field .csrf_token}}
+            <button class="btn btn--primary" type="submit">Publish</button>
+          </form>
+        {{end}}
+
+        {{if .gate.Allows "delete" .post}}
+          <form method="POST" action="/posts/{{.post.Slug}}">
+            {{csrf_field .csrf_token}}
+            {{method_field "DELETE"}}
+            <button class="btn btn--danger btn--sm" type="submit">Delete</button>
+          </form>
+        {{end}}
+      </div>
+    {{end}}
+  </article>
+
+  <section class="comments">
+    <h2>{{len .comments}} comment{{if ne (len .comments) 1}}s{{end}}</h2>
+
+    {{if not .comments}}
+      <div class="empty">
+        <p class="empty__title">No replies yet</p>
+        <p>{{if .user}}Say the first thing.{{else}}Sign in to leave one.{{end}}</p>
+      </div>
+    {{end}}
+
+    {{range .comments}}
+      <article class="comment">
+        <p class="comment__head">
+          {{with .Author}}
+            {{if .Name}}<span class="avatar" aria-hidden="true">{{upper (slice .Name 0 1)}}</span>{{end}}
+            <span>{{.Name}}</span>
+          {{end}}
+          <span>{{.CreatedAt.Format "Jan 2, 2006"}}</span>
+        </p>
+        <p class="comment__body">{{.Body}}</p>
+      </article>
+    {{end}}
+
+    {{if .user}}
+      <form class="form" method="POST" action="/posts/{{.post.Slug}}/comments">
+        {{csrf_field .csrf_token}}
+
+        <div class="field{{if .errors.Has "body"}} has-error{{end}}">
+          <label for="comment-body">Your reply</label>
+          <textarea id="comment-body" name="body" required>{{.old.Get "body"}}</textarea>
+          {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+        </div>
+
+        <div class="actions">
+          <button class="btn btn--primary" type="submit">Post reply</button>
+        </div>
+      </form>
+    {{else}}
+      <p class="small muted"><a href="/login">Sign in</a> to reply.</p>
+    {{end}}
+  </section>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /posts/:post <em>posts.show</em></p>
+  <dl>
+    <dt>Binding</dt>
+    <dd><code>BindModelBy[Post](ctx, "post", "slug")</code> — a missing slug is a 404 before the handler runs.<span class="path">http/binding.go</span></dd>
+
+    <dt>Policy</dt>
+    <dd><code>PostPolicy.View</code> hides a draft from everyone but its author and the editors.<span class="path">app/policies/post_policy.go</span></dd>
+
+    <dt>Relations</dt>
+    <dd><code>Load(post, "Author", "Tags")</code> after binding, and comments read with <code>With("Author")</code>.</dd>
+
+    <dt>Buttons</dt>
+    <dd>Each one is drawn from <code>gate.Allows</code>, and the route behind it carries the same policy — the check is not the button.</dd>
+
+    <dt>Publish</dt>
+    <dd>Dispatches <code>PostPublished</code>; the listener pushes <code>jobs.PublishPost</code> onto the queue and the response returns without waiting.<span class="path">app/jobs/publish_post.go</span></dd>
+
+    <dt>Comments</dt>
+    <dd><code>CommentRequest</code> sends a failure back here with its input and messages.<span class="path">app/http/blog/requests.go</span></dd>
+  </dl>
+</aside>

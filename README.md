@@ -5,7 +5,7 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 ## Features
 
 - **Service Container & Providers**: Dependency injection with a clean register/boot lifecycle
-- **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) with middleware pipeline, route groups, subdomain routing (`Domain("{account}.example.com", ...)`), named routes, fallbacks, redirects, and middleware groups/aliases
+- **HTTP Layer**: Built on [Fiber](https://github.com/gofiber/fiber) with middleware pipeline, route groups, subdomain routing (`Domain("{account}.example.com", ...)`), named routes, fallbacks, redirects, middleware groups/aliases, and method spoofing (`method_field "PUT"` + `middleware.MethodOverride`) so a browser form can reach a PUT or DELETE route
 - **Query Builder**: Fluent SQL builder with per-driver grammar (`db.Table("users").Where(...).Get()`)
 - **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, transactions (`WithinTransaction` with scoped helpers), automatic timestamps, pagination (offset + cursor), relationships with batched eager loading (`With("Posts.Tags")`), existence queries (`WhereHas`/`DoesntHave`), pivot writes (`Attach`/`Detach`/`Sync`/`Toggle`), `CreateFor`/`Associate`, `FirstOrCreate`/`UpdateOrCreate`, soft deletes, lifecycle hooks/observers, dirty tracking with partial updates, and delete-safe `Chunk`/`Each`
 - **Route Model Binding**: `http.BindModel[User](ctx, "user")` with automatic 404s

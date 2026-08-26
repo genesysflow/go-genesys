@@ -1,19 +1,62 @@
-<!-- Sign in -->
-<form method="POST" action="/login">
-  {{csrf_field .csrf_token}}
+<div class="page">
+  <div class="auth">
+    <div class="auth-card">
+      <div class="auth-card__head">
+        <p class="eyebrow">Welcome back</p>
+        <h1 class="auth-card__title">Sign in</h1>
+      </div>
 
-  {{if .session}}{{with .session.GetString "status"}}<p class="status">{{.}}</p>{{end}}{{end}}
+      {{if .session}}{{with .session.GetString "status"}}<p class="flash flash--status" role="status">{{.}}</p>{{end}}{{end}}
 
-  <label for="email">Email</label>
-  <input id="email" name="email" type="email" value="{{.old.Get "email"}}" required>
-  {{if .errors.Has "email"}}<span class="error">{{.errors.First "email"}}</span>{{end}}
+      <form class="form" method="POST" action="/login">
+        {{csrf_field .csrf_token}}
 
-  <label for="password">Password</label>
-  <input id="password" name="password" type="password" required>
-  {{if .errors.Has "password"}}<span class="error">{{.errors.First "password"}}</span>{{end}}
+        <div class="field{{if .errors.Has "email"}} has-error{{end}}">
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" value="{{.old.Get "email"}}" autocomplete="email" required>
+          {{if .errors.Has "email"}}<span class="error">{{.errors.First "email"}}</span>{{end}}
+        </div>
 
-  <label><input name="remember" type="checkbox" value="1"> Remember me</label>
+        <div class="field{{if .errors.Has "password"}} has-error{{end}}">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          {{if .errors.Has "password"}}<span class="error">{{.errors.First "password"}}</span>{{end}}
+        </div>
 
-  <button type="submit">Sign in</button>
-  <a href="/forgot-password">Forgot your password?</a>
-</form>
+        <label class="check">
+          <input name="remember" type="checkbox" value="1">
+          <span>Keep me signed in</span>
+        </label>
+
+        <div class="actions">
+          <button class="btn btn--primary" type="submit">Sign in</button>
+        </div>
+      </form>
+
+      <div class="auth-card__foot">
+        <a href="/forgot-password">Forgot your password?</a>
+        <a href="/register">Create an account</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /login <em>login</em></p>
+  <dl>
+    <dt>Controller</dt>
+    <dd>What <code>make:auth</code> scaffolds, wired to this application's user model.<span class="path">app/http/auth/controller.go</span></dd>
+
+    <dt>Guest only</dt>
+    <dd><code>GuestMiddleware</code> sends an already-signed-in caller home instead of showing this form again.</dd>
+
+    <dt>Throttle</dt>
+    <dd>Ten attempts a minute, keyed by IP <em>and</em> address, so one attacker cannot lock out every account and one office cannot lock out itself.<span class="path">app/http/auth/routes.go</span></dd>
+
+    <dt>Remember me</dt>
+    <dd>A signed cookie the session guard recognises on the next visit.<span class="path">auth/session_guard.go</span></dd>
+
+    <dt>CSRF</dt>
+    <dd>The hidden <code>_token</code> field is signed with a key derived from <code>APP_KEY</code>. Without that key the middleware is not registered at all.<span class="path">routes/routes.go</span></dd>
+  </dl>
+</aside>

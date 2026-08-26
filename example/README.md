@@ -18,8 +18,14 @@ go run . db:seed
 go run . serve            # http://localhost:3000
 ```
 
-Sign in as the seeded editor with `editor@example.com` / `password123`,
-or register a new account. Authors write; editors publish.
+Open <http://localhost:3000>. Sign in as the seeded editor with
+`editor@example.com` / `password123`, or register a new account.
+Authors write; editors publish.
+
+Every page carries a margin rail naming the controller, policy, form
+request or job behind what you are looking at, and the file it lives in.
+The **Explain** button in the header turns it off when you would rather
+just read.
 
 The tests need none of this - each one boots the application against its
 own in-memory database:
@@ -27,6 +33,19 @@ own in-memory database:
 ```sh
 go test ./tests/...
 ```
+
+## What you can reach
+
+| Page                | Path            | What it exercises                                        |
+|---------------------|-----------------|----------------------------------------------------------|
+| Landing             | `/`             | Views, layouts, config and the asset pipeline             |
+| Posts               | `/posts`        | Eager loading, counts, tag filtering, pagination          |
+| A post              | `/posts/:slug`  | Route-model binding by slug, policies, comments, queues   |
+| Drafts              | `/drafts`       | Scoped queries, the editor's reach through `Gate.Before`  |
+| Write               | `/drafts/new`   | The whole form-request lifecycle                          |
+| API tokens          | `/api-tokens`   | Personal access tokens, abilities, one-time plaintext     |
+| JSON API            | `/api/blog/...` | Token guard, resources, hidden fields, 422s               |
+| Dev panel           | `/_genesys`     | Recorded requests and the queries they ran                |
 
 ## What the blog is
 
@@ -50,6 +69,15 @@ Four models, in `app/models`:
 scaffolded authentication flow, the HTML pages, and a JSON API under
 `/api/blog`. Each writing route carries the policy that governs it, so
 the handler never runs for a caller who may not.
+
+**Browser verbs** — a form can only be submitted as GET or POST, so the
+Edit and Delete buttons declare their real verb in a hidden `_method`
+field and `middleware.MethodOverride` rewrites the request before the
+router matches it. It runs on `KernelConfig.PreRouting` rather than in
+the middleware stack, because by the time a `MiddlewareFunc` runs the
+route has already been chosen - a 405 would already be the answer.
+`routes/routes.go` registers it, and the tests drive those buttons the
+way a browser does rather than sending the verb directly.
 
 **Form requests** — `app/http/blog/requests.go` uses the whole
 lifecycle: `PrepareForValidation` derives the slug from the title,
@@ -97,7 +125,14 @@ when several run the schedule; the digest is queued rather than run.
 **Views** — `resources/views`. Pages render inside
 `layouts/blog.html`, configured as the default layout in
 `config/view.yaml`; a tag renders through the `components/tag.html`
-component, so its markup lives in one place.
+component, so its markup lives in one place. Each page also writes its
+own `<aside class="spec">` rail, by hand: nothing generates it, so a
+wrong annotation is a wrong page rather than a stale cache.
+
+**Assets** — `public/`, mounted at `/assets` in `routes/routes.go` from
+`app.BasePath()` rather than the working directory, because the tests
+run from `tests/`. One hand-written stylesheet and one small script; no
+build step, no CDN, nothing fetched at runtime.
 
 **Factories and seeders** — `database/factories` builds models for both
 the seeders and the tests, with states (`Editors`, `Published`) for the

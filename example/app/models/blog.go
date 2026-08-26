@@ -58,6 +58,7 @@ type Comment struct {
 	Body     string `db:"body" json:"body"`
 
 	Post        *Post         `rel:"belongsTo,fk:post_id" json:"-"`
+	Author      *User         `rel:"belongsTo,fk:author_id" json:"author,omitempty"`
 	Attachments []*Attachment `rel:"morphMany,as:attachable" json:"attachments,omitempty"`
 }
 

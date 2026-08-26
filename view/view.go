@@ -211,7 +211,11 @@ func (m *Manager) loadLocked() error {
 		if len(data) > 0 {
 			payload = data[0]
 		}
-		out, err := m.RenderString("components."+name, payload)
+		// Rendered with no layout: a component is a fragment of the page
+		// it is called from, and RenderString would wrap every one of
+		// them in the configured default layout - a whole second copy of
+		// the site's chrome around each tag, badge and alert.
+		out, err := m.RenderStringIn("", "components."+name, payload)
 		if err != nil {
 			return "", err
 		}

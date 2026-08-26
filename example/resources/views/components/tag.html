@@ -1,1 +1,2 @@
-<span class="tag tag-{{.slug}}">{{.name}}</span>
+{{- /* A tag doubles as the filter that shows everything wearing it. */ -}}
+<a class="tag tag-{{.slug}}" href="/posts?tag={{.slug}}"{{if .active}} aria-current="page"{{end}}>{{.name}}</a>

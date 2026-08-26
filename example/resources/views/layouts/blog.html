@@ -2,23 +2,67 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{config "app.name"}}</title>
-  <link rel="stylesheet" href="{{asset "css/blog.css"}}">
+  <link rel="stylesheet" href="{{asset "assets/css/app.css"}}">
+  <script src="{{asset "assets/js/spec.js"}}" defer></script>
 </head>
 <body>
-  <header>
-    <a href="{{route "posts.index"}}">{{config "app.name"}}</a>
-    {{if .user}}
-      <span>Signed in as {{.user.Name}}</span>
-      <form method="POST" action="/logout">{{csrf_field .csrf_token}}<button>Sign out</button></form>
-    {{else}}
-      <a href="/login">Sign in</a>
-    {{end}}
-  </header>
+<a class="skip-link" href="#main">Skip to content</a>
 
-  {{if .session}}{{with .session.GetString "status"}}<p class="status">{{.}}</p>{{end}}{{end}}
-  {{if .errors.Any}}<ul class="errors">{{range .errors.All}}<li>{{.}}</li>{{end}}</ul>{{end}}
+<header class="topbar">
+  <div class="topbar__inner">
+    <a class="brand" href="{{route "posts.index"}}">{{config "app.name"}}<span class="muted">/example</span></a>
 
-  <main>{{.content}}</main>
+    <nav class="nav" aria-label="Main">
+      <a href="{{route "posts.index"}}">Posts</a>
+      {{if .user}}
+        <a href="{{route "posts.drafts"}}">Drafts</a>
+        <a href="{{route "posts.create"}}">Write</a>
+        <a href="{{route "tokens.index"}}">Tokens</a>
+      {{end}}
+    </nav>
+
+    <div class="session">
+      <button class="spec-toggle" type="button" data-spec-toggle aria-pressed="true">Explain</button>
+
+      {{if .user}}
+        {{if .user.Name}}<span class="avatar" aria-hidden="true">{{upper (slice .user.Name 0 1)}}</span>{{end}}
+        <span class="small muted">{{.user.Name}}</span>
+        <form method="POST" action="/logout">
+          {{csrf_field .csrf_token}}
+          <button class="btn btn--ghost btn--sm" type="submit">Sign out</button>
+        </form>
+      {{else}}
+        <a class="btn btn--ghost btn--sm" href="/login">Sign in</a>
+        <a class="btn btn--primary btn--sm" href="/register">Create account</a>
+      {{end}}
+    </div>
+  </div>
+</header>
+
+<main class="shell" id="main">
+  {{if .session}}{{with .session.GetString "status"}}
+    <p class="flash flash--status" role="status">{{.}}</p>
+  {{end}}{{end}}
+
+  {{if .errors.Any}}
+    <ul class="errors" role="alert">
+      {{range .errors.All}}<li>{{.}}</li>{{end}}
+    </ul>
+  {{end}}
+
+  {{.content}}
+</main>
+
+<footer class="footer">
+  <div class="footer__links">
+    <span class="mono">go-genesys</span>
+    <a href="{{route "posts.index"}}">Blog</a>
+    <a href="/api/blog/posts">JSON API</a>
+    <a href="/_genesys">Dev panel</a>
+    <a href="/health">Health</a>
+  </div>
+</footer>
 </body>
 </html>

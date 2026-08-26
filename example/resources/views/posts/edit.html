@@ -1,20 +1,53 @@
-<h1>Edit post</h1>
+<div class="page">
+  <div class="page-head">
+    <p class="eyebrow">Editing</p>
+    <h1 class="page-title">{{.post.Title}}</h1>
+    <p class="page-sub">Only the fields you change are written, so two editors on different fields do not overwrite each other.</p>
+  </div>
 
-<form method="POST" action="/posts/{{.post.Slug}}">
-  {{csrf_field .csrf_token}}
-  {{method_field "PUT"}}
+  <form class="form" method="POST" action="/posts/{{.post.Slug}}">
+    {{csrf_field .csrf_token}}
+    {{method_field "PUT"}}
 
-  <label for="title">Title</label>
-  <input id="title" name="title" value="{{.old.Get "title" .post.Title}}" required>
-  {{if .errors.Has "title"}}<span class="error">{{.errors.First "title"}}</span>{{end}}
+    <div class="field{{if .errors.Has "title"}} has-error{{end}}">
+      <label for="title">Title</label>
+      <input id="title" name="title" type="text" value="{{.old.Get "title" .post.Title}}" required>
+      {{if .errors.Has "title"}}<span class="error">{{.errors.First "title"}}</span>{{end}}
+    </div>
 
-  <label for="slug">Slug</label>
-  <input id="slug" name="slug" value="{{.old.Get "slug" .post.Slug}}" required>
-  {{if .errors.Has "slug"}}<span class="error">{{.errors.First "slug"}}</span>{{end}}
+    <div class="field{{if .errors.Has "slug"}} has-error{{end}}">
+      <label for="slug">Slug</label>
+      <input id="slug" name="slug" type="text" value="{{.old.Get "slug" .post.Slug}}" required>
+      <span class="hint">Changing this changes the post's address.</span>
+      {{if .errors.Has "slug"}}<span class="error">{{.errors.First "slug"}}</span>{{end}}
+    </div>
 
-  <label for="body">Body</label>
-  <textarea id="body" name="body" required>{{.old.Get "body" .post.Body}}</textarea>
-  {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+    <div class="field{{if .errors.Has "body"}} has-error{{end}}">
+      <label for="body">Body</label>
+      <textarea id="body" name="body" required>{{.old.Get "body" .post.Body}}</textarea>
+      {{if .errors.Has "body"}}<span class="error">{{.errors.First "body"}}</span>{{end}}
+    </div>
 
-  <button type="submit">Save changes</button>
-</form>
+    <div class="actions actions--split">
+      <button class="btn btn--primary" type="submit">Save changes</button>
+      <a class="btn btn--ghost" href="{{route "posts.show" (dict "post" .post.Slug)}}">Back to the post</a>
+    </div>
+  </form>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /posts/:post/edit <em>posts.edit</em></p>
+  <dl>
+    <dt>Route guard</dt>
+    <dd><code>CanBy[Post](gate, "update", "post", "slug")</code> — the policy runs on the route, so the handler never runs for a caller who may not.<span class="path">auth/can.go</span></dd>
+
+    <dt>Method</dt>
+    <dd>The hidden <code>_method</code> field a <code>method_field</code> helper writes lets a form that can only POST reach a PUT route.<span class="path">view/helpers.go</span></dd>
+
+    <dt>Form request</dt>
+    <dd><code>UpdatePostRequest</code> — the same lifecycle as writing, with the uniqueness check ignoring this post's own row.</dd>
+
+    <dt>Write</dt>
+    <dd><code>database.Update(post)</code> sends only the dirty columns.<span class="path">database/orm.go</span></dd>
+  </dl>
+</aside>

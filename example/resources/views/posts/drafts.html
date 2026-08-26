@@ -1,0 +1,57 @@
+<div class="page">
+  <div class="page-head">
+    <p class="eyebrow">Not out yet</p>
+    <h1 class="page-title">Drafts</h1>
+    <p class="page-sub">
+      {{if .mine}}Yours, until an editor sends one out.
+      {{else}}Every author's, because you edit.{{end}}
+    </p>
+  </div>
+
+  {{if not .posts}}
+    <div class="empty">
+      <p class="empty__title">Nothing in progress</p>
+      <p>A draft stays here from the moment you save it until an editor publishes it.</p>
+      <a class="btn btn--primary" href="{{route "posts.create"}}">Start writing</a>
+    </div>
+  {{end}}
+
+  <div class="post-list">
+    {{range .posts}}
+      <article class="post-card">
+        <h2 class="post-card__title">
+          <a href="{{route "posts.show" (dict "post" .Slug)}}">{{.Title}}</a>
+        </h2>
+
+        <p class="post-card__meta">
+          <span class="badge badge--draft">Draft</span>
+          {{if not $.mine}}{{with .Author}}<span>{{.Name}}</span>{{end}}{{end}}
+          <span>Saved {{.UpdatedAt.Format "Jan 2, 2006"}}</span>
+        </p>
+
+        <p class="post-card__excerpt">{{.Body}}</p>
+
+        <div class="actions">
+          <a class="btn btn--ghost btn--sm" href="{{route "posts.edit" (dict "post" .Slug)}}">Edit</a>
+        </div>
+      </article>
+    {{end}}
+  </div>
+</div>
+
+<aside class="spec" aria-label="How this page is built">
+  <p class="spec-route"><span class="verb">GET</span> /drafts <em>posts.drafts</em></p>
+  <dl>
+    <dt>Handler</dt>
+    <dd><code>blog.Controller.Drafts</code><span class="path">app/http/blog/controller.go</span></dd>
+
+    <dt>Guard</dt>
+    <dd><code>auth.Middleware(guard, RedirectTo: "/login")</code> — a guest is sent to sign in and returned here afterwards.<span class="path">auth/middleware.go</span></dd>
+
+    <dt>Scope</dt>
+    <dd><code>WhereNull("published_at")</code>, narrowed to <code>author_id</code> unless the caller is an editor.</dd>
+
+    <dt>Role</dt>
+    <dd>The editor's reach comes from the <code>Gate.Before</code> hook, so no policy has to know the role exists.<span class="path">app/providers/blog_service_provider.go</span></dd>
+  </dl>
+</aside>

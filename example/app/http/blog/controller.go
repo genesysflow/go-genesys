@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	genesysauth "github.com/genesysflow/go-genesys/auth"
 	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/events"
 	"github.com/genesysflow/go-genesys/example/app/models"
 	"github.com/genesysflow/go-genesys/http"
+	"github.com/genesysflow/go-genesys/query"
 	"github.com/genesysflow/go-genesys/queue"
 )
 
@@ -21,22 +21,45 @@ type Controller struct {
 	Events *events.Dispatcher
 }
 
-// Index lists published posts, newest first.
+// Index lists published posts, newest first, narrowed to one tag when
+// the reader picked one from the filter bar.
 func (c *Controller) Index(ctx *http.Context) error {
-	page, err := database.Query[models.Post]().
+	tag := ctx.Query("tag")
+
+	posts := database.Query[models.Post]().
 		WhereNotNull("published_at").
 		With("Author", "Tags").
 		WithCount("Comments").
-		Latest("published_at").
-		Paginate(ctx.QueryInt("page", 1), 10)
+		Latest("published_at")
+
+	// Filtered through the relation rather than a join written here, so
+	// the pivot stays the tag relation's business.
+	if tag != "" {
+		posts = posts.WhereHas("Tags", func(tags *query.Builder) {
+			tags.Where("slug", tag)
+		})
+	}
+
+	page, err := posts.Paginate(ctx.QueryInt("page", 1), 10)
 	if err != nil {
 		return err
 	}
 
+	// The filter bar is chrome. Failing to list the tags is no reason to
+	// refuse the reader the posts, so an error leaves the bar empty.
+	tags, err := database.Query[models.Tag]().OrderBy("name").Get()
+	if err != nil {
+		tags = []models.Tag{}
+	}
+
 	return ctx.View("posts.index", map[string]any{
-		"posts": page.Data,
-		"page":  page.CurrentPage,
-		"total": page.Total,
+		"posts":     page.Data,
+		"page":      page.CurrentPage,
+		"total":     page.Total,
+		"last_page": page.LastPage,
+		"per_page":  page.PerPage,
+		"tag":       tag,
+		"tags":      tags,
 	})
 }
 
@@ -52,8 +75,15 @@ func (c *Controller) Show(ctx *http.Context) error {
 		return err
 	}
 
+	// The binder loads the row, not what hangs off it, so the byline and
+	// the tags would be empty without this. A relation that fails to
+	// load is missing chrome, not a missing page, so the error is
+	// deliberately not returned.
+	_ = database.Load(post, "Author", "Tags")
+
 	comments, err := database.Query[models.Comment]().
 		Where("post_id", post.ID).
+		With("Author").
 		OrderBy("id").
 		Get()
 	if err != nil {
@@ -63,6 +93,33 @@ func (c *Controller) Show(ctx *http.Context) error {
 	return ctx.View("posts.show", map[string]any{
 		"post":     post,
 		"comments": comments,
+	})
+}
+
+// Drafts lists what has not gone out yet: an author's own unpublished
+// posts, and every author's for an editor. Without it a draft is
+// unreachable the moment its author closes the tab.
+func (c *Controller) Drafts(ctx *http.Context) error {
+	user := models.CurrentUser(ctx)
+
+	drafts := database.Query[models.Post]().
+		WhereNull("published_at").
+		With("Author").
+		Latest("updated_at")
+
+	// An author sees their own; an editor sees the whole desk.
+	if !user.IsEditor() {
+		drafts = drafts.Where("author_id", user.ID)
+	}
+
+	posts, err := drafts.Get()
+	if err != nil {
+		return err
+	}
+
+	return ctx.View("posts.drafts", map[string]any{
+		"posts": posts,
+		"mine":  !user.IsEditor(),
 	})
 }
 
@@ -80,7 +137,7 @@ func (c *Controller) Store(ctx *http.Context) error {
 		return err
 	}
 
-	author := genesysauth.UserFrom(ctx).(*models.User)
+	author := models.CurrentUser(ctx)
 
 	post := &models.Post{
 		AuthorID: author.ID,
@@ -185,7 +242,7 @@ func (c *Controller) Comment(ctx *http.Context) error {
 		return err
 	}
 
-	author := genesysauth.UserFrom(ctx).(*models.User)
+	author := models.CurrentUser(ctx)
 
 	if err := database.Create(&models.Comment{
 		PostID:   post.ID,
