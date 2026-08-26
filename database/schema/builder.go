@@ -915,25 +915,19 @@ func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 		case "rename":
 			statements = append(statements, g.CompileRenameColumn(bp.table, cmd.OldName, cmd.NewName))
 		case "modify":
-			stmts, err := g.CompileModifyColumn(bp.table, *cmd.Column)
-			if err != nil {
-				return nil, err
-			}
-			statements = append(statements, stmts...)
+			// SQLite has no ALTER COLUMN; the grammar always reports ErrUnsupportedOperation.
+			_, err := g.CompileModifyColumn(bp.table, *cmd.Column)
+			return nil, err
 		case "dropIndex":
 			statements = append(statements, g.CompileDropIndex(bp.table, cmd.Columns))
 		case "dropUnique":
-			stmts, err := g.CompileDropUnique(bp.table, cmd.Columns)
-			if err != nil {
-				return nil, err
-			}
-			statements = append(statements, stmts...)
+			// Inline UNIQUE constraints cannot be dropped in SQLite; always ErrUnsupportedOperation.
+			_, err := g.CompileDropUnique(bp.table, cmd.Columns)
+			return nil, err
 		case "dropPrimary":
-			stmt, err := g.CompileDropPrimary(bp.table)
-			if err != nil {
-				return nil, err
-			}
-			statements = append(statements, stmt)
+			// SQLite cannot drop a primary key; always ErrUnsupportedOperation.
+			_, err := g.CompileDropPrimary(bp.table)
+			return nil, err
 		}
 	}
 

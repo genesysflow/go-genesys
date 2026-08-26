@@ -397,7 +397,6 @@ func (app *Application) TerminateWithContext(ctx context.Context) error {
 	// Shutdown the container
 	// Note: samber/do may return marshaling errors during shutdown which are harmless
 	err := app.ShutdownWithContext(ctx)
-	//lint:ignore SA4023 samber/do reports a non-nil aggregate on every shutdown; we filter the harmless case below
 	if err != nil {
 		// Ignore JSON marshaling errors from samber/do - they don't affect shutdown
 		if strings.Contains(err.Error(), "marshaling error") {

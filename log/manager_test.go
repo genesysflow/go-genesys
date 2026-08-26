@@ -552,6 +552,7 @@ func TestLogger_WithContextLegacyStringKey(t *testing.T) {
 	logger := NewJSON(buf)
 
 	var legacyKey any = "request_id" // the pre-typed-key convention
+	//lint:ignore SA1029 the test exercises the legacy untyped-string key on purpose
 	ctx := context.WithValue(context.Background(), legacyKey, "legacy-7")
 
 	logger.WithContext(ctx).Info("legacy key")
