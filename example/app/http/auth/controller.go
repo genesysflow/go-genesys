@@ -20,7 +20,10 @@ import (
 //	        return user, database.Create(user)
 //	    },
 //	    UpdatePassword: func(user genesysauth.Authenticatable, hashed string) error {
-//	        account := user.(*models.User)
+//	        account, ok := models.AsUser(user)
+//	        if !ok {
+//	            return errNotOurUser
+//	        }
 //	        account.Password = hashed
 //	        return database.Update(account)
 //	    },

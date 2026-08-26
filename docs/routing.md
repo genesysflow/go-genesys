@@ -147,6 +147,10 @@ func Show(ctx *http.Context) error {
 }
 ```
 
+`http.UserAs` is the typed way to the authenticated user; applications
+usually wrap it once - see [Retrieving the authenticated
+user](auth.md#retrieving-the-authenticated-user).
+
 ## Redirects
 
 ```go

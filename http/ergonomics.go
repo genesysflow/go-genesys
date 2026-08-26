@@ -38,7 +38,13 @@ func (c *Context) HasUser() bool {
 //	user, ok := http.UserAs[models.User](ctx)
 //
 // The second return is false when the request is unauthenticated or the
-// user is not a *T.
+// user is not a *T. Applications usually wrap it once, so no handler
+// names the type parameter:
+//
+//	func CurrentUser(ctx *http.Context) *models.User {
+//	    user, _ := http.UserAs[models.User](ctx)
+//	    return user
+//	}
 func UserAs[T any](c *Context) (*T, bool) {
 	user, ok := c.User().(*T)
 	return user, ok

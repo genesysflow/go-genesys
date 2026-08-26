@@ -90,6 +90,92 @@ id := authfacade.ID(ctx)
 if authfacade.Check(ctx) { ... }
 ```
 
+## Retrieving the authenticated user
+
+The guard stashes the user on the context, and there are four ways to
+read it back - from the rawest to the one an application should use.
+
+`ctx.User()` is the value itself, as `any`:
+
+```go
+user := ctx.User()          // any, nil for a guest
+if ctx.HasUser() { ... }
+```
+
+`auth.UserFrom(ctx)` narrows that to `auth.Authenticatable`, nil for a
+guest - enough when all you need is the identifier:
+
+```go
+if user := auth.UserFrom(ctx); user != nil {
+    post.AuthorID = user.GetAuthIdentifier()
+}
+```
+
+Do not type-assert the result. It panics on the request where it matters
+most, the one from someone who is not signed in:
+
+```go
+user := auth.UserFrom(ctx).(*models.User)   // panics for a guest
+```
+
+`http.UserAs` is the typed accessor. It is two-value and never panics:
+
+```go
+user, ok := http.UserAs[models.User](ctx)
+if !ok {
+    return ctx.Unauthorized()
+}
+```
+
+Wrap it once in your models package and handlers stop naming the type
+parameter at all. This is the application's `$request->user()`:
+
+```go
+// app/models/current_user.go
+package models
+
+// CurrentUser returns the signed-in user, or nil for a guest.
+func CurrentUser(ctx *http.Context) *User {
+    user, _ := http.UserAs[User](ctx)
+    return user
+}
+
+// AsUser narrows an auth.Authenticatable - what gates, policies and the
+// password broker are handed - to *User. ok is false for a guest and for
+// a user model this application does not own.
+func AsUser(user auth.Authenticatable) (*User, bool) {
+    account, ok := user.(*User)
+    if !ok || account == nil {
+        return nil, false
+    }
+    return account, true
+}
+```
+
+Call sites then read like Laravel's:
+
+```go
+func (c *Controller) Drafts(ctx *http.Context) error {
+    user := models.CurrentUser(ctx)
+    // ...
+}
+
+func (p *PostPolicy) Publish(user auth.Authenticatable, post *models.Post) bool {
+    editor, ok := models.AsUser(user)
+    return ok && editor.IsEditor()
+}
+```
+
+### Why not `ctx.User()` returning `*models.User` directly?
+
+`http.Context` is defined in the framework and cannot name your
+application's model. Go has no type parameters on methods, so the typed
+accessor has to be a function rather than a method, and making `Context`
+generic would put the user type in every handler, middleware and router
+signature in the program. The narrowing therefore belongs to the
+application - one line, in one file - which is what Laravel does
+implicitly when `$request->user()` hands back your `App\Models\User`.
+
 ## Token guard
 
 Clients send `Authorization: Bearer <token>`; the ORM provider matches it

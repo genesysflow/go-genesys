@@ -9,7 +9,7 @@ A Laravel-inspired web framework for Go, providing elegant syntax and powerful f
 - **Query Builder**: Fluent SQL builder with per-driver grammar (`db.Table("users").Where(...).Get()`)
 - **ORM**: Generics-based model layer — `database.Find[User](1)`, typed queries, transactions (`WithinTransaction` with scoped helpers), automatic timestamps, pagination (offset + cursor), relationships with batched eager loading (`With("Posts.Tags")`), existence queries (`WhereHas`/`DoesntHave`), pivot writes (`Attach`/`Detach`/`Sync`/`Toggle`), `CreateFor`/`Associate`, `FirstOrCreate`/`UpdateOrCreate`, soft deletes, lifecycle hooks/observers, dirty tracking with partial updates, and delete-safe `Chunk`/`Each`
 - **Route Model Binding**: `http.BindModel[User](ctx, "user")` with automatic 404s
-- **Request Context**: `ctx.User()`, `ctx.Session()`, `ctx.Old()`, `ctx.Errors()`, `ctx.RouteIs("users.*")`, and fluent redirects (`ctx.Back().WithErrors(err).WithInput().Send()`)
+- **Request Context**: `ctx.User()` and the typed `http.UserAs[User](ctx)`, `ctx.Session()`, `ctx.Old()`, `ctx.Errors()`, `ctx.RouteIs("users.*")`, and fluent redirects (`ctx.Back().WithErrors(err).WithInput().Send()`)
 - **Form Requests**: `http.ValidateRequest[T](ctx)` with a full lifecycle (`PrepareForValidation`, `Authorize`, `Rules`, `Messages`, `Attributes`, `AfterValidation`); Laravel-shaped 422 responses for API clients, redirect-back-with-errors-and-old-input for browsers
 - **Migrations & Schema Builder**: Programmatic schema with foreign keys, indexes, rollback/reset/fresh; PostgreSQL, MySQL/MariaDB, and SQLite drivers
 - **Seeders & Factories**: `db:seed`, `database.NewFactory[T]`

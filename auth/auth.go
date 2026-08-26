@@ -78,6 +78,9 @@ type StatefulGuard interface {
 //
 //	user := auth.UserFrom(ctx)
 //	if user == nil { ... }
+//
+// For the concrete model, use http.UserAs or an application helper
+// wrapping it; do not type-assert the result, which panics for guests.
 func UserFrom(ctx *http.Context) Authenticatable {
 	user, ok := ctx.User().(Authenticatable)
 	if !ok {

@@ -44,14 +44,14 @@ func (p *PostPolicy) Delete(user genesysauth.Authenticatable, post *models.Post)
 // Publish is an editor's alone: an author writes, an editor decides what
 // goes out.
 func (p *PostPolicy) Publish(user genesysauth.Authenticatable, post *models.Post) bool {
-	editor, ok := user.(*models.User)
+	editor, ok := models.AsUser(user)
 	return ok && editor.IsEditor()
 }
 
 // owns reports whether the user wrote the post, or edits everything.
 func (p *PostPolicy) owns(user genesysauth.Authenticatable, post *models.Post) bool {
-	author, ok := user.(*models.User)
-	if !ok || author == nil {
+	author, ok := models.AsUser(user)
+	if !ok {
 		return false
 	}
 	return author.IsEditor() || post.AuthorID == author.ID

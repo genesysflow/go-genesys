@@ -72,7 +72,11 @@ everything, so no policy has to know about the role.
 `routes/blog.go`: registration greets the new author, and the password
 reset mails a link and writes the new password. Sessions for the site;
 personal access tokens for the API, issued from `/api-tokens` and
-checked with `RequireAbility`.
+checked with `RequireAbility`. `app/models/current_user.go` holds the
+one narrowing the framework cannot do for you: `models.CurrentUser(ctx)`
+is this application's `$request->user()`, and `models.AsUser` narrows
+what a gate, a policy or the password broker is handed - so no handler
+type-asserts, and none panics for a guest.
 
 **Mailables** — `app/mail/welcome.go`: the welcome greeting and the
 password-reset link, sent as objects rather than messages assembled by
