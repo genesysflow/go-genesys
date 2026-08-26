@@ -94,9 +94,36 @@ func (r *Request) IP() string {
 	return r.ctx.IP()
 }
 
-// IPs returns all client IP addresses from X-Forwarded-For.
+// IPs returns the chain of client IP addresses carried by the forwarding
+// header, closest client first.
+//
+// The header is attacker-controlled, so it is only read for a request that
+// arrived from one of KernelConfig.TrustedProxies - the same rule IP()
+// applies. For any other request the chain is just the connecting address,
+// so IPs()[0] and IP() always agree and a caller that rate-limits or
+// allowlists on IPs()[0] cannot be fed an address by the client.
 func (r *Request) IPs() []string {
+	if !r.trustsForwardingHeader() {
+		if ip := r.IP(); ip != "" {
+			return []string{ip}
+		}
+		return nil
+	}
 	return r.ctx.IPs()
+}
+
+// trustsForwardingHeader reports whether forwarding headers on this request
+// may be believed: the application must have declared trusted proxies (the
+// kernel turns KernelConfig.TrustedProxies into Fiber's trusted proxy
+// check) and the request must have arrived from one of them. With no
+// proxies declared nothing is trusted, which is the safe default because
+// anyone can send the header.
+func (r *Request) trustsForwardingHeader() bool {
+	config := r.ctx.App().Config()
+	if !config.EnableTrustedProxyCheck || len(config.TrustedProxies) == 0 {
+		return false
+	}
+	return r.ctx.IsProxyTrusted()
 }
 
 // Header returns a header value.
@@ -317,12 +344,48 @@ func (r *Request) Except(keys ...string) map[string]any {
 	return result
 }
 
-// Has checks if an input key exists.
+// Has reports whether the key was sent, whatever its value: a field the
+// user cleared ("?email=") is present, and Has says so. This is the only
+// way a handler can tell "the client omitted this" from "the client sent
+// it empty", which for a PATCH is the difference between leaving a column
+// alone and blanking it. Use Filled to ask whether there is a value.
+//
+// It looks in the same places Input does - route parameters, query string,
+// form body and a JSON object body - but by presence rather than by value,
+// so an empty string, a null or an empty object all count.
 func (r *Request) Has(key string) bool {
-	return r.Input(key) != ""
+	for _, param := range r.ctx.Route().Params {
+		if param == key {
+			return true
+		}
+	}
+
+	if r.ctx.Request().URI().QueryArgs().Has(key) {
+		return true
+	}
+
+	if r.ctx.Request().PostArgs().Has(key) {
+		return true
+	}
+
+	if form, err := r.ctx.MultipartForm(); err == nil && form != nil {
+		if _, ok := form.Value[key]; ok {
+			return true
+		}
+		if _, ok := form.File[key]; ok {
+			return true
+		}
+	}
+
+	if _, ok := r.jsonBody()[key]; ok {
+		return true
+	}
+
+	return false
 }
 
-// Filled checks if an input key exists and is not empty.
+// Filled checks if an input key exists and is not empty. Whitespace does
+// not count as a value, so "   " is present but not filled.
 func (r *Request) Filled(key string) bool {
 	return strings.TrimSpace(r.Input(key)) != ""
 }

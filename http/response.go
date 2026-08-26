@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"net/url"
 	"strings"
@@ -212,15 +213,29 @@ func sameHostRedirect(target, host string) bool {
 	return strings.EqualFold(parsed.Host, host)
 }
 
-// RedirectRoute redirects to a named route.
+// RedirectRoute redirects to a named route, substituting params into the
+// route's placeholders.
 //
-// Deprecated: a Response holds no router, so it cannot resolve a route
-// name to a path and falls back to treating the name as one. Use
-// ctx.RedirectToRoute(name, params), which resolves the name against the
-// router that matched the request.
+// The name is resolved against the router that dispatched the request -
+// the same table ctx.RedirectToRoute(name, params) reads. An unknown name
+// is an error rather than a redirect: sending the browser to a path made
+// out of the name produces a 404 the caller cannot tell from a real one.
+//
+// Prefer ctx.RedirectToRoute where a Context is at hand: it returns a
+// Redirector, which can also flash input and errors for the next request.
 func (r *Response) RedirectRoute(name string, params ...map[string]any) error {
+	router := routerFromCtx(r.ctx)
+	if router == nil {
+		return fmt.Errorf("redirect: no router available to resolve route %q", name)
+	}
+
+	target := router.URL(name, params...)
+	if target == "" {
+		return fmt.Errorf("redirect: route %q is not defined", name)
+	}
+
 	r.sent = true
-	return r.ctx.Redirect("/" + name)
+	return r.ctx.Redirect(target)
 }
 
 // NoContent sends a 204 No Content response.
@@ -274,60 +289,22 @@ func (r *Response) Append(key, value string) *Response {
 }
 
 // Cookie represents an HTTP cookie.
-type Cookie struct {
-	Name     string
-	Value    string
-	Path     string
-	Domain   string
-	MaxAge   int
-	Secure   bool
-	HTTPOnly bool
-	SameSite string
-}
+//
+// It is an alias, not a copy: the builder below and Response.Cookie have to
+// agree on one type, or a cookie built here could not be handed to the
+// setter without a field-by-field copy written by the caller. The builder
+// methods (WithPath, WithDomain, WithMaxAge, WithSecure, WithHTTPOnly,
+// WithSameSite) live on contracts.Cookie.
+type Cookie = contracts.Cookie
 
-// NewCookie creates a new Cookie with defaults.
-func NewCookie(name, value string) *Cookie {
-	return &Cookie{
+// NewCookie creates a new Cookie with defaults: rooted at "/", HTTPOnly so
+// scripts cannot read it, and SameSite=Lax.
+func NewCookie(name, value string) *contracts.Cookie {
+	return &contracts.Cookie{
 		Name:     name,
 		Value:    value,
 		Path:     "/",
 		HTTPOnly: true,
 		SameSite: "Lax",
 	}
-}
-
-// WithPath sets the cookie path.
-func (c *Cookie) WithPath(path string) *Cookie {
-	c.Path = path
-	return c
-}
-
-// WithDomain sets the cookie domain.
-func (c *Cookie) WithDomain(domain string) *Cookie {
-	c.Domain = domain
-	return c
-}
-
-// WithMaxAge sets the cookie max age.
-func (c *Cookie) WithMaxAge(maxAge int) *Cookie {
-	c.MaxAge = maxAge
-	return c
-}
-
-// WithSecure sets the cookie secure flag.
-func (c *Cookie) WithSecure(secure bool) *Cookie {
-	c.Secure = secure
-	return c
-}
-
-// WithHTTPOnly sets the cookie HTTPOnly flag.
-func (c *Cookie) WithHTTPOnly(httpOnly bool) *Cookie {
-	c.HTTPOnly = httpOnly
-	return c
-}
-
-// WithSameSite sets the cookie SameSite attribute.
-func (c *Cookie) WithSameSite(sameSite string) *Cookie {
-	c.SameSite = sameSite
-	return c
 }

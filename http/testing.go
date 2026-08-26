@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -108,10 +109,12 @@ func (r *TestRequest) WithBearerToken(token string) *TestRequest {
 	return r
 }
 
-// WithBasicAuth adds basic auth to the request.
+// WithBasicAuth adds RFC 7617 Basic credentials to the request, encoded
+// the way the request side - net/http's BasicAuth and this framework's -
+// expects to read them back.
 func (r *TestRequest) WithBasicAuth(username, password string) *TestRequest {
-	// In a real implementation, this would base64 encode the credentials
-	r.headers["Authorization"] = "Basic " + username + ":" + password
+	credentials := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	r.headers["Authorization"] = "Basic " + credentials
 	return r
 }
 

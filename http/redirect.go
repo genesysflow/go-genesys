@@ -138,6 +138,9 @@ func (c *Context) router() *Router {
 	if route := c.Route(); route != nil && route.router != nil {
 		return route.router
 	}
+	if router := routerFromCtx(c.fiberCtx); router != nil {
+		return router
+	}
 	if c.app == nil {
 		return nil
 	}

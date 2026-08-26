@@ -43,11 +43,29 @@ func (r *Router) wrapHandler(handler HandlerFunc, middleware ...MiddlewareFunc) 
 	return r.wrapRouteHandler(nil, handler, middleware...)
 }
 
+// routerLocalKey is the Fiber locals key under which a request records the
+// router that dispatched it. A *Response holds only the Fiber context, so
+// this is how it reaches the route table to resolve a route name; a
+// package-private key type keeps it out of the way of application locals.
+type routerLocalKey struct{}
+
+// routerFromCtx returns the router that dispatched the request, or nil for
+// a request that never went through one (raw Fiber middleware, say).
+func routerFromCtx(c *fiber.Ctx) *Router {
+	router, _ := c.Locals(routerLocalKey{}).(*Router)
+	return router
+}
+
 // wrapRouteHandler wraps a HandlerFunc to a Fiber handler, recording the
 // route that matched so handlers can reach it via ctx.Route(). route may
 // be nil for handlers registered outside the route table (fallbacks).
 func (r *Router) wrapRouteHandler(route *Route, handler HandlerFunc, middleware ...MiddlewareFunc) fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// Recorded on the Fiber context rather than only on the Context,
+		// so that anything built from the request - a Response, say - can
+		// still resolve a route name.
+		c.Locals(routerLocalKey{}, r)
+
 		ctx := NewContext(c, r.app)
 
 		// Route middleware is read at request time, not registration
@@ -92,6 +110,12 @@ func (r *Router) collectParentMiddleware() []MiddlewareFunc {
 }
 
 // executeMiddleware executes the middleware chain.
+//
+// The continuation is handed to each middleware as its next argument and
+// published on the context as well, so ctx.Next() and next() are the same
+// call. The two spellings are indistinguishable at a glance, and leaving
+// ctx.next nil made ctx.Next() fall through to Fiber's own chain instead -
+// silently skipping every remaining MiddlewareFunc and the route handler.
 func (r *Router) executeMiddleware(ctx *Context, middleware []MiddlewareFunc, handler HandlerFunc) error {
 	if len(middleware) == 0 {
 		return handler(ctx)
@@ -107,9 +131,13 @@ func (r *Router) executeMiddleware(ctx *Context, middleware []MiddlewareFunc, ha
 		if index < len(middleware) {
 			return middleware[index](ctx, next)
 		}
+		// The handler ends the chain: were ctx.next left pointing here, a
+		// handler calling ctx.Next() would re-enter itself for ever.
+		ctx.SetNext(nil)
 		return handler(ctx)
 	}
 
+	ctx.SetNext(next)
 	return middleware[0](ctx, next)
 }
 

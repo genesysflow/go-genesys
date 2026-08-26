@@ -189,6 +189,11 @@ type Response interface {
 }
 
 // Cookie represents an HTTP cookie.
+//
+// The builder methods live here rather than beside the framework's
+// NewCookie so that a cookie built by the framework is already the type
+// Response.Cookie accepts: two identical structs in two packages would
+// force every caller to copy field by field.
 type Cookie struct {
 	Name     string
 	Value    string
@@ -198,4 +203,40 @@ type Cookie struct {
 	Secure   bool
 	HTTPOnly bool
 	SameSite string
+}
+
+// WithPath sets the cookie path.
+func (c *Cookie) WithPath(path string) *Cookie {
+	c.Path = path
+	return c
+}
+
+// WithDomain sets the cookie domain.
+func (c *Cookie) WithDomain(domain string) *Cookie {
+	c.Domain = domain
+	return c
+}
+
+// WithMaxAge sets the cookie max age.
+func (c *Cookie) WithMaxAge(maxAge int) *Cookie {
+	c.MaxAge = maxAge
+	return c
+}
+
+// WithSecure sets the cookie secure flag.
+func (c *Cookie) WithSecure(secure bool) *Cookie {
+	c.Secure = secure
+	return c
+}
+
+// WithHTTPOnly sets the cookie HTTPOnly flag.
+func (c *Cookie) WithHTTPOnly(httpOnly bool) *Cookie {
+	c.HTTPOnly = httpOnly
+	return c
+}
+
+// WithSameSite sets the cookie SameSite attribute.
+func (c *Cookie) WithSameSite(sameSite string) *Cookie {
+	c.SameSite = sameSite
+	return c
 }
