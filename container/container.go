@@ -15,15 +15,18 @@ import (
 // Container is a wrapper around samber/do providing a Laravel-like DI container.
 type Container struct {
 	injector *do.RootScope
-	mu       sync.RWMutex
-	bindings map[string]bool // Track named bindings
+	// mu serialises the check-then-register sequence of Bind, Singleton
+	// and Instance so two goroutines cannot both decide a name is free
+	// and race into do.ProvideNamed*, which panics on a duplicate. The
+	// injector itself is internally synchronised and is the single
+	// source of truth for which services exist.
+	mu sync.Mutex
 }
 
 // New creates a new container instance.
 func New() *Container {
 	return &Container{
 		injector: do.New(),
-		bindings: make(map[string]bool),
 	}
 }
 
@@ -38,12 +41,11 @@ func (c *Container) Bind(name string, factory any) error {
 	defer c.mu.Unlock()
 
 	// Register the factory to be invoked on demand
-	if c.bindings[name] {
+	if c.Has(name) {
 		do.OverrideNamedTransient(c.injector, name, func(i do.Injector) (any, error) {
 			return c.invokeFactory(factory)
 		})
 	} else {
-		c.bindings[name] = true
 		do.ProvideNamedTransient(c.injector, name, func(i do.Injector) (any, error) {
 			return c.invokeFactory(factory)
 		})
@@ -57,12 +59,11 @@ func (c *Container) Singleton(name string, factory any) error {
 	defer c.mu.Unlock()
 
 	// Register the factory as a singleton
-	if c.bindings[name] {
+	if c.Has(name) {
 		do.OverrideNamed(c.injector, name, func(i do.Injector) (any, error) {
 			return c.invokeFactory(factory)
 		})
 	} else {
-		c.bindings[name] = true
 		do.ProvideNamed(c.injector, name, func(i do.Injector) (any, error) {
 			return c.invokeFactory(factory)
 		})
@@ -180,10 +181,9 @@ func (c *Container) Instance(name string, instance any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if c.bindings[name] {
+	if c.Has(name) {
 		do.OverrideNamedValue(c.injector, name, instance)
 	} else {
-		c.bindings[name] = true
 		do.ProvideNamedValue(c.injector, name, instance)
 	}
 	return nil
@@ -229,23 +229,43 @@ func (c *Container) MustMake(name string) any {
 	return service
 }
 
-// Has checks if a service is registered in the container.
+// Has checks if a service is registered in the container. It asks the
+// injector rather than keeping a parallel ledger, so it agrees with Make
+// for every registration path - including the generic Provide*/Override*
+// helpers, which register under the inferred type name - and reports
+// false again once Shutdown has torn the services down. It takes no
+// container lock for the same reason Make does not.
 func (c *Container) Has(name string) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-
-	_, ok := c.bindings[name]
-	return ok
+	for _, service := range c.injector.ListProvidedServices() {
+		if service.Service == name {
+			return true
+		}
+	}
+	return false
 }
 
-// Shutdown gracefully shuts down all services.
+// Shutdown gracefully shuts down all services. It returns nil when every
+// shutdown hook succeeded; otherwise it returns do's *ShutdownReport,
+// which implements error and describes the failing services.
 func (c *Container) Shutdown() error {
-	return c.injector.Shutdown()
+	return shutdownError(c.injector.Shutdown())
 }
 
 // ShutdownWithContext gracefully shuts down all services with context.
+// It follows the same nil-on-success contract as Shutdown.
 func (c *Container) ShutdownWithContext(ctx context.Context) error {
-	return c.injector.ShutdownWithContext(ctx)
+	return shutdownError(c.injector.ShutdownWithContext(ctx))
+}
+
+// shutdownError converts do's shutdown report into an idiomatic error.
+// do hands back a non-nil *ShutdownReport even when nothing failed, so
+// returning it verbatim would make `if err := c.Shutdown(); err != nil`
+// fire on every successful shutdown.
+func shutdownError(report *do.ShutdownReport) error {
+	if report == nil || (report.Succeed && len(report.Errors) == 0) {
+		return nil
+	}
+	return report
 }
 
 // Provide registers a service using generics (recommended approach).
@@ -258,10 +278,6 @@ func Provide[T any](c *Container, factory func(*do.RootScope) (T, error)) {
 
 // ProvideNamed registers a named service using generics.
 func ProvideNamed[T any](c *Container, name string, factory func(*do.RootScope) (T, error)) {
-	c.mu.Lock()
-	c.bindings[name] = true
-	c.mu.Unlock()
-
 	do.ProvideNamed(c.injector, name, func(i do.Injector) (T, error) {
 		return factory(c.injector)
 	})
@@ -274,10 +290,6 @@ func ProvideValue[T any](c *Container, value T) {
 
 // ProvideNamedValue registers a named existing value.
 func ProvideNamedValue[T any](c *Container, name string, value T) {
-	c.mu.Lock()
-	c.bindings[name] = true
-	c.mu.Unlock()
-
 	do.ProvideNamedValue(c.injector, name, value)
 }
 
@@ -290,10 +302,6 @@ func ProvideTransient[T any](c *Container, factory func(*do.RootScope) (T, error
 
 // ProvideNamedTransient registers a named transient service.
 func ProvideNamedTransient[T any](c *Container, name string, factory func(*do.RootScope) (T, error)) {
-	c.mu.Lock()
-	c.bindings[name] = true
-	c.mu.Unlock()
-
 	do.ProvideNamedTransient(c.injector, name, func(i do.Injector) (T, error) {
 		return factory(c.injector)
 	})

@@ -22,6 +22,19 @@ type contextKey struct{ name string }
 // bare string key "request_id" is also honoured for compatibility.
 var RequestIDKey = contextKey{"request_id"}
 
+// osExit terminates the process after a fatal record has been written.
+// It is a variable so tests can swap in a recorder instead of killing
+// the test binary.
+var osExit = os.Exit
+
+// fatalWriter is implemented by loggers that can emit a fatal or panic
+// record without terminating or unwinding. A stack uses it to fan the
+// record out to every member before exiting or panicking exactly once.
+type fatalWriter interface {
+	writeFatal(msg string, fields ...any)
+	writePanic(msg string, fields ...any)
+}
+
 // Logger is the default logger implementation using zerolog.
 type Logger struct {
 	mu     sync.RWMutex
@@ -99,13 +112,29 @@ func (l *Logger) Error(msg string, fields ...any) {
 	l.log(zerolog.ErrorLevel, msg, fields...)
 }
 
-// Fatal logs a fatal message and exits.
+// Fatal logs a fatal message and then terminates the process with exit
+// code 1. The record is written first; as with zerolog's own Fatal, the
+// process exits even when the configured level filters the record out.
 func (l *Logger) Fatal(msg string, fields ...any) {
+	l.writeFatal(msg, fields...)
+	osExit(1)
+}
+
+// Panic logs a panic message and then panics with msg. The record is
+// written first; as with zerolog's own Panic, the panic happens even
+// when the configured level filters the record out.
+func (l *Logger) Panic(msg string, fields ...any) {
+	l.writePanic(msg, fields...)
+	panic(msg)
+}
+
+// writeFatal writes the fatal record without exiting.
+func (l *Logger) writeFatal(msg string, fields ...any) {
 	l.log(zerolog.FatalLevel, msg, fields...)
 }
 
-// Panic logs a panic message and panics.
-func (l *Logger) Panic(msg string, fields ...any) {
+// writePanic writes the panic record without panicking.
+func (l *Logger) writePanic(msg string, fields ...any) {
 	l.log(zerolog.PanicLevel, msg, fields...)
 }
 
@@ -263,14 +292,42 @@ func (m *LogManager) Channel(name string) contracts.Logger {
 	return m.channels[m.default_]
 }
 
-// Stack creates a logger that writes to multiple channels.
+// Stack creates a logger that writes every record to all of the named
+// channels. Unknown names resolve to the default channel, exactly as
+// Channel does, and a name that resolves to a channel already in the
+// stack is only added once, so a record is never duplicated. Calling it
+// without names, or with names that all collapse onto a single channel,
+// returns that channel itself rather than a wrapper.
 func (m *LogManager) Stack(channels ...string) contracts.Logger {
-	// For now, return the first channel. A proper implementation would
-	// create a multi-writer logger.
-	if len(channels) > 0 {
-		return m.Channel(channels[0])
+	if len(channels) == 0 {
+		return m.defaultLogger()
 	}
-	return m.defaultLogger()
+
+	m.mu.RLock()
+	seen := make(map[string]bool, len(channels))
+	loggers := make([]contracts.Logger, 0, len(channels))
+	for _, name := range channels {
+		if _, ok := m.channels[name]; !ok {
+			name = m.default_
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		if logger := m.channels[name]; logger != nil {
+			loggers = append(loggers, logger)
+		}
+	}
+	m.mu.RUnlock()
+
+	switch len(loggers) {
+	case 0:
+		return m.defaultLogger()
+	case 1:
+		return loggers[0]
+	default:
+		return &stackLogger{loggers: loggers}
+	}
 }
 
 // AddChannel adds a channel to the manager.
@@ -309,12 +366,14 @@ func (m *LogManager) Error(msg string, fields ...any) {
 	m.defaultLogger().Error(msg, fields...)
 }
 
-// Fatal logs a fatal message to the default channel.
+// Fatal logs a fatal message to the default channel, which writes the
+// record and then terminates the process with exit code 1.
 func (m *LogManager) Fatal(msg string, fields ...any) {
 	m.defaultLogger().Fatal(msg, fields...)
 }
 
-// Panic logs a panic message to the default channel.
+// Panic logs a panic message to the default channel, which writes the
+// record and then panics with msg.
 func (m *LogManager) Panic(msg string, fields ...any) {
 	m.defaultLogger().Panic(msg, fields...)
 }
@@ -347,4 +406,128 @@ func (m *LogManager) Level() contracts.LogLevel {
 // SetLevel sets the log level.
 func (m *LogManager) SetLevel(level contracts.LogLevel) {
 	m.defaultLogger().SetLevel(level)
+}
+
+// stackLogger fans every record out to a fixed set of channels. It is
+// what LogManager.Stack returns for two or more distinct channels.
+type stackLogger struct {
+	loggers []contracts.Logger
+}
+
+var _ contracts.Logger = (*stackLogger)(nil)
+
+// Debug logs a debug message to every channel of the stack.
+func (s *stackLogger) Debug(msg string, fields ...any) {
+	for _, logger := range s.loggers {
+		logger.Debug(msg, fields...)
+	}
+}
+
+// Info logs an info message to every channel of the stack.
+func (s *stackLogger) Info(msg string, fields ...any) {
+	for _, logger := range s.loggers {
+		logger.Info(msg, fields...)
+	}
+}
+
+// Warn logs a warning message to every channel of the stack.
+func (s *stackLogger) Warn(msg string, fields ...any) {
+	for _, logger := range s.loggers {
+		logger.Warn(msg, fields...)
+	}
+}
+
+// Error logs an error message to every channel of the stack.
+func (s *stackLogger) Error(msg string, fields ...any) {
+	for _, logger := range s.loggers {
+		logger.Error(msg, fields...)
+	}
+}
+
+// Fatal writes the fatal record to every channel and then terminates the
+// process once. Channels that cannot write a fatal record without
+// exiting (foreign contracts.Logger implementations) are asked to Fatal
+// directly and may terminate the process before the remaining channels
+// are reached.
+func (s *stackLogger) Fatal(msg string, fields ...any) {
+	for _, logger := range s.loggers {
+		if writer, ok := logger.(fatalWriter); ok {
+			writer.writeFatal(msg, fields...)
+			continue
+		}
+		logger.Fatal(msg, fields...)
+	}
+	osExit(1)
+}
+
+// Panic writes the panic record to every channel and then panics once,
+// with the same caveat as Fatal for foreign implementations.
+func (s *stackLogger) Panic(msg string, fields ...any) {
+	for _, logger := range s.loggers {
+		if writer, ok := logger.(fatalWriter); ok {
+			writer.writePanic(msg, fields...)
+			continue
+		}
+		logger.Panic(msg, fields...)
+	}
+	panic(msg)
+}
+
+// WithField returns a stack whose channels all carry the field.
+func (s *stackLogger) WithField(key string, value any) contracts.Logger {
+	return s.derive(func(logger contracts.Logger) contracts.Logger {
+		return logger.WithField(key, value)
+	})
+}
+
+// WithFields returns a stack whose channels all carry the fields.
+func (s *stackLogger) WithFields(fields map[string]any) contracts.Logger {
+	return s.derive(func(logger contracts.Logger) contracts.Logger {
+		return logger.WithFields(fields)
+	})
+}
+
+// WithContext returns a stack whose channels all carry the context.
+func (s *stackLogger) WithContext(ctx context.Context) contracts.Logger {
+	return s.derive(func(logger contracts.Logger) contracts.Logger {
+		return logger.WithContext(ctx)
+	})
+}
+
+// WithError returns a stack whose channels all carry the error.
+func (s *stackLogger) WithError(err error) contracts.Logger {
+	return s.derive(func(logger contracts.Logger) contracts.Logger {
+		return logger.WithError(err)
+	})
+}
+
+// derive builds a new stack from the per-channel result of fn.
+func (s *stackLogger) derive(fn func(contracts.Logger) contracts.Logger) contracts.Logger {
+	derived := make([]contracts.Logger, len(s.loggers))
+	for i, logger := range s.loggers {
+		derived[i] = fn(logger)
+	}
+	return &stackLogger{loggers: derived}
+}
+
+// Level returns the most verbose level among the stacked channels: a
+// record is emitted as long as at least one channel accepts it.
+func (s *stackLogger) Level() contracts.LogLevel {
+	if len(s.loggers) == 0 {
+		return contracts.LogLevelInfo
+	}
+	level := s.loggers[0].Level()
+	for _, logger := range s.loggers[1:] {
+		if current := logger.Level(); current < level {
+			level = current
+		}
+	}
+	return level
+}
+
+// SetLevel sets the log level on every channel of the stack.
+func (s *stackLogger) SetLevel(level contracts.LogLevel) {
+	for _, logger := range s.loggers {
+		logger.SetLevel(level)
+	}
 }
