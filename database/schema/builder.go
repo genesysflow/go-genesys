@@ -80,6 +80,13 @@ func (b *Builder) Create(table string, callback func(*Blueprint)) error {
 			return err
 		}
 	}
+	// Dialects that keep column comments outside the column definition
+	// (PostgreSQL) attach them here; the others returned nothing to run.
+	for _, stmt := range b.grammar.CompileComments(bp) {
+		if _, err := b.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -653,6 +660,10 @@ func (c *ColumnDefinition) Timestamp() *ColumnDefinition {
 type Grammar interface {
 	CompileCreate(bp *Blueprint) string
 	CompileCreateIndexes(bp *Blueprint) []string
+	// CompileComments returns the statements that attach column comments once
+	// the table exists. Dialects that write the comment inline in the column
+	// definition (MySQL) or have no column comments at all (SQLite) return none.
+	CompileComments(bp *Blueprint) []string
 	CompileTableExists(table string) string
 	WrapTable(table string) string
 	WrapColumn(column string) string
@@ -671,11 +682,44 @@ func NewGrammar(driver string) Grammar {
 	switch driver {
 	case "pgsql", "postgres", "postgresql":
 		return &PostgresGrammar{}
-	case "mysql", "mariadb":
+	case "mariadb":
+		return &MySQLGrammar{MariaDB: true}
+	case "mysql":
 		return &MySQLGrammar{}
 	default:
 		return &SQLiteGrammar{}
 	}
+}
+
+// columnOptions carries the context a lone ColumnDefinition cannot know about
+// itself, so compileColumn can render the same column differently depending on
+// the statement it lands in.
+type columnOptions struct {
+	// compositePrimary is set when the blueprint flags more than one
+	// column-level primary key. CompileCreate then declares the key once, as a
+	// table-level PRIMARY KEY (a, b) constraint, and the inline PRIMARY KEY each
+	// column would otherwise carry has to be suppressed: no dialect accepts a
+	// table with several primary keys.
+	compositePrimary bool
+
+	// modify is set when the definition is rendered for MySQL's MODIFY COLUMN,
+	// which replaces the column wholesale rather than amending it.
+	modify bool
+}
+
+// columnPrimaryKeys returns the wrapped names of the columns carrying a
+// column-level Primary flag but no auto-increment — the ones whose key has to
+// be declared as a table constraint. More than one means a composite primary
+// key. Blueprint.Primary(...) takes the separate table-level path in
+// compileTableConstraints and is not counted here.
+func columnPrimaryKeys(bp *Blueprint, wrap func(string) string) []string {
+	var keys []string
+	for _, col := range bp.columns {
+		if col.Primary && !col.AutoIncrement {
+			keys = append(keys, wrap(col.Name))
+		}
+	}
+	return keys
 }
 
 // wrapAll wraps each identifier in a list.
@@ -765,18 +809,17 @@ func (g *SQLiteGrammar) CompileTableExists(table string) string {
 
 func (g *SQLiteGrammar) CompileCreate(bp *Blueprint) string {
 	var parts []string
-	var primaryKeys []string
+
+	primaryKeys := columnPrimaryKeys(bp, g.WrapColumn)
+	opts := columnOptions{compositePrimary: len(primaryKeys) > 1}
 
 	for _, col := range bp.columns {
-		def := g.compileColumn(col)
-		parts = append(parts, def)
-		if col.Primary && !col.AutoIncrement {
-			primaryKeys = append(primaryKeys, g.WrapColumn(col.Name))
-		}
+		parts = append(parts, g.compileColumn(col, opts))
 	}
 
-	// Add composite primary key if needed
-	if len(primaryKeys) > 1 {
+	// A composite key is declared once, as a table constraint; compileColumn
+	// left the inline PRIMARY KEY off each of its columns.
+	if opts.compositePrimary {
 		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
 
@@ -792,7 +835,13 @@ func (g *SQLiteGrammar) CompileCreateIndexes(bp *Blueprint) []string {
 	return compileCreateIndexStatements(bp, g.WrapTable, g.WrapColumn)
 }
 
-func (g *SQLiteGrammar) compileColumn(col ColumnDefinition) string {
+// CompileComments returns nothing: SQLite has no column comments, so a
+// blueprint's Comment(...) is silently ignored on this driver.
+func (g *SQLiteGrammar) CompileComments(bp *Blueprint) []string {
+	return nil
+}
+
+func (g *SQLiteGrammar) compileColumn(col ColumnDefinition, opts columnOptions) string {
 	var def strings.Builder
 
 	def.WriteString(g.WrapColumn(col.Name))
@@ -815,7 +864,7 @@ func (g *SQLiteGrammar) compileColumn(col ColumnDefinition) string {
 	// Primary key with autoincrement
 	if col.Primary && col.AutoIncrement {
 		def.WriteString(" PRIMARY KEY AUTOINCREMENT")
-	} else if col.Primary {
+	} else if col.Primary && !opts.compositePrimary {
 		def.WriteString(" PRIMARY KEY")
 	}
 
@@ -893,7 +942,7 @@ func (g *SQLiteGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 
 // CompileAddColumn compiles ADD COLUMN statement for SQLite.
 func (g *SQLiteGrammar) CompileAddColumn(table string, col ColumnDefinition) string {
-	colDef := g.compileColumn(col)
+	colDef := g.compileColumn(col, columnOptions{})
 	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", g.WrapTable(table), colDef)
 }
 
@@ -950,23 +999,29 @@ func (g *PostgresGrammar) WrapColumn(column string) string {
 	return quoteIdentifier(column)
 }
 
+// CompileTableExists counts the table in the schema the connection resolves
+// unqualified names against. Without the current_schema() predicate the query
+// matches any schema in the database, so HasTable("users") would report true
+// for an archive.users the connection cannot reach.
 func (g *PostgresGrammar) CompileTableExists(table string) string {
-	return fmt.Sprintf("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = %s", quoteString(table))
+	return fmt.Sprintf(
+		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = %s",
+		quoteString(table))
 }
 
 func (g *PostgresGrammar) CompileCreate(bp *Blueprint) string {
 	var parts []string
-	var primaryKeys []string
+
+	primaryKeys := columnPrimaryKeys(bp, g.WrapColumn)
+	opts := columnOptions{compositePrimary: len(primaryKeys) > 1}
 
 	for _, col := range bp.columns {
-		def := g.compileColumn(col)
-		parts = append(parts, def)
-		if col.Primary && !col.AutoIncrement {
-			primaryKeys = append(primaryKeys, g.WrapColumn(col.Name))
-		}
+		parts = append(parts, g.compileColumn(col, opts))
 	}
 
-	if len(primaryKeys) > 1 {
+	// A composite key is declared once, as a table constraint; compileColumn
+	// left the inline PRIMARY KEY off each of its columns.
+	if opts.compositePrimary {
 		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
 
@@ -982,7 +1037,26 @@ func (g *PostgresGrammar) CompileCreateIndexes(bp *Blueprint) []string {
 	return compileCreateIndexStatements(bp, g.WrapTable, g.WrapColumn)
 }
 
-func (g *PostgresGrammar) compileColumn(col ColumnDefinition) string {
+// CompileComments returns one COMMENT ON COLUMN statement per commented column.
+// PostgreSQL has no inline column comment, so these run after the CREATE TABLE.
+func (g *PostgresGrammar) CompileComments(bp *Blueprint) []string {
+	var stmts []string
+	for _, col := range bp.columns {
+		if col.ColumnComment == "" {
+			continue
+		}
+		stmts = append(stmts, g.compileComment(bp.table, col))
+	}
+	return stmts
+}
+
+// compileComment renders the COMMENT ON COLUMN statement for one column.
+func (g *PostgresGrammar) compileComment(table string, col ColumnDefinition) string {
+	return fmt.Sprintf("COMMENT ON COLUMN %s.%s IS %s",
+		g.WrapTable(table), g.WrapColumn(col.Name), quoteString(col.ColumnComment))
+}
+
+func (g *PostgresGrammar) compileColumn(col ColumnDefinition, opts columnOptions) string {
 	var def strings.Builder
 
 	def.WriteString(g.WrapColumn(col.Name))
@@ -1009,7 +1083,7 @@ func (g *PostgresGrammar) compileColumn(col ColumnDefinition) string {
 	}
 
 	// Primary key
-	if col.Primary {
+	if col.Primary && !opts.compositePrimary {
 		def.WriteString(" PRIMARY KEY")
 	}
 
@@ -1046,6 +1120,10 @@ func (g *PostgresGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 		switch cmd.Type {
 		case "add":
 			statements = append(statements, g.CompileAddColumn(bp.table, *cmd.Column))
+			// ADD COLUMN cannot carry a comment in PostgreSQL; it is its own statement.
+			if cmd.Column.ColumnComment != "" {
+				statements = append(statements, g.compileComment(bp.table, *cmd.Column))
+			}
 		case "drop":
 			// Generate individual DROP COLUMN statements for better error reporting
 			for _, col := range cmd.Columns {
@@ -1082,7 +1160,7 @@ func (g *PostgresGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 
 // CompileAddColumn compiles ADD COLUMN statement for PostgreSQL.
 func (g *PostgresGrammar) CompileAddColumn(table string, col ColumnDefinition) string {
-	colDef := g.compileColumn(col)
+	colDef := g.compileColumn(col, columnOptions{})
 	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", g.WrapTable(table), colDef)
 }
 
@@ -1191,7 +1269,13 @@ func (g *PostgresGrammar) CompileDropPrimary(table string) (string, error) {
 
 // MySQLGrammar compiles schema for MySQL and MariaDB: backtick-quoted
 // identifiers, AUTO_INCREMENT keys, and MODIFY COLUMN alters.
-type MySQLGrammar struct{}
+type MySQLGrammar struct {
+	// MariaDB marks the grammar as targeting MariaDB rather than MySQL. The two
+	// dialects are the same here except where MariaDB accepts syntax MySQL has
+	// never had (DROP INDEX IF EXISTS). NewGrammar sets it from the driver name;
+	// the zero value is MySQL, which is the stricter of the two.
+	MariaDB bool
+}
 
 // quoteBacktick wraps a MySQL identifier in backticks, escaping any
 // backtick it contains by doubling it.
@@ -1211,16 +1295,17 @@ func (g *MySQLGrammar) CompileTableExists(table string) string {
 
 func (g *MySQLGrammar) CompileCreate(bp *Blueprint) string {
 	var parts []string
-	var primaryKeys []string
+
+	primaryKeys := columnPrimaryKeys(bp, g.WrapColumn)
+	opts := columnOptions{compositePrimary: len(primaryKeys) > 1}
 
 	for _, col := range bp.columns {
-		parts = append(parts, g.compileColumn(col))
-		if col.Primary && !col.AutoIncrement {
-			primaryKeys = append(primaryKeys, g.WrapColumn(col.Name))
-		}
+		parts = append(parts, g.compileColumn(col, opts))
 	}
 
-	if len(primaryKeys) > 1 {
+	// A composite key is declared once, as a table constraint; compileColumn
+	// left the inline PRIMARY KEY off each of its columns.
+	if opts.compositePrimary {
 		parts = append(parts, fmt.Sprintf("PRIMARY KEY (%s)", strings.Join(primaryKeys, ", ")))
 	}
 
@@ -1236,7 +1321,13 @@ func (g *MySQLGrammar) CompileCreateIndexes(bp *Blueprint) []string {
 	return compileCreateIndexStatements(bp, g.WrapTable, g.WrapColumn)
 }
 
-func (g *MySQLGrammar) compileColumn(col ColumnDefinition) string {
+// CompileComments returns nothing: MySQL writes a column comment inline in the
+// column definition, so compileColumn has already emitted it.
+func (g *MySQLGrammar) CompileComments(bp *Blueprint) []string {
+	return nil
+}
+
+func (g *MySQLGrammar) compileColumn(col ColumnDefinition, opts columnOptions) string {
 	var def strings.Builder
 
 	def.WriteString(g.WrapColumn(col.Name))
@@ -1262,13 +1353,32 @@ func (g *MySQLGrammar) compileColumn(col ColumnDefinition) string {
 	if col.Unsigned {
 		def.WriteString(" UNSIGNED")
 	}
-	if !col.IsNullable && !col.Primary {
+	if opts.modify {
+		// MODIFY COLUMN replaces the whole definition, so every clause left out
+		// here is reset to MySQL's default rather than kept. Nullability is
+		// therefore only stated when the caller asked for it: a column modified
+		// without .Nullable() keeps whatever MySQL infers from the rest of the
+		// definition, which for an ordinary column means it becomes nullable.
+		// Asserting NOT NULL on a widen-the-type migration would instead fail
+		// against the NULLs already stored. There is no fluent NotNullable()
+		// setter yet, so only a ColumnDefinition built with NullableExplicitlySet
+		// and IsNullable false can ask for NOT NULL on this path.
+		if col.NullableExplicitlySet {
+			if col.IsNullable {
+				def.WriteString(" NULL")
+			} else {
+				def.WriteString(" NOT NULL")
+			}
+		}
+	} else if !col.IsNullable && !col.Primary {
+		// In CREATE TABLE and ADD COLUMN a column is NOT NULL unless declared
+		// .Nullable(); there is nothing prior to preserve.
 		def.WriteString(" NOT NULL")
 	}
 	if col.AutoIncrement {
 		def.WriteString(" AUTO_INCREMENT")
 	}
-	if col.Primary {
+	if col.Primary && !opts.compositePrimary {
 		def.WriteString(" PRIMARY KEY")
 	}
 	if col.IsUnique {
@@ -1287,6 +1397,9 @@ func (g *MySQLGrammar) compileColumn(col ColumnDefinition) string {
 		default:
 			def.WriteString(fmt.Sprintf(" DEFAULT %v", v))
 		}
+	}
+	if col.ColumnComment != "" {
+		def.WriteString(" COMMENT " + quoteString(col.ColumnComment))
 	}
 
 	return def.String()
@@ -1334,7 +1447,7 @@ func (g *MySQLGrammar) CompileAlter(bp *Blueprint) ([]string, error) {
 
 // CompileAddColumn compiles ADD COLUMN statement for MySQL.
 func (g *MySQLGrammar) CompileAddColumn(table string, col ColumnDefinition) string {
-	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", g.WrapTable(table), g.compileColumn(col))
+	return fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", g.WrapTable(table), g.compileColumn(col, columnOptions{}))
 }
 
 // CompileDropColumn compiles DROP COLUMN statement for MySQL.
@@ -1350,20 +1463,31 @@ func (g *MySQLGrammar) CompileRenameColumn(table, from, to string) string {
 
 // CompileModifyColumn compiles MODIFY COLUMN for MySQL. MySQL replaces
 // the whole column definition, so the blueprint must provide the full
-// definition including the type.
+// definition including the type. Nullability is only stated when the caller
+// set it explicitly — see compileColumn.
 func (g *MySQLGrammar) CompileModifyColumn(table string, col ColumnDefinition) ([]string, error) {
 	if col.Type == "" {
 		return nil, fmt.Errorf("%w: MySQL MODIFY COLUMN replaces the whole definition of %s.%s; specify the column type as well",
 			ErrUnsupportedOperation, table, col.Name)
 	}
 	return []string{
-		fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", g.WrapTable(table), g.compileColumn(col)),
+		fmt.Sprintf("ALTER TABLE %s MODIFY COLUMN %s", g.WrapTable(table), g.compileColumn(col, columnOptions{modify: true})),
 	}, nil
 }
 
-// CompileDropIndex compiles DROP INDEX for MySQL.
+// CompileDropIndex compiles DROP INDEX for MySQL and MariaDB.
+//
+// The statement is idempotent on MariaDB, which has accepted DROP INDEX IF
+// EXISTS since 10.1.4, and is not on MySQL, whose DROP INDEX grammar has no
+// IF EXISTS in any release including 8.x and 9.x. Emitting it unconditionally
+// would turn every DropIndex migration into a syntax error there, so dropping
+// an index that is already gone still fails on MySQL; a migration that needs to
+// tolerate it has to guard on information_schema.STATISTICS itself.
 func (g *MySQLGrammar) CompileDropIndex(table string, columns []string) string {
 	indexName := table + "_" + strings.Join(columns, "_") + "_index"
+	if g.MariaDB {
+		return fmt.Sprintf("DROP INDEX IF EXISTS %s ON %s", g.WrapColumn(indexName), g.WrapTable(table))
+	}
 	return fmt.Sprintf("DROP INDEX %s ON %s", g.WrapColumn(indexName), g.WrapTable(table))
 }
 
