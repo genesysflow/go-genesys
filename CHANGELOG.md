@@ -5,6 +5,8 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-10-07
+
 ### Fixed
 
 - **A database that is not reachable yet at boot is waited for.**
