@@ -21,3 +21,6 @@ connections:
     prefix: ""
     max_open_conns: 25
     max_idle_conns: 5
+    # How long the first connection waits for a database that is not
+    # reachable yet (default 15s; negative disables retries).
+    # connect_retry: 15s

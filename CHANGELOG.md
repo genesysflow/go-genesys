@@ -5,6 +5,27 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A database that is not reachable yet at boot is waited for.**
+  Opening a connection pinged once, so a new pod whose first TCP
+  connections are refused for a second or so - the usual case on a
+  cluster whose NetworkPolicy has not caught up with the pod's IP -
+  failed its connection, and the application died at boot. The
+  initial ping now retries with backoff (200ms, doubling, capped at
+  2s) for up to `ConnectionConfig.ConnectRetry`, 15s by default
+  (`connect_retry` in `config/database.yaml`: a duration such as
+  `"15s"` or a number of seconds; negative disables retries).
+  Errors waiting cannot fix - an unknown driver, an unconfigured
+  connection - still fail at once. When the budget runs out, the
+  error wraps the last ping error and names the attempts - `failed
+  to ping database after 15s (11 attempts): dial tcp ...: connect:
+  connection refused` - so `Connection.Error()` shows the cause.
+  Connections are still opened lazily and a failure is not cached,
+  so during a real outage each `Connection()` call waits out the
+  budget; `Reconnect` retries the same way. Read replicas are not
+  pinged at open and are unchanged.
+
 ## [1.2.0] - 2026-08-26
 
 ### Added - round 9: method spoofing, pre-routing, and test coverage

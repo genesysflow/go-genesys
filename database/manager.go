@@ -62,6 +62,15 @@ type ConnectionConfig struct {
 	// ConnMaxIdleTime is the maximum idle time for connections.
 	ConnMaxIdleTime time.Duration `yaml:"conn_max_idle_time" json:"conn_max_idle_time"`
 
+	// ConnectRetry is how long opening the connection keeps retrying
+	// the initial ping before giving up, backing off from 200ms up to
+	// 2s between attempts. It covers a database (or the network path to
+	// it) that is not ready yet when the application starts - e.g. a
+	// fresh pod whose NetworkPolicy has not been applied for the first
+	// second. Zero means the default (15s); a negative value disables
+	// retries, so a single failed ping fails the connection.
+	ConnectRetry time.Duration `yaml:"connect_retry" json:"connect_retry"`
+
 	// Prefix for table names.
 	Prefix string `yaml:"prefix" json:"prefix"`
 
@@ -99,6 +108,13 @@ func NewManager(config Config) *Manager {
 
 // Connection returns a connection by name.
 // If no name is provided, the default connection is returned.
+//
+// Connections are opened lazily on first use, and the first open
+// retries its ping for up to ConnectRetry (15s by default) before
+// giving up. A failed open is not cached: the next call tries again,
+// so while the database is really down every call to Connection blocks
+// for up to the retry budget before returning the failed connection.
+// Set ConnectRetry negative where that wait is unacceptable.
 func (m *Manager) Connection(name ...string) contracts.Connection {
 	connName := m.config.Default
 	if len(name) > 0 && name[0] != "" {
@@ -181,10 +197,10 @@ func (m *Manager) makeConnection(name string) (*Connection, error) {
 		db.SetConnMaxIdleTime(config.ConnMaxIdleTime)
 	}
 
-	// Verify connection
-	if err := db.Ping(); err != nil {
+	// Verify connection, waiting out a database that is not reachable yet.
+	if err := pingWithRetry(db, config.ConnectRetry); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+		return nil, err
 	}
 
 	// Enable foreign keys for SQLite
@@ -228,6 +244,64 @@ func (m *Manager) makeConnection(name string) (*Connection, error) {
 	}
 
 	return conn, nil
+}
+
+// Connect-retry tuning. Variables rather than constants so tests can
+// shrink them.
+var (
+	defaultConnectRetry        = 15 * time.Second
+	connectRetryInitialBackoff = 200 * time.Millisecond
+	connectRetryMaxBackoff     = 2 * time.Second
+	// connectPingTimeout bounds a single ping attempt; near the end of
+	// the budget it shrinks to what is left, but never below
+	// connectPingMinTimeout, so the last attempt can still fail with the
+	// driver's own error rather than a context deadline.
+	connectPingTimeout    = 5 * time.Second
+	connectPingMinTimeout = 1 * time.Second
+)
+
+// pingWithRetry pings db until it answers or the retry budget is spent.
+// A zero budget means defaultConnectRetry; a negative one means a
+// single attempt. The returned error wraps the last ping error, so the
+// real cause (e.g. "connect: connection refused") reaches the caller.
+func pingWithRetry(db *sql.DB, budget time.Duration) error {
+	if budget < 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), connectPingTimeout)
+		defer cancel()
+		if err := db.PingContext(ctx); err != nil {
+			return fmt.Errorf("failed to ping database: %w", err)
+		}
+		return nil
+	}
+	if budget == 0 {
+		budget = defaultConnectRetry
+	}
+
+	start := time.Now()
+	deadline := start.Add(budget)
+	backoff := connectRetryInitialBackoff
+	attempts := 0
+	for {
+		attempts++
+		timeout := connectPingTimeout
+		if remaining := time.Until(deadline); remaining < timeout {
+			timeout = max(remaining, connectPingMinTimeout)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		err := db.PingContext(ctx)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("failed to ping database after %s (%d attempts): %w",
+				time.Since(start).Round(time.Millisecond), attempts, err)
+		}
+		// The last wait is cut short so one attempt lands at the deadline.
+		time.Sleep(min(backoff, remaining))
+		backoff = min(backoff*2, connectRetryMaxBackoff)
+	}
 }
 
 // Raw executes a raw SQL query.
