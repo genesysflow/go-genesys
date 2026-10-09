@@ -5,6 +5,15 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **`hash.SetDefaultCost` sets the package-level bcrypt work factor.**
+  The cost was fixed at 12, which takes about four seconds per hash
+  under the race detector. The example app's test suite, which hashes on
+  every factory user and login, hit `go test`'s ten-minute timeout in
+  CI. Test binaries can now lower the cost to `bcrypt.MinCost` in
+  `TestMain`, and the `auth` and example test suites do so.
+
 ## [1.2.1] - 2026-10-07
 
 ### Fixed
