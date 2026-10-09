@@ -103,3 +103,21 @@ func TestCustomCostClampedToValidRange(t *testing.T) {
 	assert.Equal(t, DefaultCost, New(bcrypt.MinCost-1).Cost())
 	assert.Equal(t, bcrypt.MinCost, New(bcrypt.MinCost).Cost())
 }
+
+// TestSetDefaultCost checks the package-level helpers follow the configured
+// cost, and that an out-of-range value falls back to the default.
+func TestSetDefaultCost(t *testing.T) {
+	t.Cleanup(func() { SetDefaultCost(DefaultCost) })
+
+	SetDefaultCost(bcrypt.MinCost)
+	hashed, err := Make("pw")
+	require.NoError(t, err)
+	cost, err := bcrypt.Cost([]byte(hashed))
+	require.NoError(t, err)
+	assert.Equal(t, bcrypt.MinCost, cost)
+	assert.NoError(t, Check("pw", hashed))
+	assert.False(t, NeedsRehash(hashed))
+
+	SetDefaultCost(bcrypt.MaxCost + 1)
+	assert.True(t, NeedsRehash(hashed), "an out-of-range cost should restore the default")
+}

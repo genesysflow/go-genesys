@@ -102,6 +102,17 @@ func (h *Hasher) Cost() int {
 // defaultHasher backs the package-level helpers.
 var defaultHasher = New()
 
+// SetDefaultCost replaces the work factor used by the package-level
+// helpers. Out-of-range values fall back to DefaultCost, as with New.
+//
+// It is meant for process setup, before any hashing happens - most often a
+// test binary's TestMain lowering the cost to bcrypt.MinCost, since a
+// cost-12 hash takes seconds under the race detector. It is not safe to call
+// concurrently with Make, Check or NeedsRehash.
+func SetDefaultCost(cost int) {
+	defaultHasher = New(cost)
+}
+
 // Make hashes a plaintext password using the default hasher.
 func Make(password string) (string, error) {
 	return defaultHasher.Make(password)
