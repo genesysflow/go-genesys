@@ -217,7 +217,15 @@ func TestServeCommand_Creation(t *testing.T) {
 
 	hostFlag := cmd.Flags().Lookup("host")
 	assert.NotNil(t, hostFlag)
-	assert.Equal(t, "localhost", hostFlag.DefValue)
+	assert.Equal(t, "", hostFlag.DefValue, "serve must listen on every interface by default, or a container's probes and Service cannot reach it")
+}
+
+func TestServeCommand_DisplayAddr(t *testing.T) {
+	assert.Equal(t, "localhost:3000", displayAddr("", "3000"))
+	assert.Equal(t, "localhost:3000", displayAddr("0.0.0.0", "3000"))
+	assert.Equal(t, "localhost:3000", displayAddr("::", "3000"))
+	assert.Equal(t, "127.0.0.1:8080", displayAddr("127.0.0.1", "8080"))
+	assert.Equal(t, "[::1]:8080", displayAddr("::1", "8080"))
 }
 
 func TestServeCommand_KernelConfigOverride(t *testing.T) {

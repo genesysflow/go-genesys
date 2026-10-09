@@ -14,6 +14,18 @@ All notable changes to Go-Genesys are documented here. The format follows
   CI. Test binaries can now lower the cost to `bcrypt.MinCost` in
   `TestMain`, and the `auth` and example test suites do so.
 
+### Fixed
+
+- **`serve` listens on every interface again by default.** Up to
+  1.1.0 the `--host` flag was ignored and the server bound `:port`.
+  1.2.0 started honouring the flag, whose default was `localhost`, so
+  an application started with a plain `serve` in a container bound
+  127.0.0.1 only: kubelet probes and the Service, which dial the pod
+  IP, were refused and every rollout timed out. `--host` now defaults
+  to empty (all interfaces), restoring the 1.1.0 behaviour; pass
+  `--host 127.0.0.1` to keep a development server off the network.
+  The startup line still prints a browsable `http://localhost:<port>`.
+
 ## [1.2.1] - 2026-10-07
 
 ### Fixed

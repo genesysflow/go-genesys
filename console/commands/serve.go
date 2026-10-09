@@ -29,7 +29,7 @@ func ServeCommand(app contracts.Application) *cobra.Command {
 	}
 
 	cmd.Flags().StringVarP(&port, "port", "p", "3000", "Port to run the server on")
-	cmd.Flags().StringVarP(&host, "host", "H", "localhost", "Host to bind the server to")
+	cmd.Flags().StringVarP(&host, "host", "H", "", "Host to bind the server to (default: all interfaces)")
 
 	return cmd
 }
@@ -110,9 +110,20 @@ func runServer(app contracts.Application, host, port string) error {
 
 	addr := net.JoinHostPort(host, port)
 	logger.Info("Starting server", "host", host, "port", port)
-	fmt.Printf("Server starting at http://%s\n", addr)
+	fmt.Printf("Server starting at http://%s\n", displayAddr(host, port))
 
 	return kernel.RunWithGracefulShutdown(addr, 10*time.Second)
+}
+
+// displayAddr is the address to print for a server bound to host:port.
+// An empty or wildcard host listens on every interface, which a browser
+// reaches as localhost.
+func displayAddr(host, port string) string {
+	switch host {
+	case "", "0.0.0.0", "::":
+		host = "localhost"
+	}
+	return net.JoinHostPort(host, port)
 }
 
 // resolveKernel returns the provider's kernel, falling back to the one

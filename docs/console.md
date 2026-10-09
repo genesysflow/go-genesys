@@ -4,7 +4,7 @@
 
 | Command | Purpose |
 |---|---|
-| `serve [--port]` | Start the HTTP server |
+| `serve [--port] [--host]` | Start the HTTP server (all interfaces unless `--host` is given) |
 | `migrate` | Run pending migrations (`--dump-schema` on by default) |
 | `migrate:rollback` | Rollback the last batch |
 | `migrate:reset` | Rollback everything |
