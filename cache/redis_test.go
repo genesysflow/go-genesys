@@ -146,3 +146,29 @@ func TestRedisStoreRememberAndManager(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "v", got)
 }
+
+func TestRedisStoreHit(t *testing.T) {
+	store, mr := newRedisStore(t)
+
+	for want := int64(1); want <= 3; want++ {
+		n, err := store.Hit("hits", time.Minute)
+		require.NoError(t, err)
+		assert.Equal(t, want, n)
+	}
+	assert.Equal(t, time.Minute, mr.TTL("cache:hits"), "the first hit starts the window, later ones keep it")
+
+	// The key the Add-then-Increment pair leaves when it expires in
+	// between: a count with no TTL, which would refuse requests forever.
+	_, err := store.Increment("stuck", 700)
+	require.NoError(t, err)
+	assert.Zero(t, mr.TTL("cache:stuck"))
+	n, err := store.Hit("stuck", time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, int64(701), n)
+	assert.Equal(t, time.Minute, mr.TTL("cache:stuck"), "the next hit gives it a window")
+
+	mr.FastForward(time.Minute + time.Second)
+	n, err = store.Hit("stuck", time.Minute)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n, "and it starts over when the window ends")
+}

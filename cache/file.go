@@ -164,6 +164,32 @@ func (s *FileStore) incrementBy(key string, amount int64) (int64, error) {
 	return current, nil
 }
 
+// Hit counts a hit in a fixed window (WindowCounter).
+func (s *FileStore) Hit(key string, window time.Duration) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	entry, err := s.read(key)
+	if err != nil {
+		return 0, err
+	}
+	if entry == nil {
+		return 1, s.write(key, newFileEntry(int64(1), window))
+	}
+	n, err := toNumber(entry.Value)
+	if err != nil {
+		return 0, err
+	}
+	next := newFileEntry(n+1, window)
+	if entry.ExpiresAt != 0 {
+		next.ExpiresAt = entry.ExpiresAt
+	}
+	if err := s.write(key, next); err != nil {
+		return 0, err
+	}
+	return n + 1, nil
+}
+
 // Forget removes an item from the cache.
 func (s *FileStore) Forget(key string) error {
 	s.mu.Lock()

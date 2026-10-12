@@ -144,3 +144,33 @@ func TestManagerConfiguredStores(t *testing.T) {
 	_, err = manager.Store("nope")
 	assert.Error(t, err)
 }
+
+func TestWindowCounter(t *testing.T) {
+	for name, store := range stores(t) {
+		t.Run(name, func(t *testing.T) {
+			counter, ok := store.(cache.WindowCounter)
+			require.True(t, ok, "the %s store counts in one step", name)
+
+			for want := int64(1); want <= 3; want++ {
+				n, err := counter.Hit("hits", time.Second)
+				require.NoError(t, err)
+				assert.Equal(t, want, n)
+			}
+
+			// A count left with no expiry, as Increment leaves one on a
+			// missing key, is given the window by the next hit.
+			_, err := store.Increment("stuck", 100)
+			require.NoError(t, err)
+			n, err := counter.Hit("stuck", time.Second)
+			require.NoError(t, err)
+			assert.Equal(t, int64(101), n)
+
+			time.Sleep(2100 * time.Millisecond) // the file store keeps whole seconds
+			for _, key := range []string{"hits", "stuck"} {
+				n, err := counter.Hit(key, time.Second)
+				require.NoError(t, err)
+				assert.Equal(t, int64(1), n, "%s starts over once its window ends", key)
+			}
+		})
+	}
+}

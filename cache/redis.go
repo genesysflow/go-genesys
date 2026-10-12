@@ -125,6 +125,25 @@ func (s *RedisStore) Increment(key string, amount int64) (int64, error) {
 	return s.client.IncrBy(s.ctx, s.key(key), amount).Result()
 }
 
+// hitScript counts a hit and gives the count its window when it has none:
+// a new key, or one an INCR recreated without an expiry.
+var hitScript = redis.NewScript(`
+local n = redis.call('incr', KEYS[1])
+if redis.call('pttl', KEYS[1]) < 0 then
+	redis.call('pexpire', KEYS[1], ARGV[1])
+end
+return n
+`)
+
+// Hit counts a hit in a fixed window, atomically (WindowCounter).
+func (s *RedisStore) Hit(key string, window time.Duration) (int64, error) {
+	ms := window.Milliseconds()
+	if ms < 1 {
+		ms = 1
+	}
+	return hitScript.Run(s.ctx, s.client, []string{s.key(key)}, ms).Int64()
+}
+
 // Decrement atomically decreases a numeric item, starting from zero.
 func (s *RedisStore) Decrement(key string, amount int64) (int64, error) {
 	return s.client.DecrBy(s.ctx, s.key(key), amount).Result()

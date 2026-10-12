@@ -112,6 +112,28 @@ func (s *MemoryStore) incrementBy(key string, amount int64) (int64, error) {
 	return current, nil
 }
 
+// Hit counts a hit in a fixed window (WindowCounter).
+func (s *MemoryStore) Hit(key string, window time.Duration) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	it, ok := s.items[key]
+	if !ok || it.expired() {
+		s.items[key] = newItem(int64(1), window)
+		return 1, nil
+	}
+	n, err := toNumber(it.value)
+	if err != nil {
+		return 0, err
+	}
+	it.value = n + 1
+	if it.expiresAt.IsZero() && window > 0 {
+		it.expiresAt = time.Now().Add(window)
+	}
+	s.items[key] = it
+	return n + 1, nil
+}
+
 // ForgetIfEquals atomically removes the key only while it still holds
 // the given string value; the lock helper uses it so a Release can
 // never free a lock that expired and was re-acquired by another owner.
