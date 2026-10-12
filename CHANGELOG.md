@@ -5,6 +5,8 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-12
+
 ### Added
 
 - **`hash.SetDefaultCost` sets the package-level bcrypt work factor.**
