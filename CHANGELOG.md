@@ -13,6 +13,25 @@ All notable changes to Go-Genesys are documented here. The format follows
   every factory user and login, hit `go test`'s ten-minute timeout in
   CI. Test binaries can now lower the cost to `bcrypt.MinCost` in
   `TestMain`, and the `auth` and example test suites do so.
+- **`cache.WindowCounter`: count a hit in a fixed window in one step.**
+  `Hit(key, window)` adds one and returns the count; the first hit
+  starts the window and the count ends with it, and a count found with
+  no expiry is given one. The memory, file and Redis stores implement
+  it (Redis with a script, so the count and its expiry cannot be
+  separated).
+
+### Fixed
+
+- **A rate limit no longer locks a key out for good.** `Throttle`
+  seeded the counter with `Add` and then counted with `Increment`. When
+  the key expired between the two, the increment recreated it with no
+  expiry, so the counter grew for as long as the store lived, and once
+  it passed `MaxRequests` every request on that key was refused with a
+  429 - a whole tenant, where the key is per tenant. `Throttle` now
+  counts with `WindowCounter.Hit` wherever the store offers it, which
+  every shipped store does, and a counter already stuck that way is
+  given a window at its next hit, so it clears within one window of
+  the upgrade. A custom store without `Hit` keeps the old pair.
 
 ## [1.2.1] - 2026-10-07
 

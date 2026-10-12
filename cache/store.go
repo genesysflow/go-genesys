@@ -38,6 +38,17 @@ type Store interface {
 	Flush() error
 }
 
+// WindowCounter is a store that counts hits in a fixed window in one step.
+// Hit adds one to key and returns the new count: the first hit starts a
+// window of the given length, and the count ends with it. A count found
+// with no expiry is given one, so it cannot outlive its window - which an
+// Add followed by an Increment allows when the key runs out between the
+// two. The memory, file and Redis stores implement it; the rate limiter
+// uses it where the store does.
+type WindowCounter interface {
+	Hit(key string, window time.Duration) (int64, error)
+}
+
 // Remember returns the cached value for key, computing and storing it with
 // the given TTL when absent:
 //

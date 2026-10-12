@@ -49,14 +49,9 @@ func Throttle(config ThrottleConfig) http.MiddlewareFunc {
 	return func(ctx *http.Context, next func() error) error {
 		key := fmt.Sprintf("throttle:%s:%s", config.Name, config.KeyFor(ctx))
 
-		// Add seeds the counter with the window's TTL; Increment then
-		// counts this request. When the key expires the window resets.
-		if _, err := config.Store.Add(key, 0, config.Window); err != nil {
-			return next() // a broken store should not take the site down
-		}
-		hits, err := config.Store.Increment(key, 1)
+		hits, err := hit(config.Store, key, config.Window)
 		if err != nil {
-			return next()
+			return next() // a broken store should not take the site down
 		}
 
 		remaining := int64(config.MaxRequests) - hits
@@ -75,4 +70,20 @@ func Throttle(config ThrottleConfig) http.MiddlewareFunc {
 		}
 		return next()
 	}
+}
+
+// hit counts this request in its window. A store that does so in one step
+// (cache.WindowCounter) is used for it; on any other, Add seeds the counter
+// with the window's TTL and Increment then counts. That pair leaves a
+// counter with no expiry when the key runs out between the two, and such a
+// counter refuses every request once it passes the limit, so the shipped
+// stores all implement WindowCounter.
+func hit(store cache.Store, key string, window time.Duration) (int64, error) {
+	if counter, ok := store.(cache.WindowCounter); ok {
+		return counter.Hit(key, window)
+	}
+	if _, err := store.Add(key, 0, window); err != nil {
+		return 0, err
+	}
+	return store.Increment(key, 1)
 }
