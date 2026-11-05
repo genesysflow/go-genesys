@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"net/url"
 	"testing"
@@ -24,7 +25,7 @@ func TestHeaderValuesCannotSplitTheResponse(t *testing.T) {
 	})
 
 	resp, err := kernel.Fiber().Test(
-		httptest.NewRequest("GET", "/echo?v=a%0d%0aSet-Cookie:%20admin=1", nil), -1)
+		httptest.NewRequest("GET", "/echo?v=a%0d%0aSet-Cookie:%20admin=1", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Empty(t, resp.Header.Get("Set-Cookie"),
@@ -42,7 +43,7 @@ func TestRedirectLocationCannotSplitTheResponse(t *testing.T) {
 	})
 
 	resp, err := kernel.Fiber().Test(
-		httptest.NewRequest("GET", "/go?to=/next%0d%0aSet-Cookie:%20admin=1", nil), -1)
+		httptest.NewRequest("GET", "/go?to=/next%0d%0aSet-Cookie:%20admin=1", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Empty(t, resp.Header.Get("Set-Cookie"))
@@ -62,7 +63,7 @@ func TestRedirectToAllowsADeveloperChosenExternalTarget(t *testing.T) {
 		return ctx.RedirectTo("https://payments.example.com/checkout").Send()
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/pay", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/pay", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, "https://payments.example.com/checkout", resp.Header.Get("Location"))
 }

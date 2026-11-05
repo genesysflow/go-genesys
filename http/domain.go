@@ -35,7 +35,7 @@ func DomainParam(ctx *Context, name string) string {
 func domainMiddleware(pattern string) MiddlewareFunc {
 	want := strings.Split(strings.ToLower(pattern), ".")
 	return func(ctx *Context, next func() error) error {
-		host := strings.ToLower(ctx.FiberCtx().Hostname())
+		host := strings.ToLower(ctx.FiberCtx().Host())
 		if i := strings.IndexByte(host, ':'); i >= 0 {
 			host = host[:i]
 		}

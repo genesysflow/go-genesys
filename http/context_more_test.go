@@ -2,6 +2,7 @@ package http_test
 
 import (
 	"encoding/json"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -44,7 +45,7 @@ func TestContextRequestAccessors(t *testing.T) {
 	req := httptest.NewRequest("POST", "/users/42/posts?q=golang&page=3",
 		strings.NewReader(`{"title":"hello"}`))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 204, resp.StatusCode)
 }
@@ -70,7 +71,7 @@ func TestContextResponseHelpers(t *testing.T) {
 
 	expect := func(path string, status int, bodyContains string) {
 		t.Helper()
-		resp, err := k.Fiber().Test(httptest.NewRequest("GET", path, nil), -1)
+		resp, err := k.Fiber().Test(httptest.NewRequest("GET", path, nil), fiber.TestConfig{Timeout: 0})
 		require.NoError(t, err)
 		assert.Equal(t, status, resp.StatusCode, path)
 		if bodyContains != "" {
@@ -91,12 +92,12 @@ func TestContextResponseHelpers(t *testing.T) {
 	expect("/notfound", 404, "Not Found")
 	expect("/ise", 500, "Internal Server Error")
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/redirect", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/redirect", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 302, resp.StatusCode)
 	assert.Equal(t, "/target", resp.Header.Get("Location"))
 
-	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/redirect301", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/redirect301", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 301, resp.StatusCode)
 }
@@ -113,7 +114,7 @@ func TestContextContentNegotiationHelpers(t *testing.T) {
 	req := httptest.NewRequest("GET", "/negotiate", nil)
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set("Accept", "application/json")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	var out map[string]bool
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&out))
@@ -132,7 +133,7 @@ func TestContextCookies(t *testing.T) {
 		return ctx.NoContent()
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set-cookie", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set-cookie", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	cookies := resp.Cookies()
 	require.NotEmpty(t, cookies)
@@ -140,7 +141,7 @@ func TestContextCookies(t *testing.T) {
 	assert.Equal(t, "dark", cookies[0].Value)
 	assert.True(t, cookies[0].HttpOnly)
 
-	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/clear-cookie", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/clear-cookie", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Cookies())
 	assert.Empty(t, resp.Cookies()[0].Value, "clearing sets an empty expired cookie")

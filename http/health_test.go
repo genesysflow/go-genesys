@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestHealthEndpoint(t *testing.T) {
 	kernel.Router().Health("/healthz")
 
 	for _, path := range []string{"/up", "/healthz"} {
-		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), -1)
+		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), fiber.TestConfig{Timeout: 0})
 		require.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode, path)
 	}

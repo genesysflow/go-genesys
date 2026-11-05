@@ -6,13 +6,13 @@ import (
 	"testing"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestNewResponse(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		assert.NotNil(t, resp)
 		assert.Equal(t, c, resp.FiberCtx())
@@ -26,7 +26,7 @@ func TestNewResponse(t *testing.T) {
 
 func TestResponseStatus(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		ret := resp.Status(201)
 		assert.Equal(t, resp, ret) // Should return self for chaining
@@ -40,7 +40,7 @@ func TestResponseStatus(t *testing.T) {
 
 func TestResponseHeader(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		resp.Header("X-Custom", "value")
 		return resp.String("ok")
@@ -53,7 +53,7 @@ func TestResponseHeader(t *testing.T) {
 
 func TestResponseHeaders(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		resp.Headers(map[string]string{
 			"X-One": "1",
@@ -70,7 +70,7 @@ func TestResponseHeaders(t *testing.T) {
 
 func TestResponseCookie(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		resp.Cookie(&contracts.Cookie{
 			Name:     "session",
@@ -91,7 +91,7 @@ func TestResponseCookie(t *testing.T) {
 
 func TestResponseClearCookie(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		resp.ClearCookie("session")
 		return resp.String("ok")
@@ -108,7 +108,7 @@ func TestResponseClearCookie(t *testing.T) {
 
 func TestResponseBody(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.Body([]byte("raw body"))
 	})
@@ -121,7 +121,7 @@ func TestResponseBody(t *testing.T) {
 
 func TestResponseString(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.String("hello world")
 	})
@@ -134,7 +134,7 @@ func TestResponseString(t *testing.T) {
 
 func TestResponseJSON(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.JSON(fiber.Map{"message": "success"})
 	})
@@ -148,7 +148,7 @@ func TestResponseJSON(t *testing.T) {
 
 func TestResponsePrettyJSON(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.PrettyJSON(fiber.Map{"key": "value"})
 	})
@@ -166,7 +166,7 @@ func TestResponseXML(t *testing.T) {
 	}
 
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.XML(Item{Name: "test"})
 	})
@@ -180,7 +180,7 @@ func TestResponseXML(t *testing.T) {
 
 func TestResponseHTML(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.HTML("<h1>Hello</h1>")
 	})
@@ -194,7 +194,7 @@ func TestResponseHTML(t *testing.T) {
 
 func TestResponseRedirect(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.Redirect("/new-location")
 	})
@@ -207,7 +207,7 @@ func TestResponseRedirect(t *testing.T) {
 
 func TestResponseRedirectWithStatus(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.Redirect("/permanent", 301)
 	})
@@ -219,7 +219,7 @@ func TestResponseRedirectWithStatus(t *testing.T) {
 
 func TestResponseRedirectBack(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.RedirectBack("/fallback")
 	})
@@ -238,7 +238,7 @@ func TestResponseRedirectBack(t *testing.T) {
 
 func TestResponseNoContent(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.NoContent()
 	})
@@ -250,7 +250,7 @@ func TestResponseNoContent(t *testing.T) {
 
 func TestResponseSent(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		assert.False(t, resp.Sent())
 		resp.String("hello")
@@ -264,7 +264,7 @@ func TestResponseSent(t *testing.T) {
 
 func TestResponseChaining(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		return resp.
 			Status(201).
@@ -280,7 +280,7 @@ func TestResponseChaining(t *testing.T) {
 
 func TestResponseWrite(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		resp := NewResponse(c)
 		n, err := resp.Write([]byte("written"))
 		assert.NoError(t, err)

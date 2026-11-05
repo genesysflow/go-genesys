@@ -101,7 +101,7 @@ func (c *Context) Intended(fallback string) *Redirector {
 	target := fallback
 	if session := c.Session(); session != nil {
 		if stored, ok := session.Get(intendedSessionKey).(string); ok && stored != "" {
-			if sameHostRedirect(stored, c.fiberCtx.Hostname()) {
+			if sameHostRedirect(stored, c.fiberCtx.Host()) {
 				target = stored
 			}
 		}
@@ -272,7 +272,7 @@ func (r *Redirector) Send() error {
 		// when it points at this same host; otherwise every handler
 		// redirecting back would be an open redirect.
 		target = r.fallback
-		if referer := r.ctx.fiberCtx.Get("Referer"); sameHostRedirect(referer, r.ctx.fiberCtx.Hostname()) {
+		if referer := r.ctx.fiberCtx.Get("Referer"); sameHostRedirect(referer, r.ctx.fiberCtx.Host()) {
 			target = referer
 		}
 	}

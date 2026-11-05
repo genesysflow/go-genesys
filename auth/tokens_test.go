@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"database/sql"
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -254,14 +255,14 @@ func TestPersonalAccessTokenGuard(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/token-user", nil)
 	req.Header.Set("Authorization", "Bearer "+plaintext)
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// A bad token is unauthenticated.
 	req = httptest.NewRequest("GET", "/token-user", nil)
 	req.Header.Set("Authorization", "Bearer 1|wrong")
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 }
@@ -286,13 +287,13 @@ func TestRequireAbilityMiddleware(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/read", nil)
 	req.Header.Set("Authorization", "Bearer "+plaintext)
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
 	req = httptest.NewRequest("DELETE", "/posts/1", nil)
 	req.Header.Set("Authorization", "Bearer "+plaintext)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 }

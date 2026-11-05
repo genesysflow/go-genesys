@@ -8,7 +8,7 @@ import (
 	"github.com/genesysflow/go-genesys/database"
 	facadesession "github.com/genesysflow/go-genesys/facades/session"
 	"github.com/genesysflow/go-genesys/session"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // SessionServiceProvider registers session services.

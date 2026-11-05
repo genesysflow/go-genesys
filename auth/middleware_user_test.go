@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -27,7 +28,7 @@ func TestMiddlewareStashesUserOnContext(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/stashed-user", nil)
 	req.Header.Set("Authorization", "Bearer token-123")
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -47,7 +48,7 @@ func TestUserFromReturnsAuthenticatable(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/identifier", nil)
 	req.Header.Set("Authorization", "Bearer token-123")
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -61,7 +62,7 @@ func TestUserFromReturnsNilWhenUnauthenticated(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/anon", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/anon", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -77,7 +78,7 @@ func TestMiddlewareDoesNotStashNilUser(t *testing.T) {
 		return ctx.String("ok")
 	}, auth.Middleware(&userlessGuard{}))
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/checked", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/checked", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -106,14 +107,14 @@ func TestResolveUserMakesTheUserAvailableWithoutRequiringOne(t *testing.T) {
 	// Signed in.
 	req := httptest.NewRequest("GET", "/public", nil)
 	req.Header.Set("Authorization", "Bearer token-123")
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, "hello alice@example.com", string(body))
 
 	// A guest reaches the same page, rather than a 401.
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/public", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/public", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	body, _ = io.ReadAll(resp.Body)
@@ -136,7 +137,7 @@ func TestResolveUserDoesNotReplaceAnExistingUser(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/public", nil)
 	req.Header.Set("Authorization", "Bearer token-123")
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, _ := io.ReadAll(resp.Body)

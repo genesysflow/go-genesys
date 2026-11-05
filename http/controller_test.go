@@ -2,6 +2,7 @@ package http
 
 import (
 	"encoding/json"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,7 +21,7 @@ func serveContext(t *testing.T, method, route string, httpReq *http.Request, han
 	router := NewRouter(&mockApplication{}, app)
 	router.addRoute(method, route, handler)
 
-	resp, err := app.Test(httpReq, -1)
+	resp, err := app.Test(httpReq, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, err := io.ReadAll(resp.Body)

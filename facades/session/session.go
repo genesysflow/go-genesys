@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	basesession "github.com/genesysflow/go-genesys/session"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 var (
@@ -44,6 +44,6 @@ func Middleware() fiber.Handler {
 
 // FromContext returns the request's session (nil when the middleware is
 // not registered).
-func FromContext(c *fiber.Ctx) *basesession.Session {
+func FromContext(c fiber.Ctx) *basesession.Session {
 	return basesession.GetFromContext(c)
 }

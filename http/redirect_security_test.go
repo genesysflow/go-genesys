@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"testing"
 
@@ -54,7 +55,7 @@ func TestRedirectBackRefusesOffsiteReferer(t *testing.T) {
 				req.Header.Set("Referer", tc.referer)
 			}
 
-			resp, err := k.Fiber().Test(req, -1)
+			resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 			require.NoError(t, err)
 
 			location := resp.Header.Get("Location")
@@ -83,7 +84,7 @@ func TestRedirectBackDefaultsToRoot(t *testing.T) {
 	req.Host = "example.com"
 	req.Header.Set("Referer", "https://evil.example/phish")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, "/", resp.Header.Get("Location"))
 }

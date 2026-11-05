@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,11 +21,11 @@ func serveRequest(t *testing.T, method, route string, httpReq *http.Request, han
 	t.Helper()
 
 	app := newTestApp()
-	app.Add(method, route, func(c *fiber.Ctx) error {
+	app.Add([]string{method}, route, func(c fiber.Ctx) error {
 		return handler(NewRequest(c))
 	})
 
-	resp, err := app.Test(httpReq, -1)
+	resp, err := app.Test(httpReq, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	return resp
 }
@@ -38,6 +38,18 @@ func TestRequestFullURL(t *testing.T) {
 
 	serveRequest(t, "GET", "/search", httpReq, func(r *Request) error {
 		assert.Equal(t, "http://example.com/search?q=go&page=2", r.FullURL())
+		return r.ctx.SendString("ok")
+	})
+}
+
+// A non-default port is part of the host, and of the full URL.
+func TestRequestFullURLKeepsThePort(t *testing.T) {
+	httpReq := httptest.NewRequest("GET", "/about", nil)
+	httpReq.Host = "localhost:3000"
+
+	serveRequest(t, "GET", "/about", httpReq, func(r *Request) error {
+		assert.Equal(t, "localhost:3000", r.Host())
+		assert.Equal(t, "http://localhost:3000/about", r.FullURL())
 		return r.ctx.SendString("ok")
 	})
 }
@@ -73,15 +85,14 @@ func TestRequestIPsIgnoresForwardedForFromUntrustedClient(t *testing.T) {
 // out of KernelConfig.TrustedProxies.
 func TestRequestIPsReadsForwardedForFromTrustedProxy(t *testing.T) {
 	app := fiber.New(fiber.Config{
-		DisableStartupMessage:   true,
-		EnableTrustedProxyCheck: true,
+		TrustProxy: true,
 		// The address Fiber's test connection reports.
-		TrustedProxies: []string{"0.0.0.0"},
-		ProxyHeader:    fiber.HeaderXForwardedFor,
+		TrustProxyConfig: fiber.TrustProxyConfig{Proxies: []string{"0.0.0.0"}},
+		ProxyHeader:      fiber.HeaderXForwardedFor,
 	})
 
 	var ips []string
-	app.Get("/ip", func(c *fiber.Ctx) error {
+	app.Get("/ip", func(c fiber.Ctx) error {
 		ips = NewRequest(c).IPs()
 		return c.SendString("ok")
 	})
@@ -89,7 +100,7 @@ func TestRequestIPsReadsForwardedForFromTrustedProxy(t *testing.T) {
 	httpReq := httptest.NewRequest("GET", "/ip", nil)
 	httpReq.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.7,192.0.2.9")
 
-	_, err := app.Test(httpReq, -1)
+	_, err := app.Test(httpReq, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, []string{"203.0.113.1", "198.51.100.7", "192.0.2.9"}, ips)

@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/genesysflow/go-genesys/http"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // CSRFContextKey is the context key under which the current CSRF token is

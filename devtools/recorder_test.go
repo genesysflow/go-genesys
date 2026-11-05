@@ -1,6 +1,7 @@
 package devtools_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"strings"
 	"sync"
@@ -38,9 +39,9 @@ func TestRecordsRequests(t *testing.T) {
 		return ctx.Status(404).String("nope")
 	})
 
-	_, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users", nil), -1)
+	_, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
-	_, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/missing", nil), -1)
+	_, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/missing", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	requests := recorder.Requests()
@@ -155,12 +156,12 @@ func TestPanelRendersRecordedEntries(t *testing.T) {
 	require.NoError(t, devtools.Register(kernel, recorder, "/_genesys"))
 
 	kernel.GET("/users", func(ctx *genhttp.Context) error { return ctx.String("ok") })
-	_, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users", nil), -1)
+	_, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	recorder.RecordQuery(database.QueryEvent{SQL: "SELECT * FROM users", Duration: time.Millisecond})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/_genesys", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/_genesys", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -187,7 +188,7 @@ func TestPanelRefusesInProduction(t *testing.T) {
 	err := devtools.Register(kernel, recorder, "/_genesys")
 	require.Error(t, err)
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/_genesys", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/_genesys", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode, "the panel must not be reachable in production")
 }
@@ -198,7 +199,7 @@ func TestPanelDoesNotRecordItself(t *testing.T) {
 	kernel, recorder := devKernel(t)
 	require.NoError(t, devtools.Register(kernel, recorder, "/_genesys"))
 
-	_, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/_genesys", nil), -1)
+	_, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/_genesys", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	for _, entry := range recorder.Requests() {
@@ -221,10 +222,10 @@ func TestRegisterOnARouter(t *testing.T) {
 
 	router.GET("/users", func(ctx *genhttp.Context) error { return ctx.String("ok") })
 
-	_, err := fiberApp.Fiber().Test(httptest.NewRequest("GET", "/users", nil), -1)
+	_, err := fiberApp.Fiber().Test(httptest.NewRequest("GET", "/users", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
-	resp, err := fiberApp.Fiber().Test(httptest.NewRequest("GET", "/_panel", nil), -1)
+	resp, err := fiberApp.Fiber().Test(httptest.NewRequest("GET", "/_panel", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 

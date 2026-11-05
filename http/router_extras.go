@@ -1,7 +1,7 @@
 package http
 
 import (
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Fallback registers a handler for requests that match no route. Register

@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"strings"
@@ -40,7 +41,7 @@ func request(t *testing.T, kernel *genhttp.Kernel, path string, headers map[stri
 	if cookies != "" {
 		req.Header.Set("Cookie", cookies)
 	}
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	content, _ := io.ReadAll(resp.Body)
 	var setCookies []string

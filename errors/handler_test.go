@@ -1,6 +1,7 @@
 package errors_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -36,7 +37,7 @@ func TestBrowserRequestsGetHTMLErrorPage(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/missing", nil)
 	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, 404, resp.StatusCode)
@@ -52,7 +53,7 @@ func TestAPIRequestsStillGetJSON(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/missing", nil)
 	req.Header.Set("Accept", "application/json")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, 404, resp.StatusCode)
@@ -65,7 +66,7 @@ func TestHTMLPageHidesInternalsWithoutDebug(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/boom", nil)
 	req.Header.Set("Accept", "text/html")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, 500, resp.StatusCode)
@@ -79,7 +80,7 @@ func TestHTMLDebugPageShowsStack(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/boom", nil)
 	req.Header.Set("Accept", "text/html")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, 500, resp.StatusCode)

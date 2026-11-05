@@ -12,8 +12,8 @@ import (
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/session"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/utils"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/utils/v2"
 )
 
 // Kernel is the HTTP kernel that handles the request lifecycle.
@@ -24,6 +24,7 @@ type Kernel struct {
 	middleware []MiddlewareFunc
 	logger     contracts.Logger
 	mwRegistry *middlewareRegistry
+	listen     fiber.ListenConfig
 }
 
 // KernelConfig defines configuration for the HTTP kernel.
@@ -101,20 +102,17 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 	}
 
 	fiberConfig := fiber.Config{
-		AppName:               cfg.AppName,
-		Prefork:               cfg.Prefork,
-		ServerHeader:          cfg.ServerHeader,
-		StrictRouting:         cfg.StrictRouting,
-		CaseSensitive:         cfg.CaseSensitive,
-		BodyLimit:             cfg.BodyLimit,
-		ReadTimeout:           cfg.ReadTimeout,
-		WriteTimeout:          cfg.WriteTimeout,
-		IdleTimeout:           cfg.IdleTimeout,
-		ReadBufferSize:        cfg.ReadBufferSize,
-		WriteBufferSize:       cfg.WriteBufferSize,
-		EnablePrintRoutes:     cfg.EnablePrintRoutes,
-		DisableStartupMessage: cfg.DisableStartupMessage,
-		ErrorHandler:          createErrorHandler(app),
+		AppName:         cfg.AppName,
+		ServerHeader:    cfg.ServerHeader,
+		StrictRouting:   cfg.StrictRouting,
+		CaseSensitive:   cfg.CaseSensitive,
+		BodyLimit:       cfg.BodyLimit,
+		ReadTimeout:     cfg.ReadTimeout,
+		WriteTimeout:    cfg.WriteTimeout,
+		IdleTimeout:     cfg.IdleTimeout,
+		ReadBufferSize:  cfg.ReadBufferSize,
+		WriteBufferSize: cfg.WriteBufferSize,
+		ErrorHandler:    createErrorHandler(app),
 	}
 
 	// Trusted proxies must reach Fiber, otherwise the setting is accepted and
@@ -125,8 +123,8 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 		if proxyHeader == "" {
 			proxyHeader = fiber.HeaderXForwardedFor
 		}
-		fiberConfig.EnableTrustedProxyCheck = true
-		fiberConfig.TrustedProxies = cfg.TrustedProxies
+		fiberConfig.TrustProxy = true
+		fiberConfig.TrustProxyConfig = fiber.TrustProxyConfig{Proxies: cfg.TrustedProxies}
 		fiberConfig.ProxyHeader = proxyHeader
 	}
 
@@ -141,6 +139,11 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 		fiber:      fiberApp,
 		middleware: make([]MiddlewareFunc, 0),
 		logger:     logger,
+		listen: fiber.ListenConfig{
+			EnablePrefork:         cfg.Prefork,
+			EnablePrintRoutes:     cfg.EnablePrintRoutes,
+			DisableStartupMessage: cfg.DisableStartupMessage,
+		},
 	}
 
 	// Create router
@@ -187,8 +190,8 @@ func NewKernel(app contracts.Application, config ...KernelConfig) *Kernel {
 // header count covers the remaining case, a request whose line and
 // headers arrived and whose body then timed out: that context carries a
 // genuine path and method, and the failure is a genuine request's.
-func isPreRequestConnectionError(c *fiber.Ctx) bool {
-	fctx := c.Context()
+func isPreRequestConnectionError(c fiber.Ctx) bool {
+	fctx := c.RequestCtx()
 	if fctx == nil {
 		return false
 	}
@@ -197,7 +200,7 @@ func isPreRequestConnectionError(c *fiber.Ctx) bool {
 
 // createErrorHandler creates the Fiber error handler.
 func createErrorHandler(app contracts.Application) fiber.ErrorHandler {
-	return func(c *fiber.Ctx, err error) error {
+	return func(c fiber.Ctx, err error) error {
 		// A connection that broke before its first request arrived is not
 		// an application error, and passing it down would report it as one
 		// against a path and method the client never sent. Debug keeps it
@@ -279,7 +282,7 @@ func createErrorHandler(app contracts.Application) fiber.ErrorHandler {
 				"error":   message,
 				"status":  code,
 				"success": false,
-			})
+			}, fiber.MIMEApplicationJSON)
 		}
 
 		// Return plain text for other requests
@@ -318,7 +321,7 @@ func (k *Kernel) Run(addr string) error {
 		k.logger.Info("Starting HTTP server", "address", addr)
 	}
 
-	return k.fiber.Listen(addr)
+	return k.fiber.Listen(addr, k.listen)
 }
 
 // RunTLS starts the HTTP server with TLS.
@@ -327,7 +330,16 @@ func (k *Kernel) RunTLS(addr, certFile, keyFile string) error {
 		k.logger.Info("Starting HTTPS server", "address", addr)
 	}
 
-	return k.fiber.ListenTLS(addr, certFile, keyFile)
+	// Fiber v3's Listen serves plaintext when both paths are empty, so a
+	// missing certificate has to be refused here rather than downgraded.
+	if certFile == "" || keyFile == "" {
+		return fiber.ErrCertFileAndKeyRequired
+	}
+
+	listen := k.listen
+	listen.CertFile = certFile
+	listen.CertKeyFile = keyFile
+	return k.fiber.Listen(addr, listen)
 }
 
 // RunWithGracefulShutdown starts the server with graceful shutdown support.
@@ -340,7 +352,7 @@ func (k *Kernel) RunWithGracefulShutdown(addr string, timeout time.Duration) err
 		if k.logger != nil {
 			k.logger.Info("Starting HTTP server with graceful shutdown", "address", addr)
 		}
-		errChan <- k.fiber.Listen(addr)
+		errChan <- k.fiber.Listen(addr, k.listen)
 	}()
 
 	// Channel to listen for interrupt signals
@@ -390,7 +402,7 @@ func (k *Kernel) ShutdownWithContext(ctx context.Context) error {
 // Test returns a test client for the application.
 // Useful for testing HTTP handlers.
 func (k *Kernel) Test(req *TestRequest) (*TestResponse, error) {
-	resp, err := k.fiber.Test(req.toHTTPRequest(), -1)
+	resp, err := k.fiber.Test(req.toHTTPRequest(), fiber.TestConfig{Timeout: 0})
 	if err != nil {
 		return nil, err
 	}

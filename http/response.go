@@ -9,24 +9,24 @@ import (
 	"strings"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Response wraps Fiber's response to provide a Laravel-like API.
 type Response struct {
-	ctx  *fiber.Ctx
+	ctx  fiber.Ctx
 	sent bool
 }
 
 // NewResponse creates a new Response wrapper.
-func NewResponse(ctx *fiber.Ctx) *Response {
+func NewResponse(ctx fiber.Ctx) *Response {
 	return &Response{
 		ctx: ctx,
 	}
 }
 
 // FiberCtx returns the underlying Fiber context.
-func (r *Response) FiberCtx() *fiber.Ctx {
+func (r *Response) FiberCtx() fiber.Ctx {
 	return r.ctx
 }
 
@@ -86,7 +86,7 @@ func (r *Response) String(s string) error {
 // JSON sends a JSON response.
 func (r *Response) JSON(v any) error {
 	r.sent = true
-	return r.ctx.JSON(v)
+	return r.ctx.JSON(v, fiber.MIMEApplicationJSON)
 }
 
 // PrettyJSON sends a pretty-printed JSON response.
@@ -146,7 +146,7 @@ func (r *Response) Redirect(url string, status ...int) error {
 	if len(status) > 0 {
 		code = status[0]
 	}
-	return r.ctx.Redirect(url, code)
+	return r.ctx.Redirect().Status(code).To(url)
 }
 
 // RedirectBack redirects to the previous page, as reported by the Referer
@@ -166,11 +166,11 @@ func (r *Response) RedirectBack(fallback ...string) error {
 		target = fallback[0]
 	}
 
-	if referer := r.ctx.Get("Referer"); sameHostRedirect(referer, r.ctx.Hostname()) {
+	if referer := r.ctx.Get("Referer"); sameHostRedirect(referer, r.ctx.Host()) {
 		target = referer
 	}
 
-	return r.ctx.Redirect(target)
+	return r.ctx.Redirect().Status(fiber.StatusFound).To(target)
 }
 
 // sameHostRedirect reports whether target is a safe same-host redirect
@@ -235,7 +235,7 @@ func (r *Response) RedirectRoute(name string, params ...map[string]any) error {
 	}
 
 	r.sent = true
-	return r.ctx.Redirect(target)
+	return r.ctx.Redirect().Status(fiber.StatusFound).To(target)
 }
 
 // NoContent sends a 204 No Content response.

@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -56,7 +57,7 @@ func TestAuthMiddlewareRedirectsBrowsers(t *testing.T) {
 	// Browser request: redirected to the login page.
 	req := httptest.NewRequest("GET", "/dashboard", nil)
 	req.Header.Set("Accept", "text/html")
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 302, resp.StatusCode)
 	assert.Equal(t, "/login", resp.Header.Get("Location"))
@@ -64,7 +65,7 @@ func TestAuthMiddlewareRedirectsBrowsers(t *testing.T) {
 	// API request: still a 401.
 	req = httptest.NewRequest("GET", "/dashboard", nil)
 	req.Header.Set("Accept", "application/json")
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 }
@@ -85,11 +86,11 @@ func TestGuestMiddleware(t *testing.T) {
 		return ctx.String("login page")
 	}, auth.GuestMiddleware(never, "/home"))
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/login-auth", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/login-auth", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 302, resp.StatusCode, "authenticated users are redirected away")
 
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/login-guest", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/login-guest", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
@@ -104,11 +105,11 @@ func TestTokenGuardQueryParamFallback(t *testing.T) {
 		return ctx.String("ok")
 	}, auth.Middleware(tokenGuard))
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/query-auth?api_token=token-123", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/query-auth?api_token=token-123", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/query-auth?api_token=wrong", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/query-auth?api_token=wrong", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 }

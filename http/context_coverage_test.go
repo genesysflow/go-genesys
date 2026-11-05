@@ -12,7 +12,7 @@ import (
 
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/validation"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -49,7 +49,7 @@ func TestContextValidatePasses(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := fiberApp.Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := fiberApp.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -66,7 +66,7 @@ func TestContextValidateFails(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := fiberApp.Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := fiberApp.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -125,15 +125,15 @@ func TestContextNextPropagatesError(t *testing.T) {
 func TestContextNextFallsThroughToFiber(t *testing.T) {
 	app := newTestApp()
 	app.Get("/chain",
-		func(c *fiber.Ctx) error {
+		func(c fiber.Ctx) error {
 			return NewContext(c, &mockApplication{}).Next()
 		},
-		func(c *fiber.Ctx) error {
+		func(c fiber.Ctx) error {
 			return c.SendString("second handler")
 		},
 	)
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/chain", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/chain", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -161,7 +161,7 @@ func TestRouterMiddlewarePopulatesContextNext(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -189,7 +189,7 @@ func TestRouterMiddlewareContextNextStopsWhenNotCalled(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -213,7 +213,7 @@ func TestRouterHandlerNextDoesNotRecurse(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	_, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	_, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 1, calls)
 }
@@ -251,7 +251,7 @@ func TestContextAbortWithErrorStopsTheChain(t *testing.T) {
 		return ctx.String("should not run")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, 401, resp.StatusCode)

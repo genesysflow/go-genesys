@@ -3,11 +3,13 @@ package session
 
 import (
 	"encoding/gob"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/session"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/extractors"
+	"github.com/gofiber/fiber/v3/middleware/session"
 )
 
 func init() {
@@ -117,14 +119,25 @@ func NewManager(config ...Config) *Manager {
 		cfg.KeyLookup = "cookie:" + cfg.CookieName
 	}
 
+	// Unset fields keep the defaults Fiber v2 gave them: a 24 hour
+	// lifetime (v3 would use 30 minutes) and the "session_id" cookie.
+	expiration := cfg.Expiration
+	if expiration <= 0 {
+		expiration = 24 * time.Hour
+	}
+	keyLookup := cfg.KeyLookup
+	if keyLookup == "" {
+		keyLookup = "cookie:session_id"
+	}
+
 	fiberConfig := session.Config{
-		Expiration:     cfg.Expiration,
+		IdleTimeout:    expiration,
 		CookiePath:     cfg.CookiePath,
 		CookieDomain:   cfg.CookieDomain,
 		CookieSecure:   cfg.CookieSecure,
 		CookieHTTPOnly: cfg.CookieHTTPOnly,
 		CookieSameSite: cfg.CookieSameSite,
-		KeyLookup:      cfg.KeyLookup,
+		Extractor:      extractorFor(keyLookup),
 	}
 
 	if cfg.CustomStorage != nil {
@@ -140,7 +153,12 @@ func NewManager(config ...Config) *Manager {
 	}
 	// "memory" (and unknown drivers) use Fiber's in-memory default.
 
-	store := session.New(fiberConfig)
+	if fiberConfig.Storage != nil {
+		// A persistent store may still hold sessions written by Fiber v2.
+		fiberConfig.Storage = &legacyPayloadStorage{Storage: fiberConfig.Storage}
+	}
+
+	store := session.NewStore(fiberConfig)
 
 	return &Manager{
 		store:   store,
@@ -154,8 +172,34 @@ func (m *Manager) Store() *session.Store {
 	return m.store
 }
 
+// extractorFor maps a "source:name" key lookup onto a Fiber extractor. A
+// lookup without a known source is read as a cookie name.
+func extractorFor(keyLookup string) extractors.Extractor {
+	source, name, found := strings.Cut(keyLookup, ":")
+	if !found {
+		return extractors.FromCookie(keyLookup)
+	}
+	switch source {
+	case "header":
+		return extractors.FromHeader(name)
+	case "query":
+		return extractors.FromQuery(name)
+	case "form":
+		return extractors.FromForm(name)
+	case "param":
+		return extractors.FromParam(name)
+	default:
+		return extractors.FromCookie(name)
+	}
+}
+
 // Get retrieves or creates a session for the given Fiber context.
-func (m *Manager) Get(c *fiber.Ctx) (*Session, error) {
+//
+// The Fiber session is not released back to Fiber's pool: the returned
+// Session is handed to user code (guards, ctx.Session()) and may outlive
+// the request, and a pooled session reused under it would serve another
+// request's data.
+func (m *Manager) Get(c fiber.Ctx) (*Session, error) {
 	sess, err := m.store.Get(c)
 	if err != nil {
 		return nil, err
@@ -183,7 +227,7 @@ func (m *Manager) Get(c *fiber.Ctx) (*Session, error) {
 
 // Middleware returns Fiber middleware for session handling.
 func (m *Manager) Middleware() fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		sess, err := m.Get(c)
 		if err != nil {
 			return err
@@ -311,8 +355,7 @@ func (s *Session) Flush() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	keys := s.store.Keys()
-	for _, key := range keys {
+	for _, key := range s.store.Keys() {
 		s.store.Delete(key)
 	}
 	s.oldFlash = make(map[string]any)
@@ -410,7 +453,9 @@ func (s *Session) All() map[string]any {
 
 	data := make(map[string]any)
 	for _, key := range s.store.Keys() {
-		data[key] = s.store.Get(key)
+		if name, ok := key.(string); ok {
+			data[name] = s.store.Get(name)
+		}
 	}
 	return data
 }
@@ -469,7 +514,7 @@ type Driver interface {
 }
 
 // GetFromContext retrieves the session from Fiber context.
-func GetFromContext(c *fiber.Ctx) *Session {
+func GetFromContext(c fiber.Ctx) *Session {
 	sess := c.Locals("session")
 	if sess == nil {
 		return nil

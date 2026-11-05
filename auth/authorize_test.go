@@ -1,6 +1,7 @@
 package auth_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"testing"
 
@@ -43,7 +44,7 @@ func TestContextCanUsesTheBoundGate(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/can", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/can", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -58,7 +59,7 @@ func TestContextCanDeniesWithoutGate(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/no-gate", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/no-gate", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -70,7 +71,7 @@ func TestContextAuthorizeReturns403(t *testing.T) {
 		return ctx.Authorize("update", &Post{AuthorID: 1})
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/authorize", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/authorize", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 }
@@ -86,7 +87,7 @@ func TestGateIsSharedWithViews(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/view-data", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/view-data", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -122,7 +123,7 @@ func TestCanMiddleware(t *testing.T) {
 		return ctx.String("edit")
 	}).Middleware(auth.Can[User](gate, "update", "user"))
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users/1/edit", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users/1/edit", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.True(t, handlerRan)
@@ -130,7 +131,7 @@ func TestCanMiddleware(t *testing.T) {
 	// Acting as someone else, the same route is forbidden.
 	actingAs = 2
 	handlerRan = false
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/1/edit", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/1/edit", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 	assert.False(t, handlerRan, "the handler must not run for a denied request")
@@ -152,7 +153,7 @@ func TestCanMiddlewareMissingModelIs404(t *testing.T) {
 		return ctx.String("show")
 	}).Middleware(auth.Can[User](gate, "update", "user"))
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users/999", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users/999", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 }
@@ -174,12 +175,12 @@ func TestCanAnyMiddleware(t *testing.T) {
 		return ctx.String("created")
 	}).Middleware(auth.CanAny[User](gate, "create"))
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("POST", "/users", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("POST", "/users", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
 	authenticated = false
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("POST", "/users", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("POST", "/users", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 }
@@ -202,17 +203,17 @@ func TestCanByMiddlewareBindsOnAColumn(t *testing.T) {
 		return ctx.String("edit")
 	}).Middleware(auth.CanBy[User](gate, "update", "user", "email"))
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users/alice@example.com/edit", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/users/alice@example.com/edit", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
 	actingAs = 2
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/alice@example.com/edit", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/alice@example.com/edit", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 
 	// An address nobody has is a 404, not a 403.
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/nobody@example.com/edit", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/users/nobody@example.com/edit", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 }

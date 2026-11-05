@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	"github.com/genesysflow/go-genesys/view"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // DefaultMethodField is the form field an HTML form declares its real
@@ -74,7 +74,7 @@ func MethodOverride(config ...MethodOverrideConfig) fiber.Handler {
 		cfg.HeaderName = DefaultMethodHeader
 	}
 
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// A verb is only ever spoofed upwards, from the POST a form was
 		// able to send. Rewriting anything else would let a request that
 		// needed no user intent at all turn into one that changes state.
@@ -100,7 +100,7 @@ func MethodOverride(config ...MethodOverrideConfig) fiber.Handler {
 //
 // Fiber's FormValue cannot be used here: it consults the query arguments
 // first, which is precisely the source this must not trust.
-func declaredMethod(c *fiber.Ctx, cfg MethodOverrideConfig) string {
+func declaredMethod(c fiber.Ctx, cfg MethodOverrideConfig) string {
 	if value := c.Request().PostArgs().Peek(cfg.FieldName); len(value) > 0 {
 		return string(value)
 	}
@@ -126,7 +126,7 @@ func declaredMethod(c *fiber.Ctx, cfg MethodOverrideConfig) string {
 
 // isMultipart reports whether the body is a multipart form, the only
 // case in which parsing one is worth the cost.
-func isMultipart(c *fiber.Ctx) bool {
+func isMultipart(c fiber.Ctx) bool {
 	return strings.HasPrefix(
 		strings.ToLower(strings.TrimSpace(string(c.Request().Header.ContentType()))),
 		fiber.MIMEMultipartForm,

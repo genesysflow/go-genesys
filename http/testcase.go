@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/gofiber/fiber/v3"
 	"reflect"
 	"strconv"
 	"strings"
@@ -62,7 +63,7 @@ func (tc *TestCase) Do(request *TestRequest) *TestResponse {
 		}
 	}
 
-	resp, err := tc.kernel.Fiber().Test(request.toHTTPRequest(), -1)
+	resp, err := tc.kernel.Fiber().Test(request.toHTTPRequest(), fiber.TestConfig{Timeout: 0})
 	if err != nil {
 		tc.t.Helper()
 		tc.t.Errorf("http test: request %s %s failed: %v", request.method, request.path, err)

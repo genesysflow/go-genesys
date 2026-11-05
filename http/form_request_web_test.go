@@ -2,6 +2,7 @@ package http_test
 
 import (
 	stderrors "errors"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"net/url"
@@ -62,7 +63,7 @@ func postInvalidForm(t *testing.T, k *genhttp.Kernel, headers map[string]string)
 		req.Header.Set(key, value)
 	}
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, _ := io.ReadAll(resp.Body)
@@ -80,7 +81,7 @@ func TestValidationFailureRedirectsBrowserRequests(t *testing.T) {
 
 	follow := httptest.NewRequest("GET", "/users/create", nil)
 	follow.Header.Set("Cookie", cookie)
-	followResp, err := k.Fiber().Test(follow, -1)
+	followResp, err := k.Fiber().Test(follow, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, _ := io.ReadAll(followResp.Body)
@@ -102,7 +103,7 @@ func TestValidationRedirectTargetsReferer(t *testing.T) {
 	req.Header.Set("Accept", "text/html")
 	req.Header.Set("Referer", "/users/create")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 302, resp.StatusCode)
 	assert.Equal(t, "/users/create", resp.Header.Get("Location"))
@@ -143,7 +144,7 @@ func TestValidationFailureFallsBackToJSONWithoutSession(t *testing.T) {
 	req.Header.Set("Accept", "text/html")
 	req.Header.Set("Referer", "/users/create")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 422, resp.StatusCode)
 }
@@ -168,14 +169,14 @@ func TestSessionIsSavedWhenHandlerReturnsError(t *testing.T) {
 		return ctx.String(value)
 	})
 
-	failResp, err := k.Fiber().Test(httptest.NewRequest("GET", "/flash-then-fail", nil), -1)
+	failResp, err := k.Fiber().Test(httptest.NewRequest("GET", "/flash-then-fail", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	cookie := failResp.Header.Get("Set-Cookie")
 	require.NotEmpty(t, cookie, "session cookie should be issued even when the handler fails")
 
 	read := httptest.NewRequest("GET", "/read-marker", nil)
 	read.Header.Set("Cookie", cookie)
-	readResp, err := k.Fiber().Test(read, -1)
+	readResp, err := k.Fiber().Test(read, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, _ := io.ReadAll(readResp.Body)

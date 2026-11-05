@@ -2,6 +2,7 @@ package middleware_test
 
 import (
 	"encoding/base64"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"strconv"
@@ -48,7 +49,7 @@ func TestRateLimiterConcurrentAccess(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+			resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 			assert.NoError(t, err)
 			if resp != nil {
 				assert.Equal(t, 200, resp.StatusCode)
@@ -66,7 +67,7 @@ func TestRateLimiterEnforcesLimit(t *testing.T) {
 
 	var statuses []int
 	for range 5 {
-		resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+		resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 		require.NoError(t, err)
 		statuses = append(statuses, resp.StatusCode)
 	}
@@ -82,10 +83,10 @@ func TestRateLimiterRetryAfterIsSeconds(t *testing.T) {
 	k.Use(middleware.RateLimiter(1, 90*time.Second))
 	k.GET("/", func(ctx *genhttp.Context) error { return ctx.String("ok") })
 
-	_, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	_, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 429, resp.StatusCode)
 
@@ -131,7 +132,7 @@ func TestBasicAuthRejectsInvalidCredentials(t *testing.T) {
 				req.Header.Set("Authorization", tc.header)
 			}
 
-			resp, err := k.Fiber().Test(req, -1)
+			resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, resp.StatusCode)
 
@@ -176,7 +177,7 @@ func TestTimeoutDoesNotOutliveTheRequest(t *testing.T) {
 		return ctx.Request().Context().Err()
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/slow", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/slow", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 408, resp.StatusCode)
 
@@ -193,7 +194,7 @@ func TestTimeoutPassesThroughFastHandlers(t *testing.T) {
 	k.Use(middleware.Timeout(2 * time.Second))
 	k.GET("/", func(ctx *genhttp.Context) error { return ctx.String("quick") })
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
@@ -215,7 +216,7 @@ func TestSecureHSTSHeaderIsWellFormed(t *testing.T) {
 	}))
 	k.GET("/", func(ctx *genhttp.Context) error { return ctx.String("ok") })
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	hsts := resp.Header.Get("Strict-Transport-Security")
@@ -231,7 +232,7 @@ func TestSecureOmitsHSTSByDefault(t *testing.T) {
 	k.Use(middleware.Secure())
 	k.GET("/", func(ctx *genhttp.Context) error { return ctx.String("ok") })
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Header.Get("Strict-Transport-Security"))
 }
@@ -249,7 +250,7 @@ func TestCORSSetsVaryOnOrigin(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Origin", "https://app.example.com")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, "https://app.example.com", resp.Header.Get("Access-Control-Allow-Origin"))
@@ -267,7 +268,7 @@ func TestCORSRejectsUnlistedOrigin(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Origin", "https://evil.example")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Empty(t, resp.Header.Get("Access-Control-Allow-Origin"))
@@ -299,7 +300,7 @@ func TestCORSCredentialsWithExplicitOrigins(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Origin", "https://app.example.com")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, "true", resp.Header.Get("Access-Control-Allow-Credentials"))

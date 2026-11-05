@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"encoding/json"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	nethttp "net/http"
 	"net/http/httptest"
@@ -116,21 +117,21 @@ func TestSessionLoginFlow(t *testing.T) {
 	kernel, _, _ := setupAuthApp(t)
 
 	// Unauthenticated request is rejected.
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/me", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/me", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 
 	// Wrong password is rejected.
 	req := httptest.NewRequest("POST", "/login", strings.NewReader(`{"email":"alice@example.com","password":"wrong"}`))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 
 	// Correct credentials log in and set a session cookie.
 	req = httptest.NewRequest("POST", "/login", strings.NewReader(`{"email":"alice@example.com","password":"secret-password"}`))
 	req.Header.Set("Content-Type", "application/json")
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	cookies := cookieHeader(resp)
@@ -139,7 +140,7 @@ func TestSessionLoginFlow(t *testing.T) {
 	// The session cookie authenticates subsequent requests.
 	req = httptest.NewRequest("GET", "/me", nil)
 	req.Header.Set("Cookie", cookies)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	var me map[string]any
@@ -149,13 +150,13 @@ func TestSessionLoginFlow(t *testing.T) {
 	// Logout invalidates the session.
 	req = httptest.NewRequest("POST", "/logout", nil)
 	req.Header.Set("Cookie", cookies)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 204, resp.StatusCode)
 
 	req = httptest.NewRequest("GET", "/me", nil)
 	req.Header.Set("Cookie", cookies)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 }
@@ -163,19 +164,19 @@ func TestSessionLoginFlow(t *testing.T) {
 func TestTokenGuard(t *testing.T) {
 	kernel, _, _ := setupAuthApp(t)
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/api/me", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/api/me", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 
 	req := httptest.NewRequest("GET", "/api/me", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 
 	req = httptest.NewRequest("GET", "/api/me", nil)
 	req.Header.Set("Authorization", "Bearer token-123")
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)

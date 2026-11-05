@@ -5,6 +5,67 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: the HTTP layer runs on Fiber v3 (v3.6.1).** Fiber v2 is
+  deprecated upstream. Code that only uses Go-Genesys's own types
+  (`*http.Context`, `Request`, `Response`, routers, middleware) needs no
+  change. Code that reaches Fiber directly does, because these exported
+  signatures now carry Fiber v3 types:
+  - `Context.FiberCtx()`, `Request.FiberCtx()`, `Response.FiberCtx()`,
+    `NewContext`, `NewRequest` and `NewResponse` take or return
+    `fiber.Ctx`, an interface, instead of `*fiber.Ctx`;
+  - `Kernel.Fiber()` returns a v3 `*fiber.App`, and `Kernel.UseFiber`,
+    `KernelConfig.PreRouting`, `middleware.MethodOverride`,
+    `broadcast.Hub.Handler` and the session middleware use v3
+    `fiber.Handler`;
+  - `session.Manager.Get` and `session.GetFromContext` take `fiber.Ctx`,
+    `Manager.Store` returns a v3 `*session.Store`, and
+    `session.Config.CustomStorage` is a v3 `fiber.Storage`, which adds
+    `GetWithContext`, `SetWithContext`, `DeleteWithContext` and
+    `ResetWithContext`. The file, database, Redis and lazy storages
+    implement them.
+
+  Fiber's own [v3 migration guide](https://docs.gofiber.io/whats_new)
+  covers handlers written against Fiber directly. Behaviour seen by
+  clients is kept: redirects still default to 302 (v3 defaults to 303),
+  JSON responses still carry `Content-Type: application/json` (v3 adds
+  `; charset=utf-8`), and a session still lasts 24 hours in a
+  `session_id` cookie when the config leaves those unset (v3 would use
+  30 minutes). `Request.Host()`, `FullURL()`, domain routing and the
+  same-host check on back-redirects keep the port, which v3's
+  `Hostname()` drops; on a non-default port, `RedirectBack` would
+  otherwise refuse every same-site referer. Sessions saved under Fiber v2 in file, database or Redis
+  storage still load: v3 cannot decode v2's session encoding, so the
+  manager converts it on read and the next save stores the new form.
+  `Kernel.RunTLS` refuses an empty certificate or key path, since v3's
+  `Listen` would otherwise serve plaintext.
+- **Go 1.26 is now the minimum version.** Every release of
+  `golang.org/x/net` and `golang.org/x/crypto` that carries the fixes
+  below requires go >= 1.26.0, so the module's `go` directive moves up
+  from 1.25.0. Go 1.25 is no longer supported upstream.
+- **Every dependency is on its latest release within its major
+  version.** Notable moves: `valyala/fasthttp` v1.73.0 -> v1.77.0, `modernc.org/sqlite` v1.57.0 ->
+  v1.61.1, `redis/go-redis/v9` v9.22.0 -> v9.23.0,
+  `go-playground/validator/v10` v10.30.3 -> v10.30.6,
+  `klauspost/compress` v1.19.2 -> v1.20.3, and the AWS SDK v2 family
+  (`service/s3` v1.107.3 -> v1.114.7). `gofiber/websocket/v2` is replaced
+  by `gofiber/contrib/v3/websocket` v1.2.12.
+
+### Security
+
+- **`golang.org/x/net` v0.58.0 -> v0.62.0.** Fixes GO-2026-6603,
+  GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617 (HTTP/2
+  server and transport) and GO-2026-6860 and GO-2026-6866 (`html`
+  parser).
+- **`golang.org/x/crypto` v0.55.0 -> v0.58.0.** Fixes GO-2026-6354 and
+  GO-2026-6355 (`ssh` channel DoS). GO-2026-5932, which marks the
+  unmaintained `openpgp` package, is fixed only in an untagged commit so
+  far. Go-Genesys does not import `openpgp`.
+- `golang.org/x/sys`, `x/term` and `x/text` move to the versions those
+  releases require, and `github.com/gabriel-vasile/mimetype` moves off
+  the retracted v1.4.15 to v1.4.16.
+
 ## [1.3.0] - 2026-10-12
 
 ### Added

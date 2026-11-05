@@ -1,6 +1,7 @@
 package http_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"net/url"
@@ -76,7 +77,7 @@ func TestViewReceivesErrorsAndOldInput(t *testing.T) {
 	post.Header.Set("Accept", "text/html")
 	post.Header.Set("Referer", "/users/create")
 
-	postResp, err := k.Fiber().Test(post, -1)
+	postResp, err := k.Fiber().Test(post, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 302, postResp.StatusCode)
 	cookie := postResp.Header.Get("Set-Cookie")
@@ -84,7 +85,7 @@ func TestViewReceivesErrorsAndOldInput(t *testing.T) {
 
 	get := httptest.NewRequest("GET", "/users/create", nil)
 	get.Header.Set("Cookie", cookie)
-	getResp, err := k.Fiber().Test(get, -1)
+	getResp, err := k.Fiber().Test(get, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, _ := io.ReadAll(getResp.Body)
@@ -109,7 +110,7 @@ func TestViewErrorsBagPresentWithoutSession(t *testing.T) {
 		return ctx.View("plain")
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/plain", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/plain", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -133,14 +134,14 @@ func TestViewReceivesUserAndSession(t *testing.T) {
 		return ctx.View("dash")
 	})
 
-	setResp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set-status", nil), -1)
+	setResp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set-status", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	cookie := setResp.Header.Get("Set-Cookie")
 	require.NotEmpty(t, cookie)
 
 	get := httptest.NewRequest("GET", "/dash", nil)
 	get.Header.Set("Cookie", cookie)
-	getResp, err := k.Fiber().Test(get, -1)
+	getResp, err := k.Fiber().Test(get, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, _ := io.ReadAll(getResp.Body)
@@ -158,7 +159,7 @@ func TestViewDataOverridesSharedKeys(t *testing.T) {
 		return ctx.View("custom", map[string]any{"errors": "mine"})
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/custom", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/custom", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	body, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, "mine", string(body))
@@ -179,7 +180,7 @@ func TestViewDoesNotMutateCallerData(t *testing.T) {
 		return ctx.View("shared", shared)
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/shared", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/shared", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -224,7 +225,7 @@ func TestContextViewUsesTheLayout(t *testing.T) {
 func getBody(t *testing.T, kernel *genhttp.Kernel, path string) string {
 	t.Helper()
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 

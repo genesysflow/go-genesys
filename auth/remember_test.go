@@ -3,6 +3,7 @@ package auth_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -86,7 +87,7 @@ func setupRememberApp(t *testing.T) (*genhttp.Kernel, *auth.SessionGuard) {
 func TestRememberMeSurvivesLostSession(t *testing.T) {
 	kernel, _ := setupRememberApp(t)
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("POST", "/login-remember", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("POST", "/login-remember", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -104,7 +105,7 @@ func TestRememberMeSurvivesLostSession(t *testing.T) {
 	// Simulate an expired session: send ONLY the remember cookie.
 	req := httptest.NewRequest("GET", "/me", nil)
 	req.Header.Set("Cookie", "remember_web="+rememberCookie)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode, "remember cookie re-authenticates")
 
@@ -128,7 +129,7 @@ func TestRememberMeRejectsBadCookies(t *testing.T) {
 		if cookie != "" {
 			req.Header.Set("Cookie", "remember_web="+cookie)
 		}
-		resp, err := kernel.Fiber().Test(req, -1)
+		resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 		require.NoError(t, err)
 		return resp.StatusCode
 	}
@@ -142,7 +143,7 @@ func TestRememberMeRejectsBadCookies(t *testing.T) {
 func TestLogoutCyclesRememberToken(t *testing.T) {
 	kernel, _ := setupRememberApp(t)
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("POST", "/login-remember", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("POST", "/login-remember", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	var rememberCookie, sessionCookie string
 	for _, c := range resp.Cookies() {
@@ -158,14 +159,14 @@ func TestLogoutCyclesRememberToken(t *testing.T) {
 	// Logout with both cookies present.
 	req := httptest.NewRequest("POST", "/logout", nil)
 	req.Header.Set("Cookie", "test_session="+sessionCookie+"; remember_web="+rememberCookie)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
 	// The old remember cookie no longer authenticates: token was cycled.
 	req = httptest.NewRequest("GET", "/me", nil)
 	req.Header.Set("Cookie", "remember_web="+rememberCookie)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 401, resp.StatusCode)
 }

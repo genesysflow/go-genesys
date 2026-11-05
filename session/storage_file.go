@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -111,6 +112,38 @@ func (s *FileStorage) Reset() error {
 		}
 	}
 	return nil
+}
+
+// GetWithContext is Get, refused once ctx is done.
+func (s *FileStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.Get(key)
+}
+
+// SetWithContext is Set, refused once ctx is done.
+func (s *FileStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Set(key, val, exp)
+}
+
+// DeleteWithContext is Delete, refused once ctx is done.
+func (s *FileStorage) DeleteWithContext(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Delete(key)
+}
+
+// ResetWithContext is Reset, refused once ctx is done.
+func (s *FileStorage) ResetWithContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Reset()
 }
 
 // Close is a no-op for file storage.

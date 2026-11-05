@@ -3,6 +3,7 @@ package http_test
 import (
 	"errors"
 	"fmt"
+	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"testing"
@@ -42,7 +43,7 @@ func TestErrorHandlerDoesNotLeakInternalErrors(t *testing.T) {
 	req := httptest.NewRequest("GET", "/boom", nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 500, resp.StatusCode)
 
@@ -66,7 +67,7 @@ func TestErrorHandlerKeepsDeliberateMessages(t *testing.T) {
 	req := httptest.NewRequest("GET", "/missing", nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 
@@ -87,7 +88,7 @@ func TestErrorHandlerClassifiesWrappedErrors(t *testing.T) {
 	req := httptest.NewRequest("GET", "/wrapped", nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 }

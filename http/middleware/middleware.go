@@ -16,7 +16,7 @@ import (
 	"github.com/genesysflow/go-genesys/container"
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/http"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 )
 
@@ -193,7 +193,7 @@ var DefaultCORSConfig = CORSConfig{
 // abort at the deadline, and the resulting error propagates normally.
 //
 // It deliberately does NOT run the handler on a separate goroutine and abandon
-// it at the deadline. Fiber returns *fiber.Ctx to a pool once the handler
+// it at the deadline. Fiber returns fiber.Ctx to a pool once the handler
 // chain returns, so an abandoned goroutine would keep writing into a context
 // that has already been recycled onto another connection — corrupting an
 // unrelated client's response and racing on every field of the context. A
@@ -207,13 +207,13 @@ var DefaultCORSConfig = CORSConfig{
 func Timeout(timeout time.Duration) http.MiddlewareFunc {
 	return func(ctx *http.Context, next func() error) error {
 		fiberCtx := ctx.FiberCtx()
-		previous := fiberCtx.UserContext()
+		previous := fiberCtx.Context()
 
 		timedCtx, cancel := context.WithTimeout(previous, timeout)
 		defer cancel()
 
-		fiberCtx.SetUserContext(timedCtx)
-		defer fiberCtx.SetUserContext(previous)
+		fiberCtx.SetContext(timedCtx)
+		defer fiberCtx.SetContext(previous)
 
 		err := next()
 

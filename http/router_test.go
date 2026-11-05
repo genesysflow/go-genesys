@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -50,9 +50,7 @@ func (m *mockApplication) GetConfig() contracts.Config                       { r
 func (m *mockApplication) GetLogger() contracts.Logger                       { return nil }
 
 func newTestApp() *fiber.App {
-	return fiber.New(fiber.Config{
-		DisableStartupMessage: true,
-	})
+	return fiber.New()
 }
 
 func TestNewRouter(t *testing.T) {

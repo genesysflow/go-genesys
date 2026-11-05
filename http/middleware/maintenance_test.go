@@ -1,6 +1,7 @@
 package middleware_test
 
 import (
+	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -28,7 +29,7 @@ func TestMaintenanceMode(t *testing.T) {
 	kernel := maintenanceKernel(t, downPath)
 
 	// No down file: traffic flows.
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
@@ -36,7 +37,7 @@ func TestMaintenanceMode(t *testing.T) {
 	require.NoError(t, os.WriteFile(downPath,
 		[]byte(`{"message":"Back soon","retry_after":120,"secret":"letmein"}`), 0o644))
 
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 503, resp.StatusCode)
 	assert.Equal(t, "120", resp.Header.Get("Retry-After"))
@@ -45,7 +46,7 @@ func TestMaintenanceMode(t *testing.T) {
 	assert.Contains(t, string(body[:n]), "Back soon")
 
 	// The secret bypasses and plants a cookie.
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/?secret=letmein", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/?secret=letmein", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	var bypassCookie string
@@ -59,17 +60,17 @@ func TestMaintenanceMode(t *testing.T) {
 	// The cookie alone keeps working; a wrong secret does not.
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Cookie", "genesys_maintenance="+bypassCookie)
-	resp, err = kernel.Fiber().Test(req, -1)
+	resp, err = kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/?secret=wrong", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/?secret=wrong", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 503, resp.StatusCode)
 
 	// Removing the file restores traffic instantly.
 	require.NoError(t, os.Remove(downPath))
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
