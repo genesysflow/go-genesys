@@ -1,7 +1,6 @@
 package http_test
 
 import (
-	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +14,7 @@ import (
 	"github.com/genesysflow/go-genesys/providers"
 	"github.com/genesysflow/go-genesys/session"
 	"github.com/genesysflow/go-genesys/view"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

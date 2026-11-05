@@ -1,12 +1,12 @@
 package http_test
 
 import (
-	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"testing"
 
 	genhttp "github.com/genesysflow/go-genesys/http"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

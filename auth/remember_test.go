@@ -3,7 +3,6 @@ package auth_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -14,6 +13,7 @@ import (
 	"github.com/genesysflow/go-genesys/hash"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/session"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"

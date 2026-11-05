@@ -1,13 +1,13 @@
 package auth_test
 
 import (
-	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/genesysflow/go-genesys/auth"
 	genhttp "github.com/genesysflow/go-genesys/http"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

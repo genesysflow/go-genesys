@@ -2,7 +2,6 @@ package auth_test
 
 import (
 	"encoding/json"
-	"github.com/gofiber/fiber/v3"
 	"io"
 	nethttp "net/http"
 	"net/http/httptest"
@@ -15,6 +14,7 @@ import (
 	"github.com/genesysflow/go-genesys/hash"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/session"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"

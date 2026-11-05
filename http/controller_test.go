@@ -2,12 +2,12 @@ package http
 
 import (
 	"encoding/json"
-	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

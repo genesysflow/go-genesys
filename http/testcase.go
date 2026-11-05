@@ -3,10 +3,11 @@ package http
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gofiber/fiber/v3"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 // TestingT is the subset of *testing.T the assertion helpers need.

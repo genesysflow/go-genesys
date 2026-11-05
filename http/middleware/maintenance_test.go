@@ -1,7 +1,6 @@
 package middleware_test
 
 import (
-	"github.com/gofiber/fiber/v3"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -2,7 +2,6 @@ package middleware_test
 
 import (
 	"encoding/base64"
-	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
 	"github.com/genesysflow/go-genesys/providers"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

@@ -2,7 +2,6 @@ package http_test
 
 import (
 	stderrors "errors"
-	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"net/url"
@@ -13,6 +12,7 @@ import (
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/providers"
 	"github.com/genesysflow/go-genesys/session"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

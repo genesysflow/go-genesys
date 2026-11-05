@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/gofiber/fiber/v3"
 	"io"
 	"net/http/httptest"
 	"os"
@@ -16,6 +15,7 @@ import (
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
 	"github.com/genesysflow/go-genesys/providers"
+	"github.com/gofiber/fiber/v3"
 )
 
 // TestExampleAppBoots is the wiring smoke test: it boots the real
