@@ -45,7 +45,9 @@ func (r *Request) Context() context.Context {
 	return r.ctx.Context()
 }
 
-// WithContext returns a copy of the request with the given context.
+// WithContext sets the request's context and returns the same request. It
+// does not copy: the context is stored on the underlying Fiber context, so
+// every holder of this request sees it.
 func (r *Request) WithContext(ctx context.Context) contracts.Request {
 	r.ctx.SetContext(ctx)
 	return r
