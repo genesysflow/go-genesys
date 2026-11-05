@@ -9,7 +9,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -166,12 +166,12 @@ func TestTestRequestBasicAuthRoundTrips(t *testing.T) {
 	app := newTestApp()
 	var gotOK bool
 	var gotUser, gotPassword string
-	app.Get("/me", func(c *fiber.Ctx) error {
+	app.Get("/me", func(c fiber.Ctx) error {
 		gotUser, gotPassword, gotOK = NewRequest(c).BasicAuth()
 		return c.SendString("done")
 	})
 
-	resp, err := app.Test(built.toHTTPRequest(), -1)
+	resp, err := app.Test(built.toHTTPRequest(), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 

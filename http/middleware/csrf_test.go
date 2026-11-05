@@ -8,6 +8,7 @@ import (
 
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,7 @@ func csrfKernel(t *testing.T, trusted ...string) *genhttp.Kernel {
 func issueToken(t *testing.T, k *genhttp.Kernel) (string, *http.Cookie) {
 	t.Helper()
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/form", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/form", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, resp.StatusCode)
 
@@ -66,7 +67,7 @@ func TestCSRFAcceptsMatchingHeaderToken(t *testing.T) {
 	req.AddCookie(cookie)
 	req.Header.Set("X-CSRF-Token", token)
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -80,7 +81,7 @@ func TestCSRFAcceptsMatchingFormField(t *testing.T) {
 	req.AddCookie(cookie)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -149,7 +150,7 @@ func TestCSRFRejectsForgedRequests(t *testing.T) {
 			req := httptest.NewRequest("POST", "/submit", nil)
 			tc.build(t, req, token, cookie)
 
-			resp, err := k.Fiber().Test(req, -1)
+			resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 			require.NoError(t, err)
 			assert.Equal(t, 403, resp.StatusCode)
 		})
@@ -166,7 +167,7 @@ func TestCSRFAllowsTrustedCrossOrigin(t *testing.T) {
 	req.Header.Set("X-CSRF-Token", token)
 	req.Header.Set("Origin", "https://trusted.example")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -176,7 +177,7 @@ func TestCSRFAllowsTrustedCrossOrigin(t *testing.T) {
 func TestCSRFSafeMethodsPassWithoutToken(t *testing.T) {
 	k := csrfKernel(t)
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/form", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/form", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
@@ -216,7 +217,7 @@ func TestCSRFCookieIsSecureByDefault(t *testing.T) {
 		return ctx.String(middleware.CSRFToken(ctx))
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/form", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/form", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	var csrfCookie *http.Cookie
@@ -253,7 +254,7 @@ func TestCSRFTokenReachesViewData(t *testing.T) {
 		return ctx.String("ok")
 	}, middleware.CSRF(middleware.CSRFConfig{Secret: csrfSecret, CookieInsecure: true}))
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/token-in-data", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/token-in-data", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -277,12 +278,12 @@ func TestCSRFExceptPaths(t *testing.T) {
 	})
 
 	// The exempt path goes through without a token.
-	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/api/posts", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/api/posts", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
 	// Everything else is still guarded.
-	resp, err = k.Fiber().Test(httptest.NewRequest("POST", "/posts", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("POST", "/posts", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode, "a non-exempt path must still require a token")
 }
@@ -301,7 +302,7 @@ func TestCSRFExceptMatchesPrefixOnly(t *testing.T) {
 		return ctx.String("should not be reachable")
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/evil/api/posts", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/evil/api/posts", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 403, resp.StatusCode)
 }

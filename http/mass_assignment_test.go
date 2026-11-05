@@ -8,6 +8,7 @@ import (
 	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,7 @@ func TestBindRefusesToFillAModelWholesale(t *testing.T) {
 		strings.NewReader(`{"email":"ada@example.com","role":"admin","id":99}`))
 	req.Header.Set("Content-Type", "application/json")
 
-	_, err := kernel.Fiber().Test(req, -1)
+	_, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, "ada@example.com", bound.Email, "declared fields still bind")

@@ -7,6 +7,7 @@ import (
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/providers"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -29,7 +30,7 @@ func TestKernelInstallsTheSessionMiddleware(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/session", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/session", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -46,7 +47,7 @@ func TestKernelWithoutASessionProvider(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/session", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/session", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }
@@ -68,7 +69,7 @@ func TestKernelSessionCanBeDisabled(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/session", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/session", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }

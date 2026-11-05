@@ -10,7 +10,7 @@ import (
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +53,7 @@ func form(t *testing.T, kernel *genhttp.Kernel, method, target, body string) (in
 func send(t *testing.T, kernel *genhttp.Kernel, request *http.Request) (int, string) {
 	t.Helper()
 
-	response, err := kernel.Fiber().Test(request, -1)
+	response, err := kernel.Fiber().Test(request, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	content := make([]byte, 64)

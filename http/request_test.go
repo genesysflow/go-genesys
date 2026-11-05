@@ -8,14 +8,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewRequest(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.NotNil(t, req)
 		assert.Equal(t, c, req.FiberCtx())
@@ -32,7 +32,7 @@ func TestRequestMethod(t *testing.T) {
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
 			app := fiber.New()
-			app.Add(method, "/test", func(c *fiber.Ctx) error {
+			app.Add([]string{method}, "/test", func(c fiber.Ctx) error {
 				req := NewRequest(c)
 				assert.Equal(t, method, req.Method())
 				return nil
@@ -46,7 +46,7 @@ func TestRequestMethod(t *testing.T) {
 
 func TestRequestPath(t *testing.T) {
 	app := fiber.New()
-	app.Get("/api/v1/users", func(c *fiber.Ctx) error {
+	app.Get("/api/v1/users", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, "/api/v1/users", req.Path())
 		return nil
@@ -58,7 +58,7 @@ func TestRequestPath(t *testing.T) {
 
 func TestRequestURI(t *testing.T) {
 	app := fiber.New()
-	app.Get("/search", func(c *fiber.Ctx) error {
+	app.Get("/search", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, "/search?q=test&page=1", req.URI())
 		return nil
@@ -70,7 +70,7 @@ func TestRequestURI(t *testing.T) {
 
 func TestRequestHost(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, "example.com", req.Host())
 		return nil
@@ -83,7 +83,7 @@ func TestRequestHost(t *testing.T) {
 
 func TestRequestIP(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		// In test, IP is typically 0.0.0.0
 		ip := req.IP()
@@ -97,7 +97,7 @@ func TestRequestIP(t *testing.T) {
 
 func TestRequestHeader(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, "application/json", req.Header("Accept"))
 		assert.Equal(t, "Bearer token123", req.Header("Authorization"))
@@ -113,7 +113,7 @@ func TestRequestHeader(t *testing.T) {
 
 func TestRequestHeaders(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		headers := req.Headers()
 		assert.NotEmpty(t, headers)
@@ -128,7 +128,7 @@ func TestRequestHeaders(t *testing.T) {
 
 func TestRequestQuery(t *testing.T) {
 	app := fiber.New()
-	app.Get("/search", func(c *fiber.Ctx) error {
+	app.Get("/search", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, "hello", req.Query("q"))
 		assert.Equal(t, "1", req.Query("page"))
@@ -143,7 +143,7 @@ func TestRequestQuery(t *testing.T) {
 
 func TestRequestQueryInt(t *testing.T) {
 	app := fiber.New()
-	app.Get("/page", func(c *fiber.Ctx) error {
+	app.Get("/page", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, 5, req.QueryInt("page"))
 		assert.Equal(t, 100, req.QueryInt("limit"))
@@ -159,7 +159,7 @@ func TestRequestQueryInt(t *testing.T) {
 
 func TestRequestParam(t *testing.T) {
 	app := fiber.New()
-	app.Get("/users/:id/posts/:postId", func(c *fiber.Ctx) error {
+	app.Get("/users/:id/posts/:postId", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, "123", req.Param("id"))
 		assert.Equal(t, "456", req.Param("postId"))
@@ -174,7 +174,7 @@ func TestRequestParam(t *testing.T) {
 
 func TestRequestParamInt(t *testing.T) {
 	app := fiber.New()
-	app.Get("/users/:id", func(c *fiber.Ctx) error {
+	app.Get("/users/:id", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		assert.Equal(t, 789, req.ParamInt("id"))
 		assert.Equal(t, 0, req.ParamInt("missing"))
@@ -188,7 +188,7 @@ func TestRequestParamInt(t *testing.T) {
 
 func TestRequestInput(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test/:id", func(c *fiber.Ctx) error {
+	app.Get("/test/:id", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		// Input checks params first, then query, then form
 		assert.Equal(t, "param-value", req.Input("id"))     // from params
@@ -204,7 +204,7 @@ func TestRequestInput(t *testing.T) {
 
 func TestRequestAll(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		all := req.All()
 		assert.Equal(t, "value1", all["key1"])
@@ -218,7 +218,7 @@ func TestRequestAll(t *testing.T) {
 
 func TestRequestJSON(t *testing.T) {
 	app := fiber.New()
-	app.Post("/json", func(c *fiber.Ctx) error {
+	app.Post("/json", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		var data map[string]string
 		err := req.JSON(&data)
@@ -235,7 +235,7 @@ func TestRequestJSON(t *testing.T) {
 
 func TestRequestContext(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		ctx := req.Context()
 		assert.NotNil(t, ctx)
@@ -248,7 +248,7 @@ func TestRequestContext(t *testing.T) {
 
 func TestRequestWithContext(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		type ctxKey struct{}
 		ctx := context.WithValue(context.Background(), ctxKey{}, "value")
@@ -263,7 +263,7 @@ func TestRequestWithContext(t *testing.T) {
 
 func TestRequestScheme(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		scheme := req.Scheme()
 		assert.Equal(t, "http", scheme)
@@ -276,7 +276,7 @@ func TestRequestScheme(t *testing.T) {
 
 func TestRequestIsSecure(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		req := NewRequest(c)
 		// In tests, requests are typically not secure
 		assert.False(t, req.IsSecure())

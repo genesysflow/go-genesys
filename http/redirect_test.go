@@ -101,6 +101,29 @@ func TestRedirectBackRejectsOffHostReferer(t *testing.T) {
 	assert.Equal(t, "/fallback", resp.Header.Get("Location"))
 }
 
+// The origin includes the port. A referer from this host and port is
+// honoured, and one from another port on the same host is not, so a
+// deployment on a non-default port keeps its back-redirects.
+func TestRedirectBackComparesTheHostWithItsPort(t *testing.T) {
+	app := newTestApp()
+	router := NewRouter(&mockApplication{}, app)
+
+	router.POST("/save", func(ctx *Context) error {
+		return ctx.Back("/fallback").Send()
+	})
+
+	for referer, want := range map[string]string{
+		"http://localhost:3000/users/create": "http://localhost:3000/users/create",
+		"http://localhost:4000/users/create": "/fallback",
+	} {
+		req := httptest.NewRequest("POST", "http://localhost:3000/save", nil)
+		req.Header.Set("Referer", referer)
+		resp, err := app.Test(req)
+		require.NoError(t, err)
+		assert.Equal(t, want, resp.Header.Get("Location"), referer)
+	}
+}
+
 func TestRedirectToRouteResolvesNamedRoute(t *testing.T) {
 	app := newTestApp()
 	router := NewRouter(&mockApplication{}, app)

@@ -10,6 +10,7 @@ import (
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/providers"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -53,7 +54,7 @@ func TestValidateRequestSuccess(t *testing.T) {
 	req := httptest.NewRequest("POST", "/users", strings.NewReader(`{"name":"Alice","email":"alice@example.com"}`))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 201, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
@@ -66,7 +67,7 @@ func TestValidateRequestFailureShape(t *testing.T) {
 	req := httptest.NewRequest("POST", "/users", strings.NewReader(`{"name":"Al","email":"not-an-email"}`))
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 422, resp.StatusCode)
 
@@ -83,13 +84,13 @@ func TestValidateRequestFailureShape(t *testing.T) {
 func TestValidateRequestBindsQueryOnGet(t *testing.T) {
 	k := formKernel(t)
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/search?q=golang", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/search?q=golang", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
 	assert.Contains(t, string(body), "golang")
 
-	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/search", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/search", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 422, resp.StatusCode)
 }
@@ -110,13 +111,13 @@ func TestResourceHelpers(t *testing.T) {
 		}{Data: []int{1, 2}, Total: 10, Page: 1})
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/one", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/one", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	var one map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&one))
 	assert.Equal(t, map[string]any{"id": float64(1)}, one["data"])
 
-	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/page", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/page", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	var page map[string]any
 	require.NoError(t, json.NewDecoder(resp.Body).Decode(&page))
@@ -137,7 +138,7 @@ func TestCreatedResourceIsEnveloped(t *testing.T) {
 		return ctx.CreatedResource(map[string]any{"id": 7, "slug": "ada"})
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/posts", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("POST", "/posts", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 201, resp.StatusCode)
 

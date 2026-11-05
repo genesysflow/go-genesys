@@ -7,6 +7,7 @@ import (
 
 	"github.com/genesysflow/go-genesys/session"
 	"github.com/genesysflow/go-genesys/support"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -163,7 +164,7 @@ func TestOldInputHasAndAnyAfterFlash(t *testing.T) {
 		return ctx.String("read")
 	})
 
-	flashResp, err := app.Test(httptest.NewRequest("POST", "/flash", nil), -1)
+	flashResp, err := app.Test(httptest.NewRequest("POST", "/flash", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	require.Equal(t, 200, flashResp.StatusCode)
 
@@ -172,7 +173,7 @@ func TestOldInputHasAndAnyAfterFlash(t *testing.T) {
 
 	readReq := httptest.NewRequest("GET", "/form", nil)
 	readReq.Header.Set("Cookie", cookie)
-	readResp, err := app.Test(readReq, -1)
+	readResp, err := app.Test(readReq, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, _ := io.ReadAll(readResp.Body)
@@ -196,7 +197,7 @@ func TestOldInputAnyWithEmptySession(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/form", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/form", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 }

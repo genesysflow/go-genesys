@@ -9,7 +9,7 @@ import (
 	"github.com/genesysflow/go-genesys/crypt"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +34,7 @@ func TestEncryptCookiesRoundTrip(t *testing.T) {
 		return ctx.String("value=" + ctx.FiberCtx().Cookies("prefs"))
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	var stored string
@@ -52,7 +52,7 @@ func TestEncryptCookiesRoundTrip(t *testing.T) {
 	// Sending the ciphertext back, the handler reads plaintext.
 	req := httptest.NewRequest("GET", "/read", nil)
 	req.Header.Set("Cookie", "prefs="+stored)
-	resp, err = k.Fiber().Test(req, -1)
+	resp, err = k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, "value=dark-mode", bodyOf(t, resp))
 }
@@ -65,7 +65,7 @@ func TestEncryptCookiesDropsForgeries(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/read", nil)
 	req.Header.Set("Cookie", "prefs=forged-plaintext")
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, "value=<absent>", bodyOf(t, resp), "a cookie that fails to decrypt never reaches the handler")
 }
@@ -77,7 +77,7 @@ func TestEncryptCookiesHonoursExceptions(t *testing.T) {
 		return ctx.String("ok")
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/set", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	for _, c := range resp.Cookies() {
 		if c.Name == "plain_cookie" {

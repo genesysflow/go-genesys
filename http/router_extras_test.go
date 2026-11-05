@@ -8,6 +8,7 @@ import (
 	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
@@ -20,11 +21,11 @@ func TestFallback(t *testing.T) {
 		return ctx.Status(404).JSONResponse(map[string]any{"message": "custom not found"})
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/exists", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/exists", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/missing", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/missing", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
@@ -35,7 +36,7 @@ func TestRedirectRoute(t *testing.T) {
 	k := bootKernel(t)
 	k.Router().Redirect("/old", "/new", 301)
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/old", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/old", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 301, resp.StatusCode)
 	assert.Equal(t, "/new", resp.Header.Get("Location"))
@@ -58,7 +59,7 @@ func TestMiddlewareGroupsAndAliases(t *testing.T) {
 	k.GET("/page", func(ctx *genhttp.Context) error { return ctx.String("ok") },
 		append(k.MiddlewareGroup("web"), k.Named("auth")...)...)
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/page", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/page", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.Equal(t, []string{"session", "csrf", "auth"}, order)
@@ -112,17 +113,17 @@ func TestBindModel(t *testing.T) {
 		return ctx.String(user.Name)
 	})
 
-	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/users/1", nil), -1)
+	resp, err := k.Fiber().Test(httptest.NewRequest("GET", "/users/1", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	body, _ := io.ReadAll(resp.Body)
 	assert.Equal(t, "Alice", string(body))
 
-	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/users/999", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/users/999", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 
-	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/by-slug/alice", nil), -1)
+	resp, err = k.Fiber().Test(httptest.NewRequest("GET", "/by-slug/alice", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	body, _ = io.ReadAll(resp.Body)
 	assert.Equal(t, "Alice", string(body))

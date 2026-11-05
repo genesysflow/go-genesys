@@ -1,13 +1,14 @@
 package session
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"time"
 
 	"github.com/genesysflow/go-genesys/database/schema"
 	"github.com/genesysflow/go-genesys/query"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // DatabaseStorage persists sessions in a database table. It implements
@@ -51,6 +52,15 @@ func (s *DatabaseStorage) Get(key string) ([]byte, error) {
 	return base64.StdEncoding.DecodeString(fmt.Sprint(row["payload"]))
 }
 
+// GetWithContext is Get, refused once ctx is done; the query
+// executor takes no context, so ctx is not threaded into the statement.
+func (s *DatabaseStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.Get(key)
+}
+
 // Set stores a session payload with an expiration (0 = no expiry).
 func (s *DatabaseStorage) Set(key string, val []byte, exp time.Duration) error {
 	payload := base64.StdEncoding.EncodeToString(val)
@@ -76,16 +86,43 @@ func (s *DatabaseStorage) Set(key string, val []byte, exp time.Duration) error {
 	})
 }
 
+// SetWithContext is Set, refused once ctx is done; the query
+// executor takes no context, so ctx is not threaded into the statement.
+func (s *DatabaseStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Set(key, val, exp)
+}
+
 // Delete removes a session.
 func (s *DatabaseStorage) Delete(key string) error {
 	_, err := s.rows().Where("id", key).Delete()
 	return err
 }
 
+// DeleteWithContext is Delete, refused once ctx is done; the query
+// executor takes no context, so ctx is not threaded into the statement.
+func (s *DatabaseStorage) DeleteWithContext(ctx context.Context, key string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Delete(key)
+}
+
 // Reset removes all sessions.
 func (s *DatabaseStorage) Reset() error {
 	_, err := s.rows().Delete()
 	return err
+}
+
+// ResetWithContext is Reset, refused once ctx is done; the query
+// executor takes no context, so ctx is not threaded into the statement.
+func (s *DatabaseStorage) ResetWithContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.Reset()
 }
 
 // Close is a no-op for database storage.
@@ -151,6 +188,15 @@ func (s *LazyStorage) Get(key string) ([]byte, error) {
 	return storage.Get(key)
 }
 
+// GetWithContext is Get bounded by ctx.
+func (s *LazyStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	storage, err := s.resolve()
+	if err != nil {
+		return nil, err
+	}
+	return storage.GetWithContext(ctx, key)
+}
+
 // Set stores a session payload.
 func (s *LazyStorage) Set(key string, val []byte, exp time.Duration) error {
 	storage, err := s.resolve()
@@ -158,6 +204,15 @@ func (s *LazyStorage) Set(key string, val []byte, exp time.Duration) error {
 		return err
 	}
 	return storage.Set(key, val, exp)
+}
+
+// SetWithContext is Set bounded by ctx.
+func (s *LazyStorage) SetWithContext(ctx context.Context, key string, val []byte, exp time.Duration) error {
+	storage, err := s.resolve()
+	if err != nil {
+		return err
+	}
+	return storage.SetWithContext(ctx, key, val, exp)
 }
 
 // Delete removes a session.
@@ -169,6 +224,15 @@ func (s *LazyStorage) Delete(key string) error {
 	return storage.Delete(key)
 }
 
+// DeleteWithContext is Delete bounded by ctx.
+func (s *LazyStorage) DeleteWithContext(ctx context.Context, key string) error {
+	storage, err := s.resolve()
+	if err != nil {
+		return err
+	}
+	return storage.DeleteWithContext(ctx, key)
+}
+
 // Reset removes all sessions.
 func (s *LazyStorage) Reset() error {
 	storage, err := s.resolve()
@@ -176,6 +240,15 @@ func (s *LazyStorage) Reset() error {
 		return err
 	}
 	return storage.Reset()
+}
+
+// ResetWithContext is Reset bounded by ctx.
+func (s *LazyStorage) ResetWithContext(ctx context.Context) error {
+	storage, err := s.resolve()
+	if err != nil {
+		return err
+	}
+	return storage.ResetWithContext(ctx)
 }
 
 // Close closes the underlying storage when it was built.

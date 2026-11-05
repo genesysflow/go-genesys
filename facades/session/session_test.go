@@ -6,7 +6,7 @@ import (
 
 	facadesession "github.com/genesysflow/go-genesys/facades/session"
 	basesession "github.com/genesysflow/go-genesys/session"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,14 +17,14 @@ func TestFacadeMiddlewareAndFromContext(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(facadesession.Middleware())
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		sess := facadesession.FromContext(c)
 		require.NotNil(t, sess)
 		sess.Set("k", "v")
 		return c.SendString(sess.GetString("k"))
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 	assert.NotNil(t, facadesession.GetInstance())
@@ -32,11 +32,11 @@ func TestFacadeMiddlewareAndFromContext(t *testing.T) {
 
 func TestFromContextWithoutMiddleware(t *testing.T) {
 	app := fiber.New()
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		assert.Nil(t, facadesession.FromContext(c))
 		return c.SendString("ok")
 	})
-	_, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	_, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 }
 

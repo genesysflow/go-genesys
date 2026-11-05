@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -21,11 +21,11 @@ func serveResponse(t *testing.T, handler func(*Response) error) (*http.Response,
 	t.Helper()
 
 	app := newTestApp()
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		return handler(NewResponse(c))
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, err := io.ReadAll(resp.Body)
@@ -57,12 +57,12 @@ func TestResponseJSONP(t *testing.T) {
 func TestResponseJSONPMarshalError(t *testing.T) {
 	app := newTestApp()
 	var sendErr error
-	app.Get("/", func(c *fiber.Ctx) error {
+	app.Get("/", func(c fiber.Ctx) error {
 		sendErr = NewResponse(c).JSONP(make(chan int), "cb")
 		return c.SendString("handled")
 	})
 
-	_, err := app.Test(httptest.NewRequest("GET", "/", nil), -1)
+	_, err := app.Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Error(t, sendErr)
 }
@@ -143,7 +143,7 @@ func TestResponseRedirectRouteResolvesNamedRoutes(t *testing.T) {
 		return NewResponse(ctx.FiberCtx()).RedirectRoute("users.index", map[string]any{"page": 2})
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/go", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/go", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, fiber.StatusFound, resp.StatusCode)
@@ -166,7 +166,7 @@ func TestResponseRedirectRouteSubstitutesParams(t *testing.T) {
 		})
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/go", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/go", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	assert.Equal(t, fiber.StatusFound, resp.StatusCode)
@@ -186,7 +186,7 @@ func TestResponseRedirectRouteUnknownNameErrors(t *testing.T) {
 		return ctx.String("still here")
 	})
 
-	resp, err := app.Test(httptest.NewRequest("GET", "/go", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/go", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	require.Error(t, redirectErr)
@@ -200,12 +200,12 @@ func TestResponseRedirectRouteWithoutRouterErrors(t *testing.T) {
 	app := newTestApp()
 
 	var redirectErr error
-	app.Get("/go", func(c *fiber.Ctx) error {
+	app.Get("/go", func(c fiber.Ctx) error {
 		redirectErr = NewResponse(c).RedirectRoute("users.index")
 		return c.SendString("still here")
 	})
 
-	_, err := app.Test(httptest.NewRequest("GET", "/go", nil), -1)
+	_, err := app.Test(httptest.NewRequest("GET", "/go", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	require.Error(t, redirectErr)

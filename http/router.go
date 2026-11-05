@@ -6,7 +6,8 @@ import (
 	"strings"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/static"
 )
 
 // HandlerFunc is the function signature for route handlers.
@@ -51,7 +52,7 @@ type routerLocalKey struct{}
 
 // routerFromCtx returns the router that dispatched the request, or nil for
 // a request that never went through one (raw Fiber middleware, say).
-func routerFromCtx(c *fiber.Ctx) *Router {
+func routerFromCtx(c fiber.Ctx) *Router {
 	router, _ := c.Locals(routerLocalKey{}).(*Router)
 	return router
 }
@@ -60,7 +61,7 @@ func routerFromCtx(c *fiber.Ctx) *Router {
 // route that matched so handlers can reach it via ctx.Route(). route may
 // be nil for handlers registered outside the route table (fallbacks).
 func (r *Router) wrapRouteHandler(route *Route, handler HandlerFunc, middleware ...MiddlewareFunc) fiber.Handler {
-	return func(c *fiber.Ctx) error {
+	return func(c fiber.Ctx) error {
 		// Recorded on the Fiber context rather than only on the Context,
 		// so that anything built from the request - a Response, say - can
 		// still resolve a route name.
@@ -260,7 +261,7 @@ func (r *Router) Use(middleware ...MiddlewareFunc) {
 // Static serves static files from a directory.
 func (r *Router) Static(prefix, root string) {
 	fullPath := r.prefix + prefix
-	r.fiber.Static(fullPath, root)
+	r.fiber.Use(fullPath, static.New(root))
 }
 
 // Routes returns all registered routes, including routes registered on

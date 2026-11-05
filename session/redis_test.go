@@ -8,7 +8,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/genesysflow/go-genesys/session"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -72,17 +72,17 @@ func TestSessionsBackedByRedis(t *testing.T) {
 
 	app := fiber.New()
 	app.Use(manager.Middleware())
-	app.Get("/set", func(c *fiber.Ctx) error {
+	app.Get("/set", func(c fiber.Ctx) error {
 		sess := session.GetFromContext(c)
 		sess.Set("who", "redis")
 		return c.SendString("ok")
 	})
-	app.Get("/get", func(c *fiber.Ctx) error {
+	app.Get("/get", func(c fiber.Ctx) error {
 		return c.SendString(session.GetFromContext(c).GetString("who"))
 	})
 
 	// First request sets the value; carry the cookie to the second.
-	resp, err := app.Test(httptest.NewRequest("GET", "/set", nil), -1)
+	resp, err := app.Test(httptest.NewRequest("GET", "/set", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	var cookies []string
 	for _, c := range resp.Cookies() {
@@ -92,7 +92,7 @@ func TestSessionsBackedByRedis(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/get", nil)
 	req.Header.Set("Cookie", strings.Join(cookies, "; "))
-	resp, err = app.Test(req, -1)
+	resp, err = app.Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	body := make([]byte, 64)
 	n, _ := resp.Body.Read(body)

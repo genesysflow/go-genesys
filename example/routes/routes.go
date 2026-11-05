@@ -9,7 +9,7 @@ import (
 	"github.com/genesysflow/go-genesys/foundation"
 	"github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // PreRouting returns the handlers that run before the router matches a

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +42,7 @@ func (c *recordingController) Destroy(ctx *Context) error {
 func call(t *testing.T, app *fiber.App, method, target string) (int, string) {
 	t.Helper()
 
-	resp, err := app.Test(httptest.NewRequest(method, target, nil), -1)
+	resp, err := app.Test(httptest.NewRequest(method, target, nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 
 	body, err := io.ReadAll(resp.Body)

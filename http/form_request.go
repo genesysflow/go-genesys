@@ -195,11 +195,11 @@ func mergeFailures(failures *map[string][]string, extra map[string][]string) {
 func bindRequest(ctx *Context, v any) error {
 	switch ctx.Method() {
 	case "GET", "HEAD", "DELETE":
-		return ctx.FiberCtx().QueryParser(v)
+		return ctx.FiberCtx().Bind().Query(v)
 	default:
 		if len(ctx.FiberCtx().Body()) == 0 {
-			return ctx.FiberCtx().QueryParser(v)
+			return ctx.FiberCtx().Bind().Query(v)
 		}
-		return ctx.FiberCtx().BodyParser(v)
+		return ctx.FiberCtx().Bind().Body(v)
 	}
 }

@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewContext(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		assert.NotNil(t, ctx)
 		assert.NotNil(t, ctx.Request())
@@ -28,7 +28,7 @@ func TestNewContext(t *testing.T) {
 
 func TestContextParam(t *testing.T) {
 	app := fiber.New()
-	app.Get("/users/:id", func(c *fiber.Ctx) error {
+	app.Get("/users/:id", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		assert.Equal(t, "123", ctx.Param("id"))
 		assert.Equal(t, "default", ctx.Param("nonexistent", "default"))
@@ -41,7 +41,7 @@ func TestContextParam(t *testing.T) {
 
 func TestContextParamInt(t *testing.T) {
 	app := fiber.New()
-	app.Get("/users/:id", func(c *fiber.Ctx) error {
+	app.Get("/users/:id", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		assert.Equal(t, 456, ctx.ParamInt("id"))
 		assert.Equal(t, 0, ctx.ParamInt("nonexistent"))
@@ -55,7 +55,7 @@ func TestContextParamInt(t *testing.T) {
 
 func TestContextQuery(t *testing.T) {
 	app := fiber.New()
-	app.Get("/search", func(c *fiber.Ctx) error {
+	app.Get("/search", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		assert.Equal(t, "hello", ctx.Query("q"))
 		assert.Equal(t, "", ctx.Query("missing"))
@@ -69,7 +69,7 @@ func TestContextQuery(t *testing.T) {
 
 func TestContextQueryInt(t *testing.T) {
 	app := fiber.New()
-	app.Get("/page", func(c *fiber.Ctx) error {
+	app.Get("/page", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		assert.Equal(t, 5, ctx.QueryInt("page"))
 		assert.Equal(t, 0, ctx.QueryInt("missing"))
@@ -83,7 +83,7 @@ func TestContextQueryInt(t *testing.T) {
 
 func TestContextInput(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test/:id", func(c *fiber.Ctx) error {
+	app.Get("/test/:id", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		// Input checks params, query, then form
 		assert.Equal(t, "123", ctx.Input("id"))     // from params
@@ -98,7 +98,7 @@ func TestContextInput(t *testing.T) {
 
 func TestContextAll(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		all := ctx.All()
 		assert.NotNil(t, all)
@@ -113,7 +113,7 @@ func TestContextAll(t *testing.T) {
 
 func TestContextJSON(t *testing.T) {
 	app := fiber.New()
-	app.Post("/json", func(c *fiber.Ctx) error {
+	app.Post("/json", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		var data struct {
 			Name  string `json:"name"`
@@ -134,7 +134,7 @@ func TestContextJSON(t *testing.T) {
 
 func TestContextBind(t *testing.T) {
 	app := fiber.New()
-	app.Post("/bind", func(c *fiber.Ctx) error {
+	app.Post("/bind", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		var data struct {
 			Title string `json:"title"`
@@ -153,7 +153,7 @@ func TestContextBind(t *testing.T) {
 
 func TestContextGetSet(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 
 		ctx.Set("user_id", 123)
@@ -171,7 +171,7 @@ func TestContextGetSet(t *testing.T) {
 
 func TestContextAbort(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 
 		assert.False(t, ctx.IsAborted())
@@ -186,7 +186,7 @@ func TestContextAbort(t *testing.T) {
 
 func TestContextAbortWithStatus(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		return ctx.AbortWithStatus(403)
 	})
@@ -198,7 +198,7 @@ func TestContextAbortWithStatus(t *testing.T) {
 
 func TestContextAbortWithJSON(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		return ctx.AbortWithJSON(400, fiber.Map{"error": "bad request"})
 	})
@@ -210,7 +210,7 @@ func TestContextAbortWithJSON(t *testing.T) {
 
 func TestContextStatus(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		ctx.Status(201)
 		return ctx.String("created")
@@ -223,7 +223,7 @@ func TestContextStatus(t *testing.T) {
 
 func TestContextHeader(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		ctx.Header("X-Custom", "value")
 		return ctx.String("ok")
@@ -236,7 +236,7 @@ func TestContextHeader(t *testing.T) {
 
 func TestContextString(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		return ctx.String("hello world")
 	})
@@ -250,7 +250,7 @@ func TestContextString(t *testing.T) {
 
 func TestContextJSONResponse(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		return ctx.JSONResponse(fiber.Map{"message": "success"})
 	})
@@ -262,7 +262,7 @@ func TestContextJSONResponse(t *testing.T) {
 
 func TestContextHTML(t *testing.T) {
 	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c fiber.Ctx) error {
 		ctx := NewContext(c, &mockApplication{})
 		return ctx.HTML("<h1>Hello</h1>")
 	})

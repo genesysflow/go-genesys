@@ -13,12 +13,12 @@ import (
 	"sync"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Request wraps Fiber's request to provide a Laravel-like API.
 type Request struct {
-	ctx   *fiber.Ctx
+	ctx   fiber.Ctx
 	store sync.Map
 
 	// jsonDecoded caches the parsed JSON body. Input() reads one key at
@@ -29,25 +29,27 @@ type Request struct {
 }
 
 // NewRequest creates a new Request wrapper.
-func NewRequest(ctx *fiber.Ctx) *Request {
+func NewRequest(ctx fiber.Ctx) *Request {
 	return &Request{
 		ctx: ctx,
 	}
 }
 
 // FiberCtx returns the underlying Fiber context.
-func (r *Request) FiberCtx() *fiber.Ctx {
+func (r *Request) FiberCtx() fiber.Ctx {
 	return r.ctx
 }
 
 // Context returns the request context.
 func (r *Request) Context() context.Context {
-	return r.ctx.UserContext()
+	return r.ctx.Context()
 }
 
-// WithContext returns a copy of the request with the given context.
+// WithContext sets the request's context and returns the same request. It
+// does not copy: the context is stored on the underlying Fiber context, so
+// every holder of this request sees it.
 func (r *Request) WithContext(ctx context.Context) contracts.Request {
-	r.ctx.SetUserContext(ctx)
+	r.ctx.SetContext(ctx)
 	return r
 }
 
@@ -73,12 +75,12 @@ func (r *Request) FullURL() string {
 
 // Host returns the host.
 func (r *Request) Host() string {
-	return r.ctx.Hostname()
+	return r.ctx.Host()
 }
 
 // Scheme returns the scheme (http or https).
 func (r *Request) Scheme() string {
-	if r.ctx.Protocol() == "https" {
+	if r.ctx.Scheme() == "https" {
 		return "https"
 	}
 	return "http"
@@ -86,7 +88,7 @@ func (r *Request) Scheme() string {
 
 // IsSecure returns true if the request is using HTTPS.
 func (r *Request) IsSecure() bool {
-	return r.ctx.Protocol() == "https"
+	return r.ctx.Scheme() == "https"
 }
 
 // IP returns the client IP address.
@@ -120,7 +122,7 @@ func (r *Request) IPs() []string {
 // anyone can send the header.
 func (r *Request) trustsForwardingHeader() bool {
 	config := r.ctx.App().Config()
-	if !config.EnableTrustedProxyCheck || len(config.TrustedProxies) == 0 {
+	if !config.TrustProxy || len(config.TrustProxyConfig.Proxies) == 0 {
 		return false
 	}
 	return r.ctx.IsProxyTrusted()
@@ -402,7 +404,7 @@ func (r *Request) BodyReader() io.Reader {
 
 // JSON parses the JSON body into the given struct.
 func (r *Request) JSON(v any) error {
-	return r.ctx.BodyParser(v)
+	return r.ctx.Bind().Body(v)
 }
 
 // File returns an uploaded file.

@@ -15,6 +15,7 @@ import (
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
 	"github.com/genesysflow/go-genesys/providers"
+	"github.com/gofiber/fiber/v3"
 )
 
 // TestExampleAppBoots is the wiring smoke test: it boots the real
@@ -59,7 +60,7 @@ func TestExampleAppBoots(t *testing.T) {
 
 	get := func(path string) (int, map[string]any) {
 		t.Helper()
-		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), -1)
+		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), fiber.TestConfig{Timeout: 0})
 		if err != nil {
 			t.Fatalf("request %s failed: %v", path, err)
 		}
@@ -73,7 +74,7 @@ func TestExampleAppBoots(t *testing.T) {
 	// JSON body left to decode there.
 	page := func(path string) (int, string, string) {
 		t.Helper()
-		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), -1)
+		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", path, nil), fiber.TestConfig{Timeout: 0})
 		if err != nil {
 			t.Fatalf("request %s failed: %v", path, err)
 		}
@@ -140,7 +141,7 @@ func TestExampleAppBoots(t *testing.T) {
 
 	// The --retry flag surfaces as Retry-After. The get helper only
 	// returns status and decoded body, so inspect the raw response.
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/", nil), fiber.TestConfig{Timeout: 0})
 	if err != nil {
 		t.Fatalf("maintenance request failed: %v", err)
 	}

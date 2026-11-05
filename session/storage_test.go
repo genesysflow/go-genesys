@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/genesysflow/go-genesys/session"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"

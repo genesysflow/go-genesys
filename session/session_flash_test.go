@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/genesysflow/go-genesys/session"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,7 +38,7 @@ func (h *flashHarness) get(path string) string {
 	if h.cookies != "" {
 		req.Header.Set("Cookie", h.cookies)
 	}
-	resp, err := h.app.Test(req, -1)
+	resp, err := h.app.Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(h.t, err)
 
 	var parts []string
@@ -56,13 +56,13 @@ func (h *flashHarness) get(path string) string {
 
 func TestFlashLivesExactlyOneRequest(t *testing.T) {
 	h := newFlashHarness(t, func(app *fiber.App, _ *session.Manager) {
-		app.Get("/flash", func(c *fiber.Ctx) error {
+		app.Get("/flash", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			require.NoError(t, sess.Flash("status", "saved!"))
 			// Flash data is readable in the same request.
 			return c.SendString(sess.GetString("status"))
 		})
-		app.Get("/read", func(c *fiber.Ctx) error {
+		app.Get("/read", func(c fiber.Ctx) error {
 			return c.SendString(session.GetFromContext(c).GetString("status"))
 		})
 	})
@@ -74,23 +74,23 @@ func TestFlashLivesExactlyOneRequest(t *testing.T) {
 
 func TestReflashAndKeep(t *testing.T) {
 	h := newFlashHarness(t, func(app *fiber.App, _ *session.Manager) {
-		app.Get("/flash", func(c *fiber.Ctx) error {
+		app.Get("/flash", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			sess.Flash("a", "1")
 			sess.Flash("b", "2")
 			return c.SendString("ok")
 		})
-		app.Get("/keep-a", func(c *fiber.Ctx) error {
+		app.Get("/keep-a", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			require.NoError(t, sess.Keep("a"))
 			return c.SendString("ok")
 		})
-		app.Get("/reflash", func(c *fiber.Ctx) error {
+		app.Get("/reflash", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			require.NoError(t, sess.Reflash())
 			return c.SendString("ok")
 		})
-		app.Get("/read", func(c *fiber.Ctx) error {
+		app.Get("/read", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			return c.SendString(sess.GetString("a") + "|" + sess.GetString("b"))
 		})
@@ -107,12 +107,12 @@ func TestReflashAndKeep(t *testing.T) {
 
 func TestOldInputHelpers(t *testing.T) {
 	h := newFlashHarness(t, func(app *fiber.App, _ *session.Manager) {
-		app.Get("/submit", func(c *fiber.Ctx) error {
+		app.Get("/submit", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			require.NoError(t, sess.FlashInput(map[string]any{"email": "a@x.io", "name": "Ada"}))
 			return c.SendString("ok")
 		})
-		app.Get("/form", func(c *fiber.Ctx) error {
+		app.Get("/form", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			if !sess.HasOldInput() {
 				return c.SendString("none")
@@ -129,14 +129,14 @@ func TestOldInputHelpers(t *testing.T) {
 
 func TestPersistentDataAndHelpers(t *testing.T) {
 	h := newFlashHarness(t, func(app *fiber.App, _ *session.Manager) {
-		app.Get("/set", func(c *fiber.Ctx) error {
+		app.Get("/set", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			sess.Set("theme", "dark")
 			sess.Set("count", 3)
 			sess.Set("admin", true)
 			return c.SendString(sess.ID())
 		})
-		app.Get("/read", func(c *fiber.Ctx) error {
+		app.Get("/read", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			if !sess.Has("theme") {
 				return c.SendString("missing")
@@ -147,12 +147,12 @@ func TestPersistentDataAndHelpers(t *testing.T) {
 			}
 			return c.SendString(out)
 		})
-		app.Get("/pull", func(c *fiber.Ctx) error {
+		app.Get("/pull", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			value, _ := sess.Pull("theme").(string)
 			return c.SendString(value)
 		})
-		app.Get("/flush", func(c *fiber.Ctx) error {
+		app.Get("/flush", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			require.NoError(t, sess.Flush())
 			return c.SendString("ok")
@@ -175,7 +175,7 @@ func TestPersistentDataAndHelpers(t *testing.T) {
 // otherwise report absent.
 func TestHasOldAnswersByKey(t *testing.T) {
 	h := newFlashHarness(t, func(app *fiber.App, _ *session.Manager) {
-		app.Get("/flash", func(c *fiber.Ctx) error {
+		app.Get("/flash", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			sess.FlashInput(map[string]any{
 				"email":    "ada@example.com",
@@ -184,7 +184,7 @@ func TestHasOldAnswersByKey(t *testing.T) {
 			})
 			return c.SendString("flashed")
 		})
-		app.Get("/read", func(c *fiber.Ctx) error {
+		app.Get("/read", func(c fiber.Ctx) error {
 			sess := session.GetFromContext(c)
 			return c.SendString(fmt.Sprintf("%v|%v|%v|%v",
 				sess.HasOld("email"),

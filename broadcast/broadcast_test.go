@@ -9,7 +9,7 @@ import (
 	"github.com/fasthttp/websocket"
 	"github.com/genesysflow/go-genesys/broadcast"
 	"github.com/genesysflow/go-genesys/events"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -23,12 +23,12 @@ type wsClient struct {
 func startHub(t *testing.T) (*broadcast.Hub, string) {
 	t.Helper()
 	hub := broadcast.New()
-	app := fiber.New(fiber.Config{DisableStartupMessage: true})
+	app := fiber.New()
 	app.Get("/ws", hub.Handler())
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	go app.Listener(listener)
+	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
 	t.Cleanup(func() { app.Shutdown() })
 
 	return hub, "ws://" + listener.Addr().String() + "/ws"

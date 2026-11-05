@@ -10,6 +10,7 @@ import (
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
+	"github.com/gofiber/fiber/v3"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -35,13 +36,13 @@ func TestThrottleLimitsAndHeaders(t *testing.T) {
 	})
 
 	for i := 1; i <= 3; i++ {
-		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), -1)
+		resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), fiber.TestConfig{Timeout: 0})
 		require.NoError(t, err)
 		assert.Equal(t, 200, resp.StatusCode, "request %d within the limit", i)
 		assert.Equal(t, "3", resp.Header.Get("X-RateLimit-Limit"))
 	}
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 429, resp.StatusCode)
 	assert.Equal(t, "0", resp.Header.Get("X-RateLimit-Remaining"))
@@ -55,16 +56,16 @@ func TestThrottleWindowResets(t *testing.T) {
 		Window:      50 * time.Millisecond,
 	})
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
 
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 429, resp.StatusCode)
 
 	time.Sleep(80 * time.Millisecond)
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode, "allowance returns after the window")
 }
@@ -82,7 +83,7 @@ func TestThrottleSeparatesKeys(t *testing.T) {
 	send := func(user string) int {
 		req := httptest.NewRequest("GET", "/limited", nil)
 		req.Header.Set("X-User", user)
-		resp, err := kernel.Fiber().Test(req, -1)
+		resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 		require.NoError(t, err)
 		return resp.StatusCode
 	}
@@ -110,13 +111,13 @@ func TestThrottleRecoversFromACounterWithNoExpiry(t *testing.T) {
 	_, err := store.Increment("throttle:api:tenant", 700)
 	require.NoError(t, err)
 
-	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), -1)
+	resp, err := kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 429, resp.StatusCode)
 	assert.Equal(t, time.Minute, mr.TTL("cache:throttle:api:tenant"))
 
 	mr.FastForward(time.Minute + time.Second)
-	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), -1)
+	resp, err = kernel.Fiber().Test(httptest.NewRequest("GET", "/limited", nil), fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode, "the allowance returns after the window")
 }

@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/genesysflow/go-genesys/http"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // MaintenancePayload is the content of the down file written by

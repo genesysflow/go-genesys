@@ -9,7 +9,7 @@ import (
 	"runtime/debug"
 
 	"github.com/genesysflow/go-genesys/contracts"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Handler handles errors and panics.

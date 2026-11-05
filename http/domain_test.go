@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	genhttp "github.com/genesysflow/go-genesys/http"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -31,7 +32,7 @@ func TestSubdomainRouting(t *testing.T) {
 	send := func(host, path string) (int, string) {
 		req := httptest.NewRequest("GET", path, nil)
 		req.Host = host
-		resp, err := k.Fiber().Test(req, -1)
+		resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 		require.NoError(t, err)
 		content, _ := io.ReadAll(resp.Body)
 		return resp.StatusCode, string(content)

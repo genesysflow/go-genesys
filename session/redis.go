@@ -49,7 +49,12 @@ func NewRedisStorageWithClient(client *redis.Client, prefix string) *RedisStorag
 
 // Get retrieves a session by key (nil when missing or expired).
 func (s *RedisStorage) Get(key string) ([]byte, error) {
-	raw, err := s.client.Get(s.ctx, s.prefix+key).Bytes()
+	return s.GetWithContext(s.ctx, key)
+}
+
+// GetWithContext is Get bounded by ctx.
+func (s *RedisStorage) GetWithContext(ctx context.Context, key string) ([]byte, error) {
+	raw, err := s.client.Get(ctx, s.prefix+key).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return nil, nil
 	}
@@ -58,22 +63,37 @@ func (s *RedisStorage) Get(key string) ([]byte, error) {
 
 // Set stores a session with the given expiration.
 func (s *RedisStorage) Set(key string, value []byte, expiration time.Duration) error {
+	return s.SetWithContext(s.ctx, key, value, expiration)
+}
+
+// SetWithContext is Set bounded by ctx.
+func (s *RedisStorage) SetWithContext(ctx context.Context, key string, value []byte, expiration time.Duration) error {
 	if expiration < 0 {
 		expiration = 0
 	}
-	return s.client.Set(s.ctx, s.prefix+key, value, expiration).Err()
+	return s.client.Set(ctx, s.prefix+key, value, expiration).Err()
 }
 
 // Delete removes a session.
 func (s *RedisStorage) Delete(key string) error {
-	return s.client.Del(s.ctx, s.prefix+key).Err()
+	return s.DeleteWithContext(s.ctx, key)
+}
+
+// DeleteWithContext is Delete bounded by ctx.
+func (s *RedisStorage) DeleteWithContext(ctx context.Context, key string) error {
+	return s.client.Del(ctx, s.prefix+key).Err()
 }
 
 // Reset removes all sessions under this storage's prefix.
 func (s *RedisStorage) Reset() error {
-	iter := s.client.Scan(s.ctx, 0, s.prefix+"*", 100).Iterator()
-	for iter.Next(s.ctx) {
-		if err := s.client.Del(s.ctx, iter.Val()).Err(); err != nil {
+	return s.ResetWithContext(s.ctx)
+}
+
+// ResetWithContext is Reset bounded by ctx.
+func (s *RedisStorage) ResetWithContext(ctx context.Context) error {
+	iter := s.client.Scan(ctx, 0, s.prefix+"*", 100).Iterator()
+	for iter.Next(ctx) {
+		if err := s.client.Del(ctx, iter.Val()).Err(); err != nil {
 			return err
 		}
 	}

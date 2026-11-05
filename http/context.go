@@ -9,7 +9,7 @@ import (
 	"github.com/genesysflow/go-genesys/database"
 	"github.com/genesysflow/go-genesys/validation"
 	"github.com/genesysflow/go-genesys/view"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 )
 
 // Context represents the request context passed to handlers.
@@ -18,14 +18,14 @@ type Context struct {
 	request  *Request
 	response *Response
 	app      contracts.Application
-	fiberCtx *fiber.Ctx
+	fiberCtx fiber.Ctx
 	store    sync.Map
 	aborted  bool
 	next     func() error
 }
 
 // NewContext creates a new Context.
-func NewContext(fiberCtx *fiber.Ctx, app contracts.Application) *Context {
+func NewContext(fiberCtx fiber.Ctx, app contracts.Application) *Context {
 	return &Context{
 		request:  NewRequest(fiberCtx),
 		response: NewResponse(fiberCtx),
@@ -50,7 +50,7 @@ func (c *Context) App() contracts.Application {
 }
 
 // FiberCtx returns the underlying Fiber context.
-func (c *Context) FiberCtx() *fiber.Ctx {
+func (c *Context) FiberCtx() fiber.Ctx {
 	return c.fiberCtx
 }
 
@@ -100,7 +100,7 @@ func (c *Context) JSON(v any) error {
 // it binds only the fields the request type declares, which is the same
 // protection for every other column.
 func (c *Context) Bind(v any) error {
-	if err := c.fiberCtx.BodyParser(v); err != nil {
+	if err := c.fiberCtx.Bind().Body(v); err != nil {
 		return err
 	}
 	if model, ok := v.(database.ServerOwned); ok {
@@ -168,7 +168,7 @@ func (c *Context) AbortWithStatus(code int) error {
 func (c *Context) AbortWithJSON(code int, v any) error {
 	c.aborted = true
 	c.fiberCtx.Status(code)
-	return c.fiberCtx.JSON(v)
+	return c.fiberCtx.JSON(v, fiber.MIMEApplicationJSON)
 }
 
 // AbortWithError aborts with an error.
@@ -177,7 +177,7 @@ func (c *Context) AbortWithError(code int, err error) error {
 	c.fiberCtx.Status(code)
 	return c.fiberCtx.JSON(fiber.Map{
 		"error": err.Error(),
-	})
+	}, fiber.MIMEApplicationJSON)
 }
 
 // Status sets the response status code.
@@ -199,7 +199,7 @@ func (c *Context) String(s string) error {
 
 // JSONResponse sends a JSON response.
 func (c *Context) JSONResponse(v any) error {
-	return c.fiberCtx.JSON(v)
+	return c.fiberCtx.JSON(v, fiber.MIMEApplicationJSON)
 }
 
 // HTML sends an HTML response.
@@ -261,7 +261,7 @@ func (c *Context) Redirect(url string, status ...int) error {
 	if len(status) > 0 {
 		code = status[0]
 	}
-	return c.fiberCtx.Redirect(url, code)
+	return c.fiberCtx.Redirect().Status(code).To(url)
 }
 
 // RedirectBack redirects to the previous page.
@@ -282,14 +282,14 @@ func (c *Context) Send(body []byte) error {
 // Created sends a 201 Created response with JSON body.
 func (c *Context) Created(v any) error {
 	c.fiberCtx.Status(fiber.StatusCreated)
-	return c.fiberCtx.JSON(v)
+	return c.fiberCtx.JSON(v, fiber.MIMEApplicationJSON)
 }
 
 // Accepted sends a 202 Accepted response.
 func (c *Context) Accepted(v ...any) error {
 	c.fiberCtx.Status(fiber.StatusAccepted)
 	if len(v) > 0 {
-		return c.fiberCtx.JSON(v[0])
+		return c.fiberCtx.JSON(v[0], fiber.MIMEApplicationJSON)
 	}
 	return nil
 }
@@ -301,7 +301,7 @@ func (c *Context) BadRequest(message ...string) error {
 	if len(message) > 0 {
 		msg = message[0]
 	}
-	return c.fiberCtx.JSON(fiber.Map{"error": msg})
+	return c.fiberCtx.JSON(fiber.Map{"error": msg}, fiber.MIMEApplicationJSON)
 }
 
 // Unauthorized sends a 401 Unauthorized response.
@@ -311,7 +311,7 @@ func (c *Context) Unauthorized(message ...string) error {
 	if len(message) > 0 {
 		msg = message[0]
 	}
-	return c.fiberCtx.JSON(fiber.Map{"error": msg})
+	return c.fiberCtx.JSON(fiber.Map{"error": msg}, fiber.MIMEApplicationJSON)
 }
 
 // Forbidden sends a 403 Forbidden response.
@@ -321,7 +321,7 @@ func (c *Context) Forbidden(message ...string) error {
 	if len(message) > 0 {
 		msg = message[0]
 	}
-	return c.fiberCtx.JSON(fiber.Map{"error": msg})
+	return c.fiberCtx.JSON(fiber.Map{"error": msg}, fiber.MIMEApplicationJSON)
 }
 
 // NotFound sends a 404 Not Found response.
@@ -331,7 +331,7 @@ func (c *Context) NotFound(message ...string) error {
 	if len(message) > 0 {
 		msg = message[0]
 	}
-	return c.fiberCtx.JSON(fiber.Map{"error": msg})
+	return c.fiberCtx.JSON(fiber.Map{"error": msg}, fiber.MIMEApplicationJSON)
 }
 
 // InternalServerError sends a 500 Internal Server Error response.
@@ -341,7 +341,7 @@ func (c *Context) InternalServerError(message ...string) error {
 	if len(message) > 0 {
 		msg = message[0]
 	}
-	return c.fiberCtx.JSON(fiber.Map{"error": msg})
+	return c.fiberCtx.JSON(fiber.Map{"error": msg}, fiber.MIMEApplicationJSON)
 }
 
 // Cookie sets a cookie.

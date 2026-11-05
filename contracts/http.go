@@ -11,7 +11,8 @@ type Request interface {
 	// Context returns the request context.
 	Context() context.Context
 
-	// WithContext returns a copy of the request with the given context.
+	// WithContext sets the request's context and returns the same
+	// request; it does not copy.
 	WithContext(ctx context.Context) Request
 
 	// Method returns the HTTP method.

@@ -10,6 +10,7 @@ import (
 	"github.com/genesysflow/go-genesys/contracts"
 	"github.com/genesysflow/go-genesys/foundation"
 	genhttp "github.com/genesysflow/go-genesys/http"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -42,7 +43,7 @@ func TestErrorHandlerDoesNotLeakInternalErrors(t *testing.T) {
 	req := httptest.NewRequest("GET", "/boom", nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 500, resp.StatusCode)
 
@@ -66,7 +67,7 @@ func TestErrorHandlerKeepsDeliberateMessages(t *testing.T) {
 	req := httptest.NewRequest("GET", "/missing", nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 
@@ -87,7 +88,7 @@ func TestErrorHandlerClassifiesWrappedErrors(t *testing.T) {
 	req := httptest.NewRequest("GET", "/wrapped", nil)
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := k.Fiber().Test(req, -1)
+	resp, err := k.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	assert.Equal(t, 404, resp.StatusCode)
 }

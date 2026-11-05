@@ -10,6 +10,7 @@ import (
 	genhttp "github.com/genesysflow/go-genesys/http"
 	"github.com/genesysflow/go-genesys/http/middleware"
 	"github.com/genesysflow/go-genesys/session"
+	"github.com/gofiber/fiber/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +41,7 @@ func request(t *testing.T, kernel *genhttp.Kernel, path string, headers map[stri
 	if cookies != "" {
 		req.Header.Set("Cookie", cookies)
 	}
-	resp, err := kernel.Fiber().Test(req, -1)
+	resp, err := kernel.Fiber().Test(req, fiber.TestConfig{Timeout: 0})
 	require.NoError(t, err)
 	content, _ := io.ReadAll(resp.Body)
 	var setCookies []string
