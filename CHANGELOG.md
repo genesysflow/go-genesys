@@ -5,10 +5,14 @@ All notable changes to Go-Genesys are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-05
+
 ### Changed
 
 - **Breaking: the HTTP layer runs on Fiber v3 (v3.6.1).** Fiber v2 is
-  deprecated upstream. Code that only uses Go-Genesys's own types
+  deprecated upstream. This ships as a minor release on the v1 module
+  path, so `go get -u` picks it up; an application that needs Fiber v2
+  should stay on v1.3.0. Code that only uses Go-Genesys's own types
   (`*http.Context`, `Request`, `Response`, routers, middleware) needs no
   change. Code that reaches Fiber directly does, because these exported
   signatures now carry Fiber v3 types:
